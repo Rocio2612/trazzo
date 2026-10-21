@@ -1,0 +1,14 @@
+# Entornos virtuales
+venv/
+env/
+.venv/
+
+# Archivos de configuración con contraseñas
+.env
+
+# Archivos de Python
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
