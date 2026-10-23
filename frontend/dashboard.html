@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trazzo - Panel Principal</title>
+    <link rel="stylesheet" href="css/base.css">
+    <style>
+        .header-dashboard { display: flex; justify-content: space-between; align-items: center; padding: 1rem 2rem; border-bottom: 1px solid var(--color-borde); background-color: var(--color-fondo); }
+        .logo { font-size: 1.5rem; font-weight: bold; }
+        .contenido { padding: 3rem 2rem; text-align: center; }
+    </style>
+</head>
+<body style="background-color: var(--color-superficie);">
+
+    <header class="header-dashboard">
+        <div class="logo">Trazzo</div>
+        <button id="btn-logout" class="btn btn-outline">Cerrar Sesión</button>
+    </header>
+
+    <main class="contenido">
+        <h1>Bienvenido/a al Sistema</h1>
+        <p>Este es el panel principal de Trazzo.</p>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script>
+        // 1. Protección de Ruta
+        const token = localStorage.getItem('trazzo_access_token');
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        // 2. Cierre de Sesión
+        document.getElementById('btn-logout').addEventListener('click', async () => {
+            const confirmar = confirm("¿Estás seguro/a que querés cerrar sesión?");
+            if (confirmar) {
+                try { await fetchAPI('/auth/logout', 'POST'); } 
+                catch (error) { console.log("Error al notificar al back."); } 
+                finally {
+                    localStorage.removeItem('trazzo_access_token');
+                    localStorage.removeItem('trazzo_refresh_token');
+                    window.location.href = 'login.html';
+                }
+            }
+        });
+    </script>
+</body>
+</html>
