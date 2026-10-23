@@ -1,0 +1,21 @@
+:root {
+  --color-primario: #0056b3;
+  --color-primario-hover: #004494;
+  --color-fondo: #ffffff;
+  --color-superficie: #f8f9fa;
+  --color-texto: #212529;
+  --color-borde: #dee2e6;
+  --fuente-base: 'Inter', -apple-system, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--fuente-base); background-color: var(--color-fondo); color: var(--color-texto); line-height: 1.5; }
+h1, h2, h3 { font-weight: 600; margin-bottom: 0.5rem; }
+a { color: var(--color-primario); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.btn { display: inline-block; padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 500; text-align: center; border: 1px solid transparent; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+.btn-primario { color: #fff; background-color: var(--color-primario); border-color: var(--color-primario); }
+.btn-primario:hover { background-color: var(--color-primario-hover); }
+.btn-outline { color: var(--color-texto); background-color: transparent; border-color: var(--color-borde); }
+.btn-outline:hover { background-color: var(--color-superficie); }
