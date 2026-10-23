@@ -1,16 +1,14 @@
 from flask import Flask, request, jsonify
 import os
 from dotenv import load_dotenv
-from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
 import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
 
 load_dotenv()
 app = Flask(__name__)
 
 SECRET_KEY = os.getenv("JWT_SECRET", "clave_por_defecto")
-
-# Simulamos una "base de datos" en memoria para probar la seguridad
 USUARIOS_SIMULADOS = []
 
 @app.route('/api/auth/health', methods=['GET'])
@@ -20,21 +18,16 @@ def health():
 @app.route('/api/auth/registro', methods=['POST'])
 def registro():
     datos = request.get_json()
-    
     if not datos or not datos.get('id_negocio') or not datos.get('usuario') or not datos.get('password'):
         return jsonify({"status": "error", "mensaje": "Faltan datos obligatorios"}), 400
 
-    # 1. Hashear la contraseña (Seguridad)
     password_hash = generate_password_hash(datos['password'])
-    
-    # Guardamos en la lista simulada
     USUARIOS_SIMULADOS.append({
         "id_negocio": datos['id_negocio'],
         "usuario": datos['usuario'],
         "password_hash": password_hash
     })
 
-    # 2. Generar Tokens JWT reales
     payload = {
         "usuario": datos['usuario'],
         "id_negocio": datos['id_negocio'],
@@ -55,17 +48,12 @@ def registro():
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     datos = request.get_json()
-    
     if not datos or not datos.get('usuario') or not datos.get('password'):
         return jsonify({"status": "error", "mensaje": "Faltan datos"}), 400
 
-    # Buscamos el usuario en la lista simulada
     usuario_encontrado = next((u for u in USUARIOS_SIMULADOS if u['usuario'] == datos['usuario']), None)
 
-    # 1. Validar si el usuario existe y si la contraseña coincide
     if usuario_encontrado and check_password_hash(usuario_encontrado['password_hash'], datos['password']):
-        
-        # 2. Generar Tokens JWT reales
         payload = {
             "usuario": usuario_encontrado['usuario'],
             "id_negocio": usuario_encontrado['id_negocio'],
@@ -83,6 +71,37 @@ def login():
         }), 200
     else:
         return jsonify({"status": "error", "mensaje": "Negocio, usuario o contraseña incorrectos"}), 401
+
+@app.route('/api/auth/yo', methods=['GET'])
+def obtener_mi_perfil():
+    # 1. Buscar el token en los Headers
+    auth_header = request.headers.get('Authorization')
+    
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({"status": "error", "mensaje": "Token no proporcionado"}), 401
+
+    # 2. Extraer el token
+    token = auth_header.split(" ")[1]
+
+    try:
+        # 3. Validar el token
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        
+        # 4. Devolver los datos que están adentro del token
+        return jsonify({
+            "status": "ok",
+            "mensaje": "Acceso concedido",
+            "usuario": {
+                "usuario": payload.get("usuario"),
+                "negocio_id": payload.get("id_negocio"),
+                "rol": payload.get("rol")
+            }
+        }), 200
+        
+    except jwt.ExpiredSignatureError:
+        return jsonify({"status": "error", "mensaje": "El token ha expirado"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"status": "error", "mensaje": "Token inválido"}), 401
 
 if __name__ == '__main__':
     port = int(os.getenv("SERVICE_PORT", 5001))
