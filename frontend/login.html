@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trazzo - Iniciar Sesión</title>
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/auth.css" />
+  </head>
+  <body style="background-color: var(--color-superficie)">
+    <div class="auth-container">
+      <div class="auth-card">
+        <h2>Iniciar Sesión</h2>
+        <form id="login-form">
+          <div class="form-group">
+            <label for="negocio">Identificador del Negocio</label>
+            <input
+              type="text"
+              id="negocio"
+              class="form-control"
+              placeholder="Ej: mipanaderia"
+              required
+            />
+            <div id="error-negocio" class="error-message"></div>
+          </div>
+          <div class="form-group">
+            <label for="usuario">Usuario</label>
+            <input
+              type="text"
+              id="usuario"
+              class="form-control"
+              placeholder="Ej: admin123"
+              required
+            />
+            <div id="error-usuario" class="error-message"></div>
+          </div>
+          <div class="form-group">
+            <label for="password">Contraseña</label>
+            <input
+              type="password"
+              id="password"
+              class="form-control"
+              placeholder="********"
+              required
+            />
+            <div id="error-password" class="error-message"></div>
+          </div>
+          <button type="submit" class="btn btn-primario btn-block">
+            Ingresar
+          </button>
+        </form>
+        <div class="auth-links">
+          <a href="registro.html">Registrar negocio</a> |
+          <a href="recuperar.html">Olvidé mi contraseña</a>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script>
+      document
+        .getElementById("login-form")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          limpiarErrores();
+
+          const negocio = document.getElementById("negocio").value.trim();
+          const usuario = document.getElementById("usuario").value.trim();
+          const password = document.getElementById("password").value;
+
+          // Validaciones básicas del lado del cliente
+          if (negocio.length < 4 || negocio.length > 20) {
+            mostrarError("negocio", "Debe tener entre 4 y 20 caracteres.");
+            return;
+          }
+          if (!usuario || !password) {
+            mostrarError("password", "Completá todos los campos.");
+            return;
+          }
+
+          try {
+            const data = await fetchAPI("/auth/login", "POST", {
+              negocio,
+              usuario,
+              password,
+            });
+
+            // Guardar JWT y redirigir
+            guardarSesion(data.access_token, data.refresh_token);
+          } catch (error) {
+            // Backend debe devolver 401 con mensaje genérico
+            mostrarError(
+              "password",
+              "Negocio, usuario o contraseña incorrectos",
+            );
+          }
+        });
+    </script>
+  </body>
+</html>
