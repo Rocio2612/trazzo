@@ -3,13 +3,23 @@ import os
 from dotenv import load_dotenv
 import jwt
 import datetime
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from werkzeug.security import generate_password_hash, check_password_hash
 
 load_dotenv()
 app = Flask(__name__)
-
 SECRET_KEY = os.getenv("JWT_SECRET", "clave_por_defecto")
-USUARIOS_SIMULADOS = []
+
+# Función para conectar a PostgreSQL
+def get_db_connection():
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        port=os.getenv("DB_PORT")
+    )
 
 @app.route('/api/auth/health', methods=['GET'])
 def health():
@@ -18,90 +28,101 @@ def health():
 @app.route('/api/auth/registro', methods=['POST'])
 def registro():
     datos = request.get_json()
-    if not datos or not datos.get('id_negocio') or not datos.get('usuario') or not datos.get('password'):
+    if not datos or not datos.get('id_negocio') or not datos.get('usuario') or not datos.get('password') or not datos.get('correo'):
         return jsonify({"status": "error", "mensaje": "Faltan datos obligatorios"}), 400
 
     password_hash = generate_password_hash(datos['password'])
-    USUARIOS_SIMULADOS.append({
-        "id_negocio": datos['id_negocio'],
-        "usuario": datos['usuario'],
-        "password_hash": password_hash
-    })
+    
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    payload = {
-        "usuario": datos['usuario'],
-        "id_negocio": datos['id_negocio'],
-        "rol": "ADMIN",
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=15)
-    }
-    access_token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-    refresh_token = jwt.encode({"usuario": datos['usuario'], "type": "refresh"}, SECRET_KEY, algorithm="HS256")
+    try:
+        # 1. Crear el emprendimiento (negocio)
+        cur.execute(
+            "INSERT INTO emprendimientos (identificador, nombre_comercial, rubro) VALUES (%s, %s, %s) RETURNING id",
+            (datos['id_negocio'], datos.get('nombre_negocio', 'Sin nombre'), datos.get('rubro', 'General'))
+        )
+        emprendimiento_id = cur.fetchone()['id']
 
-    return jsonify({
-        "status": "ok",
-        "mensaje": "Negocio y usuario creado",
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "usuario": {"id": 1, "rol": "ADMIN", "negocio_id": 10}
-    }), 201
+        # 2. Crear el usuario Administrador asociado al negocio
+        cur.execute(
+            """INSERT INTO usuarios (emprendimiento_id, usuario, correo, password_hash, rol) 
+               VALUES (%s, %s, %s, %s, 'PROPIETARIO') RETURNING id""",
+            (emprendimiento_id, datos['usuario'], datos['correo'], password_hash)
+        )
+        usuario_id = cur.fetchone()['id']
+        
+        conn.commit()
+
+        # 3. Generar Tokens JWT
+        payload = {
+            "usuario_id": usuario_id,
+            "usuario": datos['usuario'],
+            "negocio_id": emprendimiento_id,
+            "rol": "PROPIETARIO",
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=15)
+        }
+        access_token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+        refresh_token = jwt.encode({"usuario_id": usuario_id, "type": "refresh"}, SECRET_KEY, algorithm="HS256")
+
+        return jsonify({
+            "status": "ok",
+            "mensaje": "Negocio y usuario creado con éxito en la BD",
+            "access_token": access_token,
+            "refresh_token": refresh_token
+        }), 201
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"status": "error", "mensaje": f"Error: {str(e)}"}), 500
+    finally:
+        cur.close()
+        conn.close()
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     datos = request.get_json()
-    if not datos or not datos.get('usuario') or not datos.get('password'):
+    if not datos or not datos.get('id_negocio') or not datos.get('usuario') or not datos.get('password'):
         return jsonify({"status": "error", "mensaje": "Faltan datos"}), 400
 
-    usuario_encontrado = next((u for u in USUARIOS_SIMULADOS if u['usuario'] == datos['usuario']), None)
-
-    if usuario_encontrado and check_password_hash(usuario_encontrado['password_hash'], datos['password']):
-        payload = {
-            "usuario": usuario_encontrado['usuario'],
-            "id_negocio": usuario_encontrado['id_negocio'],
-            "rol": "ADMIN",
-            "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=15)
-        }
-        access_token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-        refresh_token = jwt.encode({"usuario": usuario_encontrado['usuario'], "type": "refresh"}, SECRET_KEY, algorithm="HS256")
-
-        return jsonify({
-            "status": "ok",
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "usuario": {"id": 1, "rol": "ADMIN", "nombre": "Rocío"}
-        }), 200
-    else:
-        return jsonify({"status": "error", "mensaje": "Negocio, usuario o contraseña incorrectos"}), 401
-
-@app.route('/api/auth/yo', methods=['GET'])
-def obtener_mi_perfil():
-    # 1. Buscar el token en los Headers
-    auth_header = request.headers.get('Authorization')
-    
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({"status": "error", "mensaje": "Token no proporcionado"}), 401
-
-    # 2. Extraer el token
-    token = auth_header.split(" ")[1]
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
-        # 3. Validar el token
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        
-        # 4. Devolver los datos que están adentro del token
-        return jsonify({
-            "status": "ok",
-            "mensaje": "Acceso concedido",
-            "usuario": {
-                "usuario": payload.get("usuario"),
-                "negocio_id": payload.get("id_negocio"),
-                "rol": payload.get("rol")
+        # Buscar al usuario en la base de datos
+        cur.execute(
+            """SELECT u.*, e.identificador AS negocio 
+               FROM usuarios u JOIN emprendimientos e ON u.emprendimiento_id = e.id 
+               WHERE e.identificador = %s AND u.usuario = %s""",
+            (datos['id_negocio'], datos['usuario'])
+        )
+        usuario = cur.fetchone()
+
+        if usuario and check_password_hash(usuario['password_hash'], datos['password']):
+            payload = {
+                "usuario_id": usuario['id'],
+                "usuario": usuario['usuario'],
+                "negocio_id": usuario['emprendimiento_id'],
+                "rol": usuario['rol'],
+                "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=15)
             }
-        }), 200
-        
-    except jwt.ExpiredSignatureError:
-        return jsonify({"status": "error", "mensaje": "El token ha expirado"}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({"status": "error", "mensaje": "Token inválido"}), 401
+            access_token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+            refresh_token = jwt.encode({"usuario_id": usuario['id'], "type": "refresh"}, SECRET_KEY, algorithm="HS256")
+
+            return jsonify({
+                "status": "ok",
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "usuario": {"id": usuario['id'], "rol": usuario['rol'], "nombre": usuario.get('nombre', '')}
+            }), 200
+        else:
+            return jsonify({"status": "error", "mensaje": "Negocio, usuario o contraseña incorrectos"}), 401
+
+    except Exception as e:
+        return jsonify({"status": "error", "mensaje": f"Error: {str(e)}"}), 500
+    finally:
+        cur.close()
+        conn.close()
 
 if __name__ == '__main__':
     port = int(os.getenv("SERVICE_PORT", 5001))
