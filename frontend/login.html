@@ -82,7 +82,7 @@
 
           try {
             const data = await fetchAPI("/auth/login", "POST", {
-              negocio,
+              id_negocio: negocio,
               usuario,
               password,
             });

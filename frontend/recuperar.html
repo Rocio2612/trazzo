@@ -49,7 +49,7 @@
           }
 
           try {
-            await fetchAPI("/auth/recuperar", "POST", { email });
+            await fetchAPI("/auth/recuperar", "POST", { correo: email });
             // El backend responde 200 siempre, por seguridad.
             alert(
               "Si el correo existe, recibirás un mensaje con las instrucciones.",

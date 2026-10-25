@@ -76,8 +76,8 @@
 
           try {
             await fetchAPI("/auth/restablecer", "POST", {
-              token: tokenRecuperacion,
-              password: password,
+              token_recuperacion: tokenRecuperacion,
+              nueva_password: password,
             });
             alert(
               "Contraseña actualizada correctamente. Ya podés iniciar sesión.",

@@ -132,11 +132,11 @@
 
           try {
             const data = await fetchAPI("/auth/registro", "POST", {
-              negocio,
+              id_negocio: negocio,
               usuario,
-              email,
+              correo: email,
               password,
-              nombre,
+              nombre_negocio: nombre,
               rubro,
             });
 
