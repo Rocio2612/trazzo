@@ -9,6 +9,8 @@
         .header-dashboard { display: flex; justify-content: space-between; align-items: center; padding: 1rem 2rem; border-bottom: 1px solid var(--color-borde); background-color: var(--color-fondo); }
         .logo { font-size: 1.5rem; font-weight: bold; }
         .contenido { padding: 3rem 2rem; text-align: center; }
+        .menu-modulos { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin-top: 2rem; }
+        .menu-modulos span { padding: 0.5rem 1rem; border: 1px solid var(--color-borde); border-radius: 6px; }
     </style>
 </head>
 <body style="background-color: var(--color-superficie);">
@@ -21,10 +23,26 @@
     <main class="contenido">
         <h1>Bienvenido/a al Sistema</h1>
         <p>Este es el panel principal de Trazzo.</p>
+
+        <!-- Placeholder: los módulos se ocultan según el rol (ver js/roles.js) -->
+        <nav class="menu-modulos">
+            <span data-modulo="ventas">Ventas</span>
+            <span data-modulo="productos">Productos</span>
+            <span data-modulo="notificaciones">Notificaciones</span>
+            <span data-modulo="clientes">Clientes</span>
+            <span data-modulo="proveedores">Proveedores</span>
+            <span data-modulo="insumos">Insumos</span>
+            <span data-modulo="bienes_uso">Bienes de Uso</span>
+            <span data-modulo="gastos">Gastos</span>
+            <span data-modulo="cuentas_corrientes">Cuenta Corriente</span>
+            <span data-modulo="personal">Personal</span>
+            <span data-modulo="reportes">Reportes</span>
+        </nav>
     </main>
 
     <script src="js/config.js"></script>
     <script src="js/api.js"></script>
+    <script src="js/roles.js"></script>
     <script>
         // 1. Protección de Ruta
         const token = localStorage.getItem('trazzo_access_token');
