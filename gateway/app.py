@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request, Response
+from flask_cors import CORS  # Manejo de CORS en el Gateway
 import os
 import requests
 from dotenv import load_dotenv
@@ -6,6 +7,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
+
+# Permitir que el Frontend en Live Server (puerto 5500) se comunique con el Gateway (puerto 5000)
+ORIGENES_PERMITIDOS = [
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+    "http://127.0.0.1:5000",
+    "http://localhost:5000",
+    "http://192.168.1.43:5000"
+]
+
+CORS(app, resources={r"/api/*": {"origins": ORIGENES_PERMITIDOS}}, supports_credentials=True)
 
 # Diccionario de rutas: si la URL empieza con esto, va a este puerto
 SERVICES = {
