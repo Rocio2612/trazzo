@@ -95,27 +95,36 @@ def health():
 
 @app.route('/api/auth/registro', methods=['POST'])
 def registro():
-    datos = request.get_json()
-    if not datos or not datos.get('id_negocio') or not datos.get('usuario') or not datos.get('password') or not datos.get('correo'):
+    datos = request.get_json(silent=True) or {}
+    
+    # Extrae el dato respetando el contrato oficial y tolerando alias del front
+    id_negocio = datos.get('id_negocio') or datos.get('negocio') or datos.get('identificador')
+    usuario = datos.get('usuario') or datos.get('usuario_admin')
+    password = datos.get('password') or datos.get('contrasena') or datos.get('clave')
+    correo = datos.get('correo') or datos.get('email')
+    nombre_comercial = datos.get('nombre_comercial') or datos.get('nombre_negocio') or 'Sin nombre'
+    rubro = datos.get('rubro') or 'General'
+
+    if not id_negocio or not usuario or not password or not correo:
         return jsonify({"status": "error", "mensaje": "Faltan datos obligatorios"}), 400
 
-    password_hash = generate_password_hash(datos['password'])
+    password_hash = generate_password_hash(password)
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
-        #inserta el negocio
+        # Inserta el negocio
         cur.execute(
             "INSERT INTO emprendimientos (identificador, nombre_comercial, rubro) VALUES (%s, %s, %s) RETURNING id",
-            (datos['id_negocio'], datos.get('nombre_negocio', 'Sin nombre'), datos.get('rubro', 'General'))
+            (id_negocio, nombre_comercial, rubro)
         )
         emprendimiento_id = cur.fetchone()['id']
 
-        #inserta el usuario de admin inicial (PROPIETARIO)
+        # Inserta el usuario admin inicial
         cur.execute(
             """INSERT INTO usuarios (emprendimiento_id, usuario, correo, password_hash, rol) 
                VALUES (%s, %s, %s, %s, 'PROPIETARIO') RETURNING id""",
-            (emprendimiento_id, datos['usuario'], datos['correo'], password_hash)
+            (emprendimiento_id, usuario, correo, password_hash)
         )
         usuario_id = cur.fetchone()['id']
         conn.commit()
@@ -164,9 +173,14 @@ def registro():
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
-    datos = request.get_json()
-    if not datos or not datos.get('id_negocio') or not datos.get('usuario') or not datos.get('password'):
-        return jsonify({"status": "error", "mensaje": "Faltan datos"}), 400
+    datos = request.get_json(silent=True) or {}
+    
+    id_negocio = datos.get('id_negocio') or datos.get('negocio') or datos.get('identificador')
+    usuario = datos.get('usuario')
+    password = datos.get('password') or datos.get('contrasena') or datos.get('clave')
+
+    if not id_negocio or not usuario or not password:
+        return jsonify({"status": "error", "mensaje": "Faltan datos obligatorios"}), 400
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -176,40 +190,43 @@ def login():
             """SELECT u.*, e.identificador AS negocio 
                FROM usuarios u JOIN emprendimientos e ON u.emprendimiento_id = e.id 
                WHERE e.identificador = %s AND u.usuario = %s AND u.activo = TRUE""",
-            (datos['id_negocio'], datos['usuario'])
+            (id_negocio, usuario)
         )
-        usuario = cur.fetchone()
+        usuario_bd = cur.fetchone()
 
-        if usuario and check_password_hash(usuario['password_hash'], datos['password']):
-
-            # Se crean JTIs únicos para este inicio de sesión
+        if usuario_bd and check_password_hash(usuario_bd['password_hash'], password):
             access_jti = str(uuid.uuid4())
             refresh_jti = str(uuid.uuid4())
-            
+
             payload_access = {
-                "usuario_id": usuario['id'],
-                "usuario": usuario['usuario'],
-                "negocio_id": usuario['emprendimiento_id'],
-                "rol": usuario['rol'],
+                "usuario_id": usuario_bd['id'],
+                "usuario": usuario_bd['usuario'],
+                "negocio_id": usuario_bd['emprendimiento_id'],
+                "rol": usuario_bd['rol'],
                 "jti": access_jti,
                 "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=15)
             }
 
             payload_refresh = {
-                "usuario_id": usuario['id'],
+                "usuario_id": usuario_bd['id'],
                 "jti": refresh_jti,
                 "type": "refresh",
-                "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=7) #Tiempo de expiracion
+                "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=7)
             }
 
             access_token = jwt.encode(payload_access, SECRET_KEY, algorithm="HS256")
             refresh_token = jwt.encode(payload_refresh, SECRET_KEY, algorithm="HS256")
 
+            # ACÁ ESTABA EL ERROR: devolvemos usuario_bd['usuario'] en vez de 'nombre'
             return jsonify({
                 "status": "ok",
                 "access_token": access_token,
                 "refresh_token": refresh_token,
-                "usuario": {"id": usuario['id'], "rol": usuario['rol'], "nombre": usuario.get('nombre', '')}
+                "usuario": {
+                    "id": usuario_bd['id'], 
+                    "rol": usuario_bd['rol'], 
+                    "nombre": usuario_bd['usuario']
+                }
             }), 200
         else:
             return jsonify({"status": "error", "mensaje": "Negocio, usuario o contraseña incorrectos"}), 401
@@ -437,17 +454,13 @@ def refresh():
 #SOLICITAR RECUPERACIÓN DE CLAVE (POST /api/auth/recuperar)
 @app.route('/api/auth/recuperar', methods=['POST'])
 def solicitar_recuperacion():
-    """
-    Recibe un correo electrónico. Si existe en la BD, genera un token temporal
-    de un solo uso (válido por 30 minutos) e imprime el enlace en consola (modo dev).
-    Por seguridad (anti-enumeración), siempre responde con un mensaje neutro.
-    """
     datos = request.get_json(silent=True) or {}
-    correo = datos.get('correo', '').strip().lower()
+    # Soporta tanto 'correo' (contrato oficial) como 'email' (frontend)
+    correo = (datos.get('correo') or datos.get('email') or '').strip().lower()
 
     if not correo:
         return jsonify({"status": "error", "mensaje": "Debe proporcionar un correo electrónico"}), 400
-
+    
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
@@ -500,8 +513,9 @@ def restablecer_password():
     Valida vigencia y estado del token, actualiza el hash de la clave y lo marca como usado.
     """
     datos = request.get_json(silent=True) or {}
-    token = datos.get('token')
-    nueva_password = datos.get('password')
+    #nombres aceptados (flexible)
+    token = datos.get('token_recuperacion') or datos.get('token')
+    nueva_password = datos.get('nueva_password') or datos.get('password')
 
     if not token or not nueva_password:
         return jsonify({"status": "error", "mensaje": "Token y nueva contraseña son obligatorios"}), 400
