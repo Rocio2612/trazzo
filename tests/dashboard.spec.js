@@ -23,7 +23,8 @@ const logoutOk = {
   },
 };
 
-const modulo = (page, nombre) => page.locator(`[data-modulo="${nombre}"]`);
+// Los textos de módulos del cuerpo del dashboard (no los de la barra lateral).
+const modulo = (page, nombre) => page.locator(`.menu-modulos [data-modulo="${nombre}"]`);
 
 test.describe("Protección de rutas", () => {
   test("sin token el dashboard redirige al login", async ({ page }) => {
@@ -172,6 +173,143 @@ test.describe("Módulos según el rol", () => {
       }
     });
   }
+});
+
+test.describe("Barra lateral", () => {
+  const titulosDeGrupo = (page) => page.locator(".sidebar-grupo-titulo");
+
+  test("el ADMIN ve todos los grupos y todos los módulos", async ({ page }) => {
+    await iniciarSesionComo(page, "ADMIN");
+    await page.goto("/dashboard.html");
+    await expect(titulosDeGrupo(page)).toHaveText(["Ventas", "Productos", "Finanzas"]);
+    for (const nombre of MODULOS.filter((m) => !["notificaciones", "personal"].includes(m))) {
+      await expect(page.getByTestId(`menu-${nombre}`)).toBeVisible();
+    }
+  });
+
+  test("cada módulo del menú tiene su ícono", async ({ page }) => {
+    await iniciarSesionComo(page, "ADMIN");
+    await page.goto("/dashboard.html");
+    const enlaces = page.locator(".sidebar-link");
+    await expect(enlaces).toHaveCount(10);
+    for (const enlace of await enlaces.all()) {
+      await expect(enlace.locator("svg")).toHaveCount(1);
+    }
+  });
+
+  test("el botón de contraer es un ícono arriba, sin texto", async ({ page }) => {
+    await iniciarSesionComo(page, "ADMIN");
+    await page.goto("/dashboard.html");
+    const boton = page.getByTestId("btn-contraer-menu");
+    await expect(boton.locator("svg")).toHaveCount(1);
+    await expect(boton).toHaveText("");
+    await expect(boton).toHaveAttribute("aria-label", "Contraer menú");
+    const dentroDeLaMarca = await boton.evaluate((el) => !!el.closest(".sidebar-marca"));
+    expect(dentroDeLaMarca).toBe(true);
+  });
+
+  test("el menú se contrae a solo íconos y se vuelve a expandir", async ({ page }) => {
+    await iniciarSesionComo(page, "ADMIN");
+    await page.goto("/dashboard.html");
+    const texto = page.getByTestId("menu-ventas").locator(".sidebar-texto");
+    const ancho = () => page.getByTestId("sidebar").evaluate((el) => el.getBoundingClientRect().width);
+
+    await expect(texto).toBeVisible();
+    const anchoCompleto = await ancho();
+
+    await page.getByTestId("btn-contraer-menu").click();
+    await expect(texto).toBeHidden();
+    await expect(page.getByTestId("menu-ventas").locator("svg")).toBeVisible();
+    await expect(page.getByTestId("menu-ventas")).toHaveAttribute("aria-label", "Ventas");
+    await expect.poll(ancho).toBeLessThan(anchoCompleto / 2);
+
+    await page.getByTestId("btn-contraer-menu").click();
+    await expect(texto).toBeVisible();
+    await expect.poll(ancho).toBe(anchoCompleto);
+  });
+
+  test("recuerda si el menú quedó contraído al recargar", async ({ page }) => {
+    await iniciarSesionComo(page, "ADMIN");
+    await page.goto("/dashboard.html");
+    await page.getByTestId("btn-contraer-menu").click();
+    await page.reload();
+    await expect(page.getByTestId("menu-ventas").locator(".sidebar-texto")).toBeHidden();
+  });
+
+  test("el CAJERO no ve el grupo Finanzas ni sus módulos", async ({ page }) => {
+    await iniciarSesionComo(page, "CAJERO");
+    await page.goto("/dashboard.html");
+    await expect(titulosDeGrupo(page)).toHaveText(["Ventas", "Productos"]);
+    await expect(page.getByTestId("menu-ventas")).toBeVisible();
+    await expect(page.getByTestId("menu-cuentas_corrientes")).toBeVisible();
+    await expect(page.getByTestId("menu-productos")).toBeVisible();
+    for (const nombre of ["clientes", "proveedores", "insumos", "bienes_uso", "gastos", "reportes"]) {
+      await expect(page.getByTestId(`menu-${nombre}`)).toHaveCount(0);
+    }
+  });
+
+  const PANTALLAS = [
+    ["ventas", "ventas.html", "Ventas"],
+    ["cuentas_corrientes", "cuenta-corriente.html", "Cuenta Corriente"],
+    ["clientes", "clientes.html", "Clientes"],
+    ["productos", "productos.html", "Productos"],
+    ["proveedores", "proveedores.html", "Proveedores"],
+    ["insumos", "insumos.html", "Insumos"],
+    ["bienes_uso", "bienes-uso.html", "Bienes de Uso"],
+    ["gastos", "gastos.html", "Gastos"],
+    ["reportes", "reportes.html", "Reportes"],
+  ];
+
+  for (const [modulo, archivo, titulo] of PANTALLAS) {
+    test(`el menú abre ${titulo} y la pantalla dice En construcción`, async ({ page }) => {
+      await iniciarSesionComo(page, "ADMIN");
+      await page.goto("/dashboard.html");
+      await page.getByTestId(`menu-${modulo}`).click();
+      await expect(page).toHaveURL(new RegExp(`${archivo}$`));
+      await expect(page.getByRole("heading", { name: titulo, exact: true })).toBeVisible();
+      await expect(page.getByText("En construcción")).toBeVisible();
+      await expect(page.getByTestId(`menu-${modulo}`)).toHaveAttribute("aria-current", "page");
+      await expect(page.getByTestId("btn-cerrar-sesion")).toBeVisible();
+    });
+  }
+
+  test("el CAJERO también entra a las pantallas que puede ver", async ({ page }) => {
+    await iniciarSesionComo(page, "CAJERO");
+    await page.goto("/dashboard.html");
+    for (const [modulo, archivo] of [["ventas", "ventas.html"], ["cuentas_corrientes", "cuenta-corriente.html"], ["productos", "productos.html"]]) {
+      await page.getByTestId(`menu-${modulo}`).click();
+      await expect(page).toHaveURL(new RegExp(`${archivo}$`));
+      await expect(page.getByText("En construcción")).toBeVisible();
+    }
+  });
+
+  test("sin sesión, una pantalla de módulo redirige al login", async ({ page }) => {
+    await page.goto("/productos.html");
+    await expect(page).toHaveURL(/login\.html$/);
+  });
+
+  test("el Panel siempre está y figura como página actual", async ({ page }) => {
+    await iniciarSesionComo(page, "CAJERO");
+    await page.goto("/dashboard.html");
+    await expect(page.getByTestId("menu-panel")).toHaveAttribute("aria-current", "page");
+  });
+
+  test("el encabezado tiene la campana y Cerrar Sesión", async ({ page }) => {
+    await iniciarSesionComo(page, "CAJERO");
+    await page.goto("/dashboard.html");
+    await expect(page.getByTestId("campana")).toBeVisible();
+    await expect(page.getByTestId("btn-cerrar-sesion")).toBeVisible();
+  });
+
+  test("en celular el menú está oculto y se abre con el botón", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 700 });
+    await iniciarSesionComo(page, "ADMIN");
+    await page.goto("/dashboard.html");
+    await expect(page.getByTestId("btn-menu")).toBeVisible();
+    await expect(page.getByTestId("menu-panel")).not.toBeInViewport();
+    await page.getByTestId("btn-menu").click();
+    await expect(page.getByTestId("menu-panel")).toBeInViewport();
+  });
 });
 
 test.describe("Cierre de sesión", () => {
