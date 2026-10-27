@@ -14,7 +14,7 @@ const MODULOS = [
   "personal",
   "reportes",
 ];
-const MODULOS_CAJERO = ["ventas", "productos", "notificaciones"];
+const MODULOS_CAJERO = ["ventas", "productos", "notificaciones", "cuentas_corrientes"];
 
 const logoutOk = {
   "POST /auth/logout": {
@@ -60,7 +60,7 @@ test.describe("Módulos según el rol", () => {
     });
   }
 
-  test("CAJERO ve solo ventas, productos y notificaciones", async ({ page }) => {
+  test("CAJERO ve solo ventas, productos, notificaciones y cuenta corriente", async ({ page }) => {
     await iniciarSesionComo(page, "CAJERO");
     await page.goto("/dashboard.html");
     for (const nombre of MODULOS) {
@@ -115,6 +115,63 @@ test.describe("Módulos según el rol", () => {
     });
     await expect(page.locator("#borrar")).toBeVisible();
   });
+
+  // [módulo, acción, ve el admin, ve el cajero], según el Resumen del Sistema.
+  const ACCIONES = [
+    ["productos", "reponer", true, true],
+    ["productos", "proveedor_nuevo", true, false],
+    ["productos", "ocultar", true, false],
+    ["productos", "eliminar", true, false],
+    ["clientes", "seleccionar", true, true],
+    ["clientes", "ver", true, false],
+    ["clientes", "ver_datos_completos", false, false],
+    ["ventas", "crear", true, true],
+    ["ventas", "editar", true, true],
+    ["ventas", "ticket", true, true],
+    ["ventas", "ocultar", true, false],
+    ["ventas", "eliminar", true, false],
+    ["ventas", "anular", true, false],
+    ["cuentas_corrientes", "ver", true, true],
+    ["cuentas_corrientes", "editar", true, true],
+    ["cuentas_corrientes", "ver_datos_completos", true, false],
+    ["cuentas_corrientes", "ocultar", true, false],
+    ["cuentas_corrientes", "eliminar", true, false],
+    ["gastos", "ocultar", true, false],
+    ["negocio", "editar", true, false],
+    ["personal", "habilitar", true, false],
+    ["categorias", "crear", true, false],
+    ["medios_pago", "crear", true, false],
+    ["notificaciones", "eliminar", true, true],
+  ];
+
+  for (const [rol, columna] of [["ADMIN", 2], ["CAJERO", 3]]) {
+    test(`${rol}: las acciones permitidas coinciden con la matriz del Resumen`, async ({ page }) => {
+      await iniciarSesionComo(page, rol);
+      await page.goto("/dashboard.html");
+      await page.evaluate((acciones) => {
+        const contenedor = document.createElement("div");
+        contenedor.id = "matriz";
+        acciones.forEach(([modulo, accion], i) => {
+          const boton = document.createElement("button");
+          boton.id = `accion-${i}`;
+          boton.dataset.modulo = modulo;
+          boton.dataset.accion = accion;
+          boton.textContent = `${modulo}/${accion}`;
+          contenedor.appendChild(boton);
+        });
+        document.querySelector("main").appendChild(contenedor);
+      }, ACCIONES);
+
+      for (const [i, fila] of ACCIONES.entries()) {
+        const boton = page.locator(`#accion-${i}`);
+        if (fila[columna]) {
+          await expect(boton, `${fila[0]}/${fila[1]}`).toBeVisible();
+        } else {
+          await expect(boton, `${fila[0]}/${fila[1]}`).toBeHidden();
+        }
+      }
+    });
+  }
 });
 
 test.describe("Cierre de sesión", () => {

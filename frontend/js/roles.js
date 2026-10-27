@@ -7,27 +7,50 @@
 const ROL_ADMIN = ["ADMIN", "PROPIETARIO"];
 const ROL_CAJERO = ["CAJERO"];
 
-// Matriz rol × módulo × acción.
+// Matriz rol × módulo × acción, según la matriz de roles del Resumen del Sistema.
+// Acciones con nombre propio:
+// - proveedor_nuevo: crear un proveedor al reponer (el cajero solo elige existentes).
+// - seleccionar: elegir un cliente en una venta (el cajero ve solo su nombre).
+// - ver_datos_completos: ver los datos completos del cliente (el cajero ve solo el nombre).
+// - anular: anular una venta ya confirmada.
 const PERMISOS = {
   admin: {
-    personal: ["ver", "crear", "editar", "ocultar", "eliminar"],
+    negocio: ["ver", "editar"],
+    personal: ["ver", "crear", "editar", "habilitar", "deshabilitar", "eliminar"],
     categorias: ["ver", "crear", "editar", "eliminar"],
     medios_pago: ["ver", "crear", "editar", "eliminar"],
     notificaciones: ["ver", "eliminar"],
-    productos: ["ver", "crear", "editar", "reponer", "ocultar", "eliminar"],
+    productos: [
+      "ver",
+      "crear",
+      "editar",
+      "reponer",
+      "proveedor_nuevo",
+      "ocultar",
+      "eliminar",
+    ],
     bienes_uso: ["ver", "crear", "editar", "ocultar", "eliminar"],
     insumos: ["ver", "crear", "editar", "ocultar", "eliminar"],
-    gastos: ["ver", "crear", "editar", "eliminar"],
-    clientes: ["ver", "crear", "editar", "ocultar", "eliminar"],
-    ventas: ["ver", "crear", "editar", "ocultar", "eliminar"],
-    cuentas_corrientes: ["ver", "crear", "editar", "ocultar", "eliminar"],
+    gastos: ["ver", "crear", "editar", "ocultar", "eliminar"],
+    clientes: ["ver", "crear", "editar", "ocultar", "eliminar", "seleccionar"],
+    ventas: ["ver", "crear", "editar", "ticket", "ocultar", "eliminar", "anular"],
+    cuentas_corrientes: [
+      "ver",
+      "crear",
+      "editar",
+      "ver_datos_completos",
+      "ocultar",
+      "eliminar",
+    ],
     proveedores: ["ver", "crear", "editar", "ocultar", "eliminar"],
     reportes: ["ver"],
   },
   cajero: {
     notificaciones: ["ver", "eliminar"],
     productos: ["ver", "crear", "editar", "reponer"],
-    ventas: ["ver", "crear", "editar"],
+    clientes: ["seleccionar"],
+    ventas: ["ver", "crear", "editar", "ticket"],
+    cuentas_corrientes: ["ver", "crear", "editar"],
   },
 };
 
