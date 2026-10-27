@@ -1,3 +1,6 @@
+// --- IMPORTACIÓN DEL MODAL ---
+import { mostrarConfirmacion } from './componentes/modal-confirmacion.js';
+
 // --- ESTRUCTURA COMÚN: BARRA LATERAL + ENCABEZADO ---
 // Requiere config.js, api.js y roles.js cargados antes. Se incluye al final del <body>.
 // Para agregar un módulo: ponerlo en MENU y, cuando su pantalla exista, marcar disponible: true.
@@ -206,17 +209,23 @@ const limpiarSesion = () => {
 };
 
 const cerrarSesion = async () => {
-  const confirmar = confirm("¿Estás seguro/a que querés cerrar sesión?");
-  if (!confirmar) return;
-  // El refresh token viaja en el body para que el Backend también lo revoque.
-  const refreshToken = localStorage.getItem("trazzo_refresh_token");
-  try {
-    await fetchAPI("/auth/logout", "POST", refreshToken ? { refresh_token: refreshToken } : null);
-  } catch (error) {
-    console.log("Error al notificar al back.");
-  } finally {
-    limpiarSesion();
-  }
+  mostrarConfirmacion({
+    titulo: "Cerrar Sesión",
+    mensaje: "¿Estás seguro/a que querés cerrar sesión?",
+    textoBoton: "Cerrar Sesión",
+    esPeligro: false,
+    onConfirmar: async () => {
+      // El refresh token viaja en el body para que el Backend también lo revoque.
+      const refreshToken = localStorage.getItem("trazzo_refresh_token");
+      try {
+        await fetchAPI("/auth/logout", "POST", refreshToken ? { refresh_token: refreshToken } : null);
+      } catch (error) {
+        console.log("Error al notificar al back.");
+      } finally {
+        limpiarSesion();
+      }
+    }
+  });
 };
 
 // --- INICIO ---
