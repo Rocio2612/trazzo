@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { jwtFalso, simularApi, tokensGuardados } = require("./helpers");
+const { jwtFalso, llamadasA, simularApi, tokensGuardados } = require("./helpers");
 
 const respuestaOk = {
   status: 201,
@@ -86,8 +86,9 @@ test.describe("Registro", () => {
     const llamadas = await simularApi(page, { "POST /auth/registro": respuestaOk });
     await completarRegistro(page, { nombre: "Trazzo Store", rubro: "indumentaria" });
     await expect(page).toHaveURL(/dashboard\.html$/);
-    expect(llamadas).toHaveLength(1);
-    expect(llamadas[0].body).toEqual({
+    const registro = llamadasA(llamadas, "/auth/registro");
+    expect(registro).toHaveLength(1);
+    expect(registro[0].body).toEqual({
       id_negocio: "minegocio1",
       usuario: "usuario1",
       correo: "admin@correo.com",
@@ -101,7 +102,7 @@ test.describe("Registro", () => {
     const llamadas = await simularApi(page, { "POST /auth/registro": respuestaOk });
     await completarRegistro(page, { rubro: "otro", otroRubro: "Floristería" });
     await expect(page).toHaveURL(/dashboard\.html$/);
-    expect(llamadas[0].body.rubro).toBe("Floristería");
+    expect(llamadasA(llamadas, "/auth/registro")[0].body.rubro).toBe("Floristería");
   });
 
   test("auto-login: guarda los tokens y entra al dashboard sin pasar por login", async ({ page }) => {
@@ -119,7 +120,7 @@ test.describe("Registro", () => {
     await page.evaluate(() => localStorage.setItem("trazzo_access_token", "token-viejo"));
     await completarRegistro(page);
     await expect(page).toHaveURL(/dashboard\.html$/);
-    expect(llamadas[0].headers.authorization).toBeUndefined();
+    expect(llamadasA(llamadas, "/auth/registro")[0].headers.authorization).toBeUndefined();
   });
 
   test("muestra junto al campo el error que devuelve el backend (409)", async ({ page }) => {

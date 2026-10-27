@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { simularApi, iniciarSesionComo, tokensGuardados } = require("./helpers");
+const { simularApi, iniciarSesionComo, llamadasA, tokensGuardados } = require("./helpers");
 
 const MODULOS = [
   "ventas",
@@ -39,14 +39,15 @@ test.describe("Protección de rutas", () => {
     await expect(page.getByRole("heading", { name: /Bienvenido/ })).toBeVisible();
   });
 
-  // El dashboard solo mira que exista un token, no le pregunta al backend si sigue vigente.
-  test.fixme("con un token revocado o vencido en el servidor redirige al login", async ({ page }) => {
+  test("con un token revocado en el servidor redirige al login y limpia la sesión", async ({ page }) => {
     await simularApi(page, {
-      "GET /auth/yo": { status: 401, body: { status: "error", mensaje: "Token inválido" } },
+      "GET /auth/yo": { status: 401, body: { status: "error", mensaje: "Sesión invalidada. Inicie sesión nuevamente" } },
+      "POST /auth/refresh": { status: 401, body: { status: "error", mensaje: "Refresh token inválido o vencido" } },
     });
     await iniciarSesionComo(page, "ADMIN");
     await page.goto("/dashboard.html");
     await expect(page).toHaveURL(/login\.html$/);
+    expect(await tokensGuardados(page)).toEqual({ access: null, refresh: null });
   });
 });
 
@@ -336,10 +337,12 @@ test.describe("Cierre de sesión", () => {
 
     await expect(page).toHaveURL(/login\.html$/);
     expect(tipoDialogo).toBe("confirm");
-    expect(llamadas).toHaveLength(1);
-    expect(llamadas[0].metodo).toBe("POST");
-    expect(llamadas[0].ruta).toBe("/auth/logout");
-    expect(llamadas[0].headers.authorization).toBe(`Bearer ${access}`);
+    const logout = llamadasA(llamadas, "/auth/logout");
+    expect(logout).toHaveLength(1);
+    expect(logout[0].metodo).toBe("POST");
+    expect(logout[0].headers.authorization).toBe(`Bearer ${access}`);
+    // El refresh token viaja en el body para que el Backend también lo revoque.
+    expect(logout[0].body).toEqual({ refresh_token: "refresh-falso" });
     expect(await tokensGuardados(page)).toEqual({ access: null, refresh: null });
   });
 
@@ -352,7 +355,7 @@ test.describe("Cierre de sesión", () => {
     await page.getByRole("button", { name: "Cerrar Sesión" }).click();
 
     await expect(page).toHaveURL(/dashboard\.html$/);
-    expect(llamadas).toHaveLength(0);
+    expect(llamadasA(llamadas, "/auth/logout")).toHaveLength(0);
     expect((await tokensGuardados(page)).access).not.toBeNull();
   });
 

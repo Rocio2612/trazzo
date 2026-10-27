@@ -48,16 +48,20 @@
             return;
           }
 
-          try {
-            await fetchAPI("/auth/recuperar", "POST", { correo: email });
-            // El backend responde 200 siempre, por seguridad.
-            alert(
-              "Si el correo existe, recibirás un mensaje con las instrucciones.",
-            );
-            window.location.href = "login.html";
-          } catch (error) {
-            alert("Ocurrió un error. Intentá de nuevo más tarde.");
-          }
+          await conEnvioBloqueado(e.target, async () => {
+            try {
+              await fetchAPI("/auth/recuperar", "POST", { correo: email });
+              // El backend responde 200 siempre, por seguridad.
+              alert(
+                "Si el correo existe, recibirás un mensaje con las instrucciones.",
+              );
+              window.location.href = "login.html";
+              return true;
+            } catch (error) {
+              if (mostrarErrorDeApi(error)) return;
+              alert("Ocurrió un error. Intentá de nuevo más tarde.");
+            }
+          });
         });
     </script>
   </body>

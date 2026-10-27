@@ -80,22 +80,30 @@
             return;
           }
 
-          try {
-            const data = await fetchAPI("/auth/login", "POST", {
-              id_negocio: negocio,
-              usuario,
-              password,
-            });
+          await conEnvioBloqueado(e.target, async () => {
+            try {
+              const data = await fetchAPI("/auth/login", "POST", {
+                id_negocio: negocio,
+                usuario,
+                password,
+              });
 
-            // Guardar JWT y redirigir
-            guardarSesion(data.access_token, data.refresh_token);
-          } catch (error) {
-            // Backend debe devolver 401 con mensaje genérico
-            mostrarError(
-              "password",
-              "Negocio, usuario o contraseña incorrectos",
-            );
-          }
+              // Guardar JWT y redirigir
+              guardarSesion(data.access_token, data.refresh_token);
+              return true;
+            } catch (error) {
+              if (error.status === 429) {
+                // Demasiados intentos fallidos: bloqueo temporal
+                mostrarError("password", mensajeDeBloqueo(error));
+              } else {
+                // Backend debe devolver 401 con mensaje genérico
+                mostrarError(
+                  "password",
+                  "Negocio, usuario o contraseña incorrectos",
+                );
+              }
+            }
+          });
         });
     </script>
   </body>

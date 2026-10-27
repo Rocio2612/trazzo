@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { jwtFalso, simularApi, tokensGuardados } = require("./helpers");
+const { jwtFalso, llamadasA, simularApi, tokensGuardados } = require("./helpers");
 
 const loginOk = {
   status: 200,
@@ -46,8 +46,9 @@ test.describe("Login", () => {
     const llamadas = await simularApi(page, { "POST /auth/login": loginOk });
     await completarLogin(page);
     await expect(page).toHaveURL(/dashboard\.html$/);
-    expect(llamadas).toHaveLength(1);
-    expect(llamadas[0].body).toEqual({
+    const login = llamadasA(llamadas, "/auth/login");
+    expect(login).toHaveLength(1);
+    expect(login[0].body).toEqual({
       id_negocio: "minegocio1",
       usuario: "usuario1",
       password: "Password123!",

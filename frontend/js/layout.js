@@ -201,17 +201,17 @@ const crearEncabezado = () => {
 
 // --- CIERRE DE SESIÓN ---
 const limpiarSesion = () => {
-  localStorage.removeItem("trazzo_access_token");
-  localStorage.removeItem("trazzo_refresh_token");
-  localStorage.removeItem(CLAVE_MENU_CONTRAIDO);
+  limpiarSesionLocal();
   window.location.href = "login.html";
 };
 
 const cerrarSesion = async () => {
   const confirmar = confirm("¿Estás seguro/a que querés cerrar sesión?");
   if (!confirmar) return;
+  // El refresh token viaja en el body para que el Backend también lo revoque.
+  const refreshToken = localStorage.getItem("trazzo_refresh_token");
   try {
-    await fetchAPI("/auth/logout", "POST");
+    await fetchAPI("/auth/logout", "POST", refreshToken ? { refresh_token: refreshToken } : null);
   } catch (error) {
     console.log("Error al notificar al back.");
   } finally {
@@ -239,9 +239,31 @@ const iniciarLayout = () => {
   aplicarPermisos();
 };
 
+// Pregunta al Backend si la sesión sigue vigente (token vencido, revocado o usuario deshabilitado).
+// fetchAPI intenta renovar el token y, si no puede, limpia todo y manda al login.
+// Un error de conexión u otro no cierra la sesión.
+const verificarSesion = async () => {
+  try {
+    await fetchAPI("/auth/yo");
+  } catch (error) {
+    // Sin conexión o error del servidor: se sigue con la sesión actual.
+  }
+};
+
 // Protección de ruta: sin token no se muestra nada.
 if (!localStorage.getItem("trazzo_access_token")) {
   window.location.href = "login.html";
 } else {
   iniciarLayout();
+  verificarSesion();
+
+  // Botón "Atrás": el navegador puede mostrar la página guardada sin volver a ejecutarla.
+  window.addEventListener("pageshow", (evento) => {
+    if (!evento.persisted) return;
+    if (!localStorage.getItem("trazzo_access_token")) {
+      window.location.href = "login.html";
+    } else {
+      verificarSesion();
+    }
+  });
 }

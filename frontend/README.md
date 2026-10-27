@@ -27,7 +27,27 @@ La URL del backend está en una sola constante, `API_URL` en [js/config.js](js/c
 ## Sesión
 
 Los tokens se guardan en `localStorage` como `trazzo_access_token` y `trazzo_refresh_token`. Nunca se guarda la contraseña.
-`layout.js` también guarda `trazzo_menu_contraido` (si la barra lateral está contraída). Al cerrar sesión se borran los tres.
+`layout.js` también guarda `trazzo_menu_contraido` (si la barra lateral está contraída). Al cerrar sesión, o si la sesión vence, se borra todo lo que empiece con `trazzo_` (`limpiarSesionLocal()`).
+
+Cada pantalla protegida le pregunta a `/auth/yo` si la sesión sigue vigente al cargar (y al volver con el botón "Atrás"). Si el token está vencido o revocado, se intenta renovar y, si no se puede, se va al login. Un error de conexión no cierra la sesión.
+
+## Llamadas a la API (`fetchAPI`)
+
+Usá siempre `fetchAPI(endpoint, método, body)` de `api.js`:
+
+- Agrega el header `Authorization` (menos en las rutas públicas de `/auth`).
+- **401:** renueva el access token con el refresh token y repite el pedido una sola vez (aunque haya varios pedidos a la vez, renueva una sola vez). Si no puede, limpia todo y va al login.
+- **403:** avisa con el mensaje del Backend y vuelve al Panel (si ya estás en el Panel, solo avisa).
+- **Cualquier otro error:** lanza un `Error` con el mensaje del Backend y estos datos para que tu pantalla decida qué mostrar:
+
+| Propiedad | Qué es |
+|---|---|
+| `error.status` | el código HTTP |
+| `error.errores` | `{ campo: mensaje }`, si el Backend lo manda |
+| `error.campo` | el campo con error, si el Backend manda solo uno |
+| `error.esperaSegundos` | el tiempo de espera de un 429 (header `Retry-After`) |
+
+En las pantallas de autenticación, `mostrarErrorDeApi(error)` (de `auth.js`) muestra `errores` o `campo` junto a su campo, y `conEnvioBloqueado(formulario, tarea)` deshabilita el botón mientras se envía para evitar pedidos duplicados.
 
 ## Cómo armar una pantalla nueva (protegida)
 

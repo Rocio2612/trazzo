@@ -130,28 +130,33 @@
             return;
           }
 
-          try {
-            const data = await fetchAPI("/auth/registro", "POST", {
-              id_negocio: negocio,
-              usuario,
-              correo: email,
-              password,
-              nombre_negocio: nombre,
-              rubro,
-            });
+          await conEnvioBloqueado(e.target, async () => {
+            try {
+              const data = await fetchAPI("/auth/registro", "POST", {
+                id_negocio: negocio,
+                usuario,
+                correo: email,
+                password,
+                nombre_negocio: nombre,
+                rubro,
+              });
 
-            // Auto-login exitoso: guardar tokens y al dashboard
-            guardarSesion(data.access_token, data.refresh_token);
-          } catch (error) {
-            // El backend devuelve error específico por campo
-            const msg = error.message.toLowerCase();
-            if (msg.includes("negocio")) mostrarError("negocio", error.message);
-            else if (msg.includes("usuario"))
-              mostrarError("usuario", error.message);
-            else if (msg.includes("email") || msg.includes("correo"))
-              mostrarError("email", error.message);
-            else alert(error.message);
-          }
+              // Auto-login exitoso: guardar tokens y al dashboard
+              guardarSesion(data.access_token, data.refresh_token);
+              return true;
+            } catch (error) {
+              // El backend indica el campo con error; si no lo indica, se deduce del texto
+              if (mostrarErrorDeApi(error)) return;
+              const msg = error.message.toLowerCase();
+              if (msg.includes("negocio"))
+                mostrarError("negocio", error.message);
+              else if (msg.includes("usuario"))
+                mostrarError("usuario", error.message);
+              else if (msg.includes("email") || msg.includes("correo"))
+                mostrarError("email", error.message);
+              else alert(error.message);
+            }
+          });
         });
     </script>
   </body>

@@ -16,14 +16,20 @@ const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-headers": "*",
   "access-control-allow-methods": "GET,POST,OPTIONS",
+  "access-control-expose-headers": "*",
 };
 
 // Simula la API. `rutas` es { "POST /auth/login": { status, body } }.
 // Devuelve la lista de llamadas recibidas (método, ruta, headers y body).
 // Una ruta no definida responde 404 para que el test falle si el front llama de más.
-// Con `{ abortar: true }` la conexión se corta (backend caído).
+// Opciones de cada respuesta:
+// - `abortar: true`: la conexión se corta (backend caído).
+// - `headers`: headers extra de la respuesta (por ejemplo Retry-After).
+// - `demora`: milisegundos que tarda en responder.
+// - Una función `(vez) => respuesta` permite responder distinto en cada intento (vez: 0, 1, 2…).
 async function simularApi(page, rutas = {}) {
   const llamadas = [];
+  const veces = {};
   await page.route(`${API}/**`, async (route) => {
     const request = route.request();
     if (request.method() === "OPTIONS") {
@@ -36,7 +42,11 @@ async function simularApi(page, rutas = {}) {
       headers: request.headers(),
       body: request.postData() ? JSON.parse(request.postData()) : null,
     });
-    const respuesta = rutas[`${request.method()} ${ruta}`];
+    const clave = `${request.method()} ${ruta}`;
+    const vez = veces[clave] ?? 0;
+    veces[clave] = vez + 1;
+    const definida = rutas[clave];
+    const respuesta = typeof definida === "function" ? definida(vez) : definida;
     if (!respuesta) {
       return route.fulfill({
         status: 404,
@@ -45,9 +55,10 @@ async function simularApi(page, rutas = {}) {
       });
     }
     if (respuesta.abortar) return route.abort();
+    if (respuesta.demora) await new Promise((resolver) => setTimeout(resolver, respuesta.demora));
     return route.fulfill({
       status: respuesta.status,
-      headers: CORS,
+      headers: { ...CORS, ...respuesta.headers },
       json: respuesta.body,
     });
   });
@@ -64,10 +75,13 @@ async function iniciarSesionComo(page, rol) {
   }, jwtFalso(rol));
 }
 
+// Solo las llamadas a una ruta (el dashboard también consulta /auth/yo al cargar).
+const llamadasA = (llamadas, ruta) => llamadas.filter((l) => l.ruta === ruta);
+
 const tokensGuardados = (page) =>
   page.evaluate(() => ({
     access: localStorage.getItem("trazzo_access_token"),
     refresh: localStorage.getItem("trazzo_refresh_token"),
   }));
 
-module.exports = { jwtFalso, simularApi, iniciarSesionComo, tokensGuardados };
+module.exports = { jwtFalso, simularApi, iniciarSesionComo, llamadasA, tokensGuardados };

@@ -74,20 +74,24 @@
             return;
           }
 
-          try {
-            await fetchAPI("/auth/restablecer", "POST", {
-              token_recuperacion: tokenRecuperacion,
-              nueva_password: password,
-            });
-            alert(
-              "Contraseña actualizada correctamente. Ya podés iniciar sesión.",
-            );
-            window.location.href = "login.html";
-          } catch (error) {
-            alert(
-              "El enlace es inválido o ya fue utilizado. Solicitá uno nuevo.",
-            );
-          }
+          await conEnvioBloqueado(e.target, async () => {
+            try {
+              await fetchAPI("/auth/restablecer", "POST", {
+                token_recuperacion: tokenRecuperacion,
+                nueva_password: password,
+              });
+              alert(
+                "Contraseña actualizada correctamente. Ya podés iniciar sesión.",
+              );
+              window.location.href = "login.html";
+              return true;
+            } catch (error) {
+              if (mostrarErrorDeApi(error)) return;
+              alert(
+                "El enlace es inválido o ya fue utilizado. Solicitá uno nuevo.",
+              );
+            }
+          });
         });
     </script>
   </body>
