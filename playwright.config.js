@@ -3,7 +3,7 @@ const { defineConfig } = require("@playwright/test");
 // Los tests levantan el frontend estático y simulan la API (ver tests/helpers.js),
 // así que no necesitan el backend corriendo.
 module.exports = defineConfig({
-  testDir: "./tests",
+  testDir: "./tests/e2e",
   fullyParallel: true,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
