@@ -1,5 +1,6 @@
-/* Estructura común de las pantallas protegidas: barra lateral + encabezado.
-   Solo blanco, negro y grises. */
+/* =========================================================
+   1. VARIABLES Y LAYOUT PRINCIPAL 
+   ========================================================= */
 :root {
   --lateral-negro: #111;
   --lateral-gris: #8c8c8c;
@@ -16,6 +17,9 @@
   background-color: var(--color-superficie);
 }
 
+/* =========================================================
+   2. BARRA LATERAL (SIDEBAR)
+   ========================================================= */
 .sidebar {
   width: var(--lateral-ancho);
   flex-shrink: 0;
@@ -68,6 +72,7 @@
   font-weight: 500;
   color: var(--lateral-negro);
   white-space: nowrap;
+  text-decoration: none;
 }
 
 .sidebar-link svg,
@@ -87,7 +92,7 @@
   font-weight: 600;
 }
 
-/* Módulo que todavía no tiene pantalla: no se puede abrir */
+/* Módulo deshabilitado (sin pantalla aún) */
 .sidebar-link.deshabilitado {
   cursor: default;
 }
@@ -114,7 +119,7 @@
   color: var(--lateral-negro);
 }
 
-/* Menú contraído: solo íconos */
+/* Menú contraído */
 .sidebar-contraida .sidebar {
   width: var(--lateral-ancho-contraido);
 }
@@ -139,7 +144,6 @@
   padding-right: 0;
 }
 
-/* Los títulos de grupo se reemplazan por una línea fina */
 .sidebar-contraida .sidebar-grupo-titulo {
   height: 1px;
   margin: 0.9rem 0.5rem 0.6rem;
@@ -149,6 +153,9 @@
   background-color: var(--lateral-linea);
 }
 
+/* =========================================================
+   3. BARRA SUPERIOR (TOP BAR)
+   ========================================================= */
 .app-main {
   flex: 1;
   min-width: 0;
@@ -234,7 +241,7 @@
   display: none;
 }
 
-/* Pantallas de módulos que todavía no se construyeron */
+/* Pantallas vacías (en construcción) */
 .contenido-vacio {
   padding: 2rem 2rem 3rem;
 }
@@ -249,7 +256,9 @@
   color: var(--lateral-gris);
 }
 
-/* Celular: la barra lateral siempre se muestra completa y se abre con el botón de menú */
+/* =========================================================
+   4. RESPONSIVE (Celular)
+   ========================================================= */
 @media (max-width: 768px) {
   .btn-menu {
     display: inline-block;
@@ -303,4 +312,149 @@
   .sidebar-toggle {
     display: none;
   }
+}
+
+/* =========================================================
+   5. ESTRUCTURA COMPARTIDA 
+   Modales, Tablas, Errores
+   ========================================================= */
+
+/* Modales */
+.modal-overlay { 
+  position: fixed; 
+  top: 0; left: 0; right: 0; bottom: 0; 
+  background: rgba(0,0,0,0.5); 
+  display: flex; 
+  justify-content: center; 
+  align-items: center; 
+  z-index: 1000; 
+}
+
+.modal-contenido { 
+  background: #fff; 
+  border-radius: 8px; 
+  width: 100%; 
+  max-width: 500px; 
+  max-height: 90vh; 
+  overflow-y: auto; 
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
+  display: flex; 
+  flex-direction: column; 
+}
+
+.modal-sm { 
+  max-width: 400px; 
+}
+
+.modal-header { 
+  display: flex; 
+  justify-content: space-between; 
+  padding: 1rem 1.5rem; 
+  border-bottom: 1px solid var(--lateral-linea); 
+}
+
+.modal-header h2 { 
+  margin: 0; 
+  font-size: 1.25rem; 
+}
+
+.modal-cerrar { 
+  background: none; 
+  border: none; 
+  font-size: 1.5rem; 
+  cursor: pointer; 
+  color: var(--lateral-gris); 
+}
+
+.modal-body { 
+  padding: 1.5rem; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 1rem; 
+}
+
+.modal-footer { 
+  padding: 1rem 1.5rem; 
+  border-top: 1px solid var(--lateral-linea); 
+  display: flex; 
+  justify-content: flex-end; 
+  gap: 1rem; 
+}
+
+/* Errores en Formularios */
+.input-error { 
+  border: 2px solid #dc3545 !important; 
+}
+
+.mensaje-error { 
+  color: #dc3545; 
+  font-size: 0.85rem; 
+  margin-top: 0.25rem; 
+  display: block; 
+}
+
+.alerta-general { 
+  background: #f8d7da; 
+  color: #721c24; 
+  padding: 0.75rem; 
+  border-radius: 4px; 
+  font-size: 0.9rem; 
+}
+
+/* Tablas */
+.tabla-buscador { 
+  margin-bottom: 1rem; 
+  display: flex; 
+  justify-content: flex-end; 
+}
+
+.input-buscar { 
+  padding: 0.5rem 1rem; 
+  border: 1px solid var(--lateral-linea); 
+  border-radius: 4px; 
+  width: 300px; 
+  font-family: inherit; 
+}
+
+.tabla-datos { 
+  width: 100%; 
+  border-collapse: collapse; 
+  text-align: left; 
+  background: #fff; 
+}
+
+.tabla-datos th, 
+.tabla-datos td { 
+  padding: 0.75rem 1rem; 
+  border-bottom: 1px solid var(--lateral-linea); 
+}
+
+.tabla-datos th { 
+  font-weight: 600; 
+  background-color: #f8f9fa; 
+}
+
+.tabla-acciones { 
+  display: flex; 
+  gap: 0.5rem; 
+  justify-content: flex-end; 
+}
+
+/* Estados Vacíos y Botones */
+.estado-vacio { 
+  text-align: center; 
+  padding: 2rem; 
+  color: var(--lateral-gris); 
+  font-style: italic; 
+}
+
+.btn-peligro { 
+  background-color: #dc3545; 
+  color: white; 
+  border-color: #dc3545; 
+}
+
+.btn-peligro:hover { 
+  background-color: #c82333; 
+  border-color: #bd2130; 
 }
