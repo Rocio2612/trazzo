@@ -1,5 +1,4 @@
 // js/productos.js
-import { fetchAPI } from "./api.js";
 import {
   calcularMontoReposicion,
   precioMenorAlCosto,

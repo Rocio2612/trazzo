@@ -1,5 +1,4 @@
 // js/notificaciones.js
-import { fetchAPI } from "./api.js";
 import { generarTextoAlerta } from "./utils/productosUtils.js";
 
 let pollingInterval = null;
