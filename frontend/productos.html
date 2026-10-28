@@ -86,32 +86,6 @@
     </style>
   </head>
   <body>
-    <header
-      style="
-        display: flex;
-        justify-content: flex-end;
-        padding: 1rem;
-        border-bottom: 1px solid #ccc;
-      "
-    >
-      <div id="btn-campana">
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-        </svg>
-        <span id="campana-contador">0</span>
-      </div>
-      <button class="btn btn-outline">Cerrar Sesión</button>
-    </header>
 
     <main class="contenido" style="padding: 2rem">
       <!-- Panel de Alertas Oculto por defecto -->
@@ -340,6 +314,6 @@
     <script src="js/notificaciones.js"></script>
     <script type="module" src="js/productos.js"></script>
     <script src="js/roles.js"></script>
-    <script src="js/layout.js"></script>
+    <script type="module" src="js/layout.js"></script>
   </body>
 </html>

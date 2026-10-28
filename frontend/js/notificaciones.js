@@ -39,7 +39,7 @@ export const iniciarNotificaciones = () => {
   });
 
   // Lógica para abrir/cerrar el panel de alertas (asumiendo un dropdown)
-  const btnCampana = document.getElementById("btn-campana");
+  const btnCampana = document.getElementById("campana");
   const panelAlertas = document.getElementById("panel-alertas");
 
   if (btnCampana && panelAlertas) {
