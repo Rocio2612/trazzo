@@ -105,38 +105,57 @@
         <!-- Se llena con JS -->
       </div>
 
-      <div style="display: flex; gap: 1rem">
-        <!-- NUEVO BOTÓN AGREGADO ACÁ -->
-        <a
-          href="historial-reposiciones.html"
-          class="btn btn-outline"
-          style="display: flex; align-items: center; gap: 0.5rem"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-            <path d="M3 3v5h5"></path>
-            <path d="M12 7v5l4 2"></path>
-          </svg>
-          Historial de reposición
-        </a>
+      <!-- Encabezado de la página -->
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 1rem;
+        "
+      >
+        <!-- A la izquierda -->
+        <h1>Productos</h1>
 
-        <button
-          class="btn btn-primario"
-          onclick="
-            document.getElementById('modal-producto').classList.remove('hidden')
-          "
-        >
-          + Nuevo producto
-        </button>
+        <!-- A la derecha -->
+        <div style="display: flex; gap: 1rem">
+          <!-- Botón Historial -->
+          <a
+            href="historial-reposiciones.html"
+            class="btn btn-outline"
+            style="display: flex; align-items: center; gap: 0.5rem"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"
+              ></path>
+              <path d="M3 3v5h5"></path>
+              <path d="M12 7v5l4 2"></path>
+            </svg>
+            Historial de reposición
+          </a>
+
+          <!-- Botón Nuevo Producto -->
+          <button
+            class="btn btn-primario"
+            onclick="
+              document
+                .getElementById('modal-producto')
+                .classList.remove('hidden')
+            "
+          >
+            + Nuevo producto
+          </button>
+        </div>
       </div>
 
       <div style="display: flex; gap: 1rem; margin-bottom: 1rem">
