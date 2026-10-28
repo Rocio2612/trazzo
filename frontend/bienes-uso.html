@@ -9,14 +9,32 @@
 </head>
 <body>
 
-    <main class="contenido-vacio">
-        <h1>Bienes de Uso</h1>
-        <p>En construcción</p>
+    <main>
+        <div class="contenido-modulo" style="padding: 2rem;">
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h1>Bienes de Uso</h1>
+                <button id="btn-nuevo-bien" class="btn btn-primario" data-testid="bienes-nuevo">
+                    + Nuevo bien de uso
+                </button>
+            </div>
+
+            <!-- Sumatoria -->
+            <div style="margin-bottom: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; border: 1px solid var(--color-borde, #dee2e6);">
+                <strong>Valor Total del Equipamiento: </strong>
+                <span id="sumatoria-bienes" style="font-size: 1.2rem; font-weight: bold; color: var(--color-primario, #0056b3);">$ 0,00</span>
+            </div>
+
+            <!-- Contenedor de la tabla -->
+            <div id="contenedor-tabla"></div>
+        </div>
     </main>
 
     <script src="js/config.js"></script>
     <script src="js/api.js"></script>
     <script src="js/roles.js"></script>
     <script type="module" src="js/layout.js"></script>
+    <script type="module" src="js/bienes-uso.js"></script>
+
 </body>
 </html>
