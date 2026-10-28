@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trazzo - Historial de Reposiciones</title>
+    <link rel="stylesheet" href="css/base.css" />
+    <style>
+      body {
+        background-color: #f8f9fa;
+      }
+
+      /* Estilos específicos para que quede idéntico a la imagen */
+      .header-top {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        padding: 1rem 2rem;
+        background-color: #ffffff;
+        border-bottom: 1px solid #dee2e6;
+      }
+
+      #btn-campana {
+        position: relative;
+        cursor: pointer;
+        margin-right: 1.5rem;
+        display: flex;
+        align-items: center;
+      }
+      #campana-contador {
+        background: #111111;
+        color: #ffffff;
+        border-radius: 50%;
+        padding: 2px 6px;
+        font-size: 0.7rem;
+        position: absolute;
+        top: -8px;
+        right: -10px;
+        display: none; /* Se muestra con JS */
+      }
+
+      .main-container {
+        padding: 2.5rem 3rem;
+      }
+
+      .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+      }
+
+      .page-header h1 {
+        font-size: 1.8rem;
+        color: #111111;
+        font-weight: 600;
+      }
+
+      .filtros-container {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .filtro-fecha {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        padding: 0 0.5rem;
+        background: #ffffff;
+      }
+
+      .filtro-fecha select,
+      .form-control {
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        padding: 0.6rem 1rem;
+        font-family: inherit;
+        background-color: #ffffff;
+        color: #212529;
+      }
+
+      .filtro-fecha select {
+        border: none;
+        outline: none;
+        padding: 0.6rem 0.5rem;
+      }
+
+      .buscador {
+        flex-grow: 1;
+        max-width: 500px;
+      }
+
+      /* Tabla */
+      .tabla-container {
+        background: #ffffff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        overflow-x: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+      }
+
+      th {
+        color: #8c8c8c;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        padding: 1rem;
+        border-bottom: 1px solid #dee2e6;
+        background-color: #ffffff;
+      }
+
+      td {
+        padding: 1rem;
+        font-size: 0.9rem;
+        color: #212529;
+        border-bottom: 1px solid #f1f3f5;
+      }
+
+      tr:last-child td {
+        border-bottom: none;
+      }
+
+      .texto-vacio {
+        text-align: center;
+        color: #8c8c8c;
+        padding: 3rem;
+        font-style: italic;
+      }
+
+      /* Botón Volver */
+      .btn-volver {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem 1.2rem;
+        background: #ffffff;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        color: #212529;
+        text-decoration: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+        transition: 0.2s;
+      }
+      .btn-volver:hover {
+        background: #f8f9fa;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- HEADER EXACTO AL QUE PEDISTE -->
+    <header class="header-top">
+      <div id="btn-campana">
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#111111"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <span id="campana-contador">0</span>
+      </div>
+      <button
+        class="btn btn-outline"
+        style="border-color: #111111; color: #111111"
+      >
+        Cerrar Sesión
+      </button>
+    </header>
+
+    <main class="main-container">
+      <!-- Título y Botón Volver -->
+      <div class="page-header">
+        <h1>Historial de reposiciones</h1>
+        <a href="productos.html" class="btn-volver">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          Volver a Productos
+        </a>
+      </div>
+
+      <!-- Filtros de Búsqueda -->
+      <div class="filtros-container">
+        <div class="filtro-fecha">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#212529"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          <select id="filtro-fecha">
+            <option value="todas">Todas las reposiciones</option>
+            <option value="hoy">Hoy</option>
+            <option value="mes">Este mes</option>
+            <option value="año">Este año</option>
+          </select>
+        </div>
+
+        <input
+          type="text"
+          id="buscador"
+          class="form-control buscador"
+          placeholder="Buscar por producto o proveedor..."
+        />
+
+        <select
+          id="filtro-proveedor"
+          class="form-control"
+          style="min-width: 200px"
+        >
+          <option value="">Todos los proveedores</option>
+          <!-- Se llena dinámicamente con JS -->
+        </select>
+      </div>
+
+      <!-- Tabla -->
+      <div class="tabla-container">
+        <table>
+          <thead>
+            <tr>
+              <th>PRODUCTO</th>
+              <th>CANTIDAD</th>
+              <th>MONTO TOTAL</th>
+              <th>COSTO UNITARIO</th>
+              <th>FECHA DE ADQUISICIÓN</th>
+              <th>PROVEEDOR</th>
+              <th>REGISTRADO POR</th>
+            </tr>
+          </thead>
+          <tbody id="historial-tbody">
+            <tr>
+              <td colspan="7" class="texto-vacio">Cargando historial...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+
+    <!-- SCRIPTS -->
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/notificaciones.js"></script>
+    <script type="module" src="js/historial-reposiciones.js"></script>
+    <script>
+      // Iniciar campana
+      document.addEventListener("DOMContentLoaded", () => {
+        iniciarNotificaciones();
+      });
+    </script>
+  </body>
+</html>
