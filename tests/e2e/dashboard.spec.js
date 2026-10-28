@@ -261,14 +261,18 @@ test.describe("Barra lateral", () => {
     ["reportes", "reportes.html", "Reportes"],
   ];
 
+  // Pantallas que ya tienen contenido: no muestran el cartel "En construcción" y su título puede ser otro.
+  const TITULO_DE_PANTALLA = { productos: "Productos", gastos: "Gastos operativos" };
+
   for (const [modulo, archivo, titulo] of PANTALLAS) {
-    test(`el menú abre ${titulo} y la pantalla dice En construcción`, async ({ page }) => {
+    const terminada = modulo in TITULO_DE_PANTALLA;
+    test(`el menú abre ${titulo} y la pantalla ${terminada ? "tiene su contenido" : "dice En construcción"}`, async ({ page }) => {
       await iniciarSesionComo(page, "ADMIN");
       await page.goto("/dashboard.html");
       await page.getByTestId(`menu-${modulo}`).click();
       await expect(page).toHaveURL(new RegExp(`${archivo}$`));
-      await expect(page.getByRole("heading", { name: titulo, exact: true })).toBeVisible();
-      await expect(page.getByText("En construcción")).toBeVisible();
+      await expect(page.getByRole("heading", { name: TITULO_DE_PANTALLA[modulo] ?? titulo, exact: true })).toBeVisible();
+      if (!terminada) await expect(page.getByText("En construcción")).toBeVisible();
       await expect(page.getByTestId(`menu-${modulo}`)).toHaveAttribute("aria-current", "page");
       await expect(page.getByTestId("btn-cerrar-sesion")).toBeVisible();
     });
@@ -280,7 +284,9 @@ test.describe("Barra lateral", () => {
     for (const [modulo, archivo] of [["ventas", "ventas.html"], ["cuentas_corrientes", "cuenta-corriente.html"], ["productos", "productos.html"]]) {
       await page.getByTestId(`menu-${modulo}`).click();
       await expect(page).toHaveURL(new RegExp(`${archivo}$`));
-      await expect(page.getByText("En construcción")).toBeVisible();
+      // Productos ya tiene su pantalla; las otras todavía muestran el cartel.
+      if (modulo === "productos") await expect(page.getByRole("heading", { name: "Productos", exact: true })).toBeVisible();
+      else await expect(page.getByText("En construcción")).toBeVisible();
     }
   });
 
