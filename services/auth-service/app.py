@@ -138,7 +138,7 @@ def registro():
         #token rapido 
         payload_access = {
             "usuario_id": usuario_id,
-            "usuario": datos['usuario'],
+            "usuario": usuario,
             "negocio_id": emprendimiento_id,
             "rol": "PROPIETARIO",
             "jti": access_jti,
