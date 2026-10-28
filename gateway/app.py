@@ -7,7 +7,14 @@ from dotenv import load_dotenv
 load_dotenv()
 app = Flask(__name__)
 
-ORIGENES_PERMITIDOS = ["*"]
+#Esta prohibido usar * porque vuelve fragil la seguridad de acceso. Ademas el navegador bloqueara el acceso.
+ORIGENES_PERMITIDOS = [
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+    "http://127.0.0.1:5000",
+    "http://localhost:5000",
+    "http://192.168.1.43:5000"
+]
 CORS(app, resources={r"/api/*": {"origins": ORIGENES_PERMITIDOS}}, supports_credentials=True)
 
 SERVICES = {
@@ -32,7 +39,7 @@ FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 
 def buscar_archivo(filename):
     """Busca el archivo en la carpeta frontend o en sus subcarpetas (pages, css, js)"""
-    # 1. Buscar directo en frontend (por si están sueltos como en tu captura)
+    # 1. Buscar directo en frontend.
     ruta_directa = os.path.join(FRONTEND_DIR, filename)
     if os.path.exists(ruta_directa):
         return ruta_directa
