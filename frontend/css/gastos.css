@@ -1,0 +1,353 @@
+/* --- PANTALLA DE GASTOS OPERATIVOS ---
+   Todas las clases empiezan con "gastos-" para no pisar los estilos de las demás pantallas.
+   Usa los colores de base.css; el rojo y el ámbar son solo para eliminar, errores y avisos. */
+:root {
+  --gastos-rojo: #dc3545;
+  --gastos-rojo-fondo: #fdecee;
+  --gastos-rojo-borde: #f5c2c7;
+  --gastos-ambar: #e8a200;
+  --gastos-ambar-fondo: #fff7e0;
+  --gastos-ambar-borde: #f3d68a;
+  --gastos-ambar-texto: #7a5200;
+  --gastos-gris: #8c8c8c;
+}
+
+.gastos-pagina {
+  padding: 1.5rem 2rem 3rem;
+  text-align: left;
+}
+
+.gastos-encabezado {
+  margin-bottom: 1.25rem;
+}
+
+.gastos-encabezado h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+/* Fila con el selector de período a la izquierda y "+ Nuevo gasto" a la derecha */
+.gastos-acciones {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 1.75rem 0 0.75rem;
+}
+
+.gastos-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #111;
+}
+
+.gastos-selector svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.gastos-entrada {
+  padding: 0.5rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--color-texto);
+  background-color: #fff;
+  border: 1px solid var(--color-borde);
+  border-radius: 6px;
+}
+
+.gastos-entrada:focus {
+  outline: none;
+  border-color: var(--color-primario);
+}
+
+.gastos-entrada.con-error {
+  border-color: var(--gastos-rojo);
+}
+
+.gastos-select-fecha {
+  min-width: 170px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+  border-radius: 8px;
+  border-color: #c9cdd2;
+}
+
+.gastos-barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.gastos-buscador {
+  flex: 1 1 280px;
+  min-width: 200px;
+}
+
+.gastos-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.8rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--color-texto);
+  background-color: #fff;
+  border: 1px solid var(--color-borde);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.gastos-chip.activo {
+  color: #fff;
+  background-color: #111;
+  border-color: #111;
+}
+
+/* Botones */
+.gastos-btn-con-icono {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.gastos-btn-con-icono svg {
+  width: 16px;
+  height: 16px;
+}
+
+.gastos-btn-chico {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.78rem;
+}
+
+.gastos-btn-icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.45rem;
+}
+
+.gastos-btn-icono svg {
+  width: 15px;
+  height: 15px;
+}
+
+.gastos-btn-icono-texto {
+  gap: 0.3rem;
+  padding: 0.25rem 0.6rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.gastos-btn-eliminar {
+  color: var(--gastos-rojo);
+  border-color: var(--gastos-rojo-borde);
+}
+
+.gastos-btn-eliminar:hover {
+  background-color: var(--gastos-rojo-fondo);
+}
+
+/* Tabla */
+.gastos-tarjeta {
+  overflow: hidden;
+  background-color: #fff;
+  border: 1px solid var(--color-borde);
+  border-radius: 10px;
+}
+
+.gastos-tabla-contenedor {
+  min-height: 200px;
+  max-height: calc(100vh - 320px);
+  overflow: auto;
+}
+
+.gastos-tabla {
+  width: 100%;
+  font-size: 0.85rem;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.gastos-tabla th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0.7rem 0.55rem;
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--gastos-gris);
+  background-color: #fff;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.gastos-tabla td {
+  padding: 0.6rem 0.55rem;
+  vertical-align: middle;
+  border-bottom: 1px solid #eee;
+}
+
+.gastos-tabla tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.gastos-tabla tbody tr:hover {
+  background-color: #fafafa;
+}
+
+.gastos-tabla .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.gastos-tabla .acciones-columna {
+  text-align: right;
+}
+
+.gastos-acciones-fila {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.gastos-sin-dato {
+  color: var(--gastos-gris);
+}
+
+.gastos-vacio {
+  padding: 4rem 1rem;
+  text-align: center;
+  color: var(--gastos-gris);
+}
+
+/* Avisos dentro de los modales */
+.gastos-banner {
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  border: 1px solid;
+  border-radius: 8px;
+}
+
+.gastos-banner-ambar {
+  color: var(--gastos-ambar-texto);
+  background-color: var(--gastos-ambar-fondo);
+  border-color: var(--gastos-ambar-borde);
+  border-left: 4px solid var(--gastos-ambar);
+}
+
+/* Modales */
+.gastos-modal-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+.gastos-modal {
+  width: min(540px, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+  text-align: left;
+  background-color: #fff;
+  border: 1px solid var(--color-borde);
+  border-radius: 12px;
+}
+
+.gastos-modal-chico {
+  width: min(440px, 100%);
+}
+
+.gastos-modal-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.gastos-modal-cabecera h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.gastos-modal-cerrar {
+  padding: 0 0.4rem;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--gastos-gris);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.gastos-modal-cuerpo {
+  padding: 1.25rem;
+}
+
+.gastos-modal-cuerpo p {
+  margin: 0 0 0.75rem;
+  font-size: 0.92rem;
+}
+
+.gastos-modal-pie {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 0.9rem 1.25rem;
+  border-top: 1px solid var(--color-borde);
+}
+
+.gastos-campo {
+  margin-bottom: 1rem;
+}
+
+.gastos-campo label {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.gastos-campo .gastos-entrada {
+  width: 100%;
+}
+
+.gastos-ayuda {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+  color: var(--gastos-gris);
+}
+
+.gastos-error {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  color: var(--gastos-rojo);
+}
+
+.gastos-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 70;
+  transform: translateX(-50%);
+  padding: 0.6rem 1rem;
+  font-size: 0.88rem;
+  color: #fff;
+  background-color: #111;
+  border-radius: 8px;
+}

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Trazzo - Historial de Reposiciones</title>
     <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/layout.css" />
     <style>
       body {
         background-color: #f8f9fa;
@@ -157,32 +158,6 @@
     </style>
   </head>
   <body>
-    <!-- HEADER EXACTO AL QUE PEDISTE -->
-    <header class="header-top">
-      <div id="btn-campana">
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#111111"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-        </svg>
-        <span id="campana-contador">0</span>
-      </div>
-      <button
-        class="btn btn-outline"
-        style="border-color: #111111; color: #111111"
-      >
-        Cerrar Sesión
-      </button>
-    </header>
-
     <main class="main-container">
       <!-- Título y Botón Volver -->
       <div class="page-header">
@@ -274,13 +249,12 @@
     <!-- SCRIPTS -->
     <script src="js/config.js"></script>
     <script src="js/api.js"></script>
-    <script src="js/notificaciones.js"></script>
     <script type="module" src="js/historial-reposiciones.js"></script>
-    <script>
-      // Iniciar campana
-      document.addEventListener("DOMContentLoaded", () => {
-        iniciarNotificaciones();
-      });
+    <script src="js/roles.js"></script>
+    <script type="module" src="js/layout.js"></script>
+    <script type="module">
+      import { iniciarNotificaciones } from "./js/notificaciones.js";
+      iniciarNotificaciones();
     </script>
   </body>
 </html>

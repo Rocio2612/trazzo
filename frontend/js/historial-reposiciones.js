@@ -1,5 +1,4 @@
 // js/historial-reposiciones.js
-import { fetchAPI } from "./api.js";
 import { formatearMoneda } from "./utils/productosUtils.js";
 
 document.addEventListener("DOMContentLoaded", () => {
