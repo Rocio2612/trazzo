@@ -1,0 +1,8 @@
+{
+  "nombre": "Pantalon Jean",
+  "descripcion": "Jean azul talle 42",
+  "costo_unitario": 8000,
+  "precio_venta": 15000,
+  "stock_actual": 5,
+  "stock_minimo": 2
+}
