@@ -8,6 +8,7 @@
 import { fechaIsoDeHoy, fechaParaMostrar, formatearDinero } from "./formatos.js";
 import { armarPayloadGasto, resumirGastos, validarGasto } from "./gastos.js";
 import { GASTOS_EJEMPLO, listarGastosSimulado } from "./mocks/gastos.js";
+import { cargarMediosPago } from "./servicios/medios-pago.js";
 
 const MODULO = "gastos";
 
@@ -15,7 +16,11 @@ const MODULO = "gastos";
 const ICONO_EDITAR = '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>';
 const ICONO_ELIMINAR = '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>';
 const ICONO_CALENDARIO = '<path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>';
+const ICONO_LUPA = '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>';
 const ICONO_MAS = '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>';
+
+// Título de la tarjeta del total según el período elegido.
+const TITULOS_TOTAL = { todas: "Total acumulado", hoy: "Total de hoy", mes: "Total de este mes", anio: "Total de este año" };
 
 const OPCIONES_PERIODO = [
   { valor: "todas", texto: "Todos los gastos" },
@@ -32,17 +37,12 @@ let siguienteId = Math.max(0, ...gastos.map((g) => g.id)) + 1;
 const usuarioActual = () => decodificarToken(localStorage.getItem("trazzo_access_token"))?.usuario || "";
 
 // --- Medios de pago ------------------------------------------------------------
-// Vienen de GET /medios-pago (los crea el Admin en Personalización). Si todavía no existe el
-// servicio o no hay ninguno cargado, la lista queda vacía y el formulario muestra "sin medios de pago".
+// Son los que el Admin creó en Configuración > Medios de pago (ver servicios/medios-pago.js). Si no hay
+// ninguno, el desplegable lo avisa con un mensaje.
+const MENSAJE_SIN_MEDIOS = "Sin medios de pago. Creá uno en Configuración > Medios de pago";
 let mediosDePago = [];
 const cargarMediosDePago = async () => {
-  try {
-    const data = await fetchAPI("/medios-pago");
-    const lista = Array.isArray(data) ? data : data?.items || [];
-    mediosDePago = lista.map((m) => ({ id: String(m.id), nombre: m.nombre }));
-  } catch {
-    mediosDePago = [];
-  }
+  mediosDePago = await cargarMediosPago();
 };
 const nombreDeMedio = (id) => mediosDePago.find((m) => m.id === String(id))?.nombre ?? null;
 
@@ -168,15 +168,6 @@ const confirmar = ({ titulo, cuerpo, textoOk, claseOk = "btn-primario", textoCan
   aceptar.focus();
 };
 
-const preguntarDescarte = (alDescartar) =>
-  confirmar({
-    titulo: "Hay datos sin guardar",
-    cuerpo: [h("p", { text: "Si cerrás ahora, se pierde lo que cargaste. ¿Querés descartarlo?" })],
-    textoOk: "Descartar",
-    textoCancelar: "Seguir editando",
-    alAceptar: alDescartar,
-  });
-
 // Formulario de gasto en un modal. Los errores salen junto a cada campo, con los nombres de campo del contrato.
 const CAMPOS_GASTO = [
   { nombre: "fecha", etiqueta: "Fecha", obligatorio: true, placeholder: "dd-mm-aaaa" },
@@ -191,7 +182,7 @@ const abrirFormulario = ({ titulo, valores = {}, avisos, alGuardar }) => {
   const filas = CAMPOS_GASTO.map((spec) => {
     const sinMedios = spec.esMedioDePago && mediosDePago.length === 0;
     const opciones = spec.esMedioDePago
-      ? [{ valor: "", texto: sinMedios ? "Sin medios de pago" : "Sin especificar" }, ...mediosDePago.map((m) => ({ valor: m.id, texto: m.nombre }))]
+      ? [{ valor: "", texto: sinMedios ? MENSAJE_SIN_MEDIOS : "Sin especificar" }, ...mediosDePago.map((m) => ({ valor: m.id, texto: m.nombre }))]
       : null;
     const control = opciones
       ? h("select", { id: spec.nombre, name: spec.nombre, class: "gastos-entrada", disabled: sinMedios }, opciones.map((o) => h("option", { value: o.valor, text: o.texto })))
@@ -204,7 +195,6 @@ const abrirFormulario = ({ titulo, valores = {}, avisos, alGuardar }) => {
       { class: "gastos-campo" },
       h("label", { for: spec.nombre, text: spec.etiqueta + (spec.obligatorio ? " *" : "") }),
       control,
-      sinMedios && h("p", { class: "gastos-ayuda", "data-testid": "gastos-sin-medios-pago", text: "Sin medios de pago. Creá uno en Personalización > Medios de pago." }),
       error,
     );
   });
@@ -214,14 +204,12 @@ const abrirFormulario = ({ titulo, valores = {}, avisos, alGuardar }) => {
 
   const cancelar = boton("Cancelar", "btn-outline", { "data-testid": "modal-cancelar" });
   const guardar = boton("Guardar", "btn-primario", { "data-testid": "modal-guardar" });
-  let sinGuardar = false;
   let enviando = false;
 
   const modal = abrirModal({
     titulo,
     cuerpo: [zonaAvisos, filas],
     pie: [cancelar, guardar],
-    alIntentarCerrar: (cerrar) => (sinGuardar ? preguntarDescarte(cerrar) : cerrar()),
   });
   cancelar.addEventListener("click", modal.intentarCerrar);
 
@@ -238,7 +226,6 @@ const abrirFormulario = ({ titulo, valores = {}, avisos, alGuardar }) => {
   CAMPOS_GASTO.forEach(({ nombre }) => {
     const { control, error } = controles[nombre];
     control.addEventListener(control.tagName === "SELECT" ? "change" : "input", () => {
-      sinGuardar = true;
       error.hidden = true;
       control.classList.remove("con-error");
       actualizarAvisos();
@@ -261,7 +248,6 @@ const abrirFormulario = ({ titulo, valores = {}, avisos, alGuardar }) => {
     guardar.textContent = "Guardando…";
     await new Promise((resolver) => setTimeout(resolver, 450));
     alGuardar(armarPayloadGasto(datos));
-    sinGuardar = false;
     modal.cerrar();
   });
 
@@ -280,8 +266,9 @@ const iniciarPantalla = () => {
   const ctx = { q: "", periodo: "todas" };
   const zonaTabla = h("div");
   const valorTotal = h("p", { class: "gastos-total-valor", "data-testid": "gastos-total", text: formatearDinero(0) });
-  const detalleTotal = h("p", { class: "gastos-ayuda", "data-testid": "gastos-total-detalle" });
-  const zonaTotal = h("div", { class: "gastos-total" }, h("p", { class: "gastos-total-titulo", text: "Total del período" }), valorTotal, detalleTotal);
+  const detalleTotal = h("span", { class: "gastos-total-chip", "data-testid": "gastos-total-detalle" });
+  const tituloTotal = h("p", { class: "gastos-total-titulo", "data-testid": "gastos-total-titulo" });
+  const zonaTotal = h("div", { class: "gastos-total" }, h("div", { class: "gastos-total-linea" }, tituloTotal, valorTotal), detalleTotal);
 
   const formularioGasto = async (gasto) => {
     const esNuevo = !gasto;
@@ -339,6 +326,7 @@ const iniciarPantalla = () => {
   const actualizarTotal = () => {
     const delPeriodo = servicio.listar(rangoDePeriodo(ctx.periodo));
     const { total, cantidad } = resumirGastos(delPeriodo);
+    tituloTotal.textContent = TITULOS_TOTAL[ctx.periodo];
     valorTotal.textContent = formatearDinero(total);
     detalleTotal.textContent = cantidad === 1 ? "1 gasto" : `${cantidad} gastos`;
   };
@@ -394,7 +382,7 @@ const iniciarPantalla = () => {
   botonNuevo.append(crearSvg(ICONO_MAS), h("span", { text: "Nuevo gasto" }));
   botonNuevo.addEventListener("click", () => formularioGasto(null));
 
-  const buscador = h("input", { type: "search", class: "gastos-entrada gastos-buscador", placeholder: "Buscar por concepto…", "data-testid": "gastos-buscador", "aria-label": "Buscar" });
+  const buscador = h("input", { type: "search", class: "gastos-entrada gastos-buscador-entrada", placeholder: "Buscar por concepto…", "data-testid": "gastos-buscador", "aria-label": "Buscar" });
   buscador.addEventListener("input", () => {
     ctx.q = buscador.value;
     refrescar();
@@ -404,7 +392,7 @@ const iniciarPantalla = () => {
     h("div", { class: "gastos-encabezado" }, h("h1", { text: "Gastos operativos" })),
     h("div", { class: "gastos-acciones" }, h("div", { class: "gastos-selector" }, crearSvg(ICONO_CALENDARIO), selectorPeriodo), botonNuevo),
     zonaTotal,
-    h("div", { class: "gastos-barra" }, buscador),
+    h("div", { class: "gastos-barra" }, h("div", { class: "gastos-buscador" }, crearSvg(ICONO_LUPA), buscador)),
     zonaTabla,
   );
   refrescar();
