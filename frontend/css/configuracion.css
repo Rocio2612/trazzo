@@ -1,0 +1,193 @@
+/* --- PANTALLAS DE ADMINISTRACIÓN: MI NEGOCIO Y CONFIGURACIÓN ---
+   Se usan junto con css/gastos.css (tarjetas, tabla, modales, botones y avisos).
+   Todas las clases propias empiezan con "cfg-" para no pisar otras pantallas. */
+
+/* Contenido fijo al abrir o cerrar el menú lateral (solo la pantalla Configuración; "Mi negocio" se recentra con el menú): cuando el menú se contrae, la pantalla gana ese ancho,
+   pero se compensa con margen a la izquierda, así los cuadros y los textos no cambian de tamaño ni de lugar. */
+.sidebar-contraida .cfg-fija {
+  padding-left: calc(2rem + var(--lateral-ancho) - var(--lateral-ancho-contraido));
+}
+
+@media (max-width: 768px) {
+  .sidebar-contraida .cfg-fija {
+    padding-left: 2rem;
+  }
+}
+
+/* Pestañas */
+.cfg-pestanias {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1.25rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.cfg-pestania {
+  padding: 0.6rem 1rem;
+  margin-bottom: -1px;
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--gastos-gris);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.cfg-pestania:hover {
+  color: var(--color-texto);
+}
+
+.cfg-pestania.activa {
+  color: var(--color-primario);
+  border-bottom-color: var(--color-primario);
+}
+
+/* Formulario de "Mi negocio" */
+.cfg-tarjeta {
+  padding: 1.5rem;
+}
+
+/* Tarjeta centrada de "Mi negocio" */
+.cfg-centrado {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.cfg-solo-lectura {
+  color: var(--gastos-gris);
+  background-color: #f5f6f7;
+  cursor: not-allowed;
+}
+
+.cfg-candado svg {
+  width: 13px;
+  height: 13px;
+  vertical-align: -1px;
+  color: var(--gastos-gris);
+}
+
+.cfg-acciones-form {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+/* Insignias (rol y estado) */
+.cfg-insignia {
+  display: inline-block;
+  padding: 0.12rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #495057;
+  background-color: #eef0f2;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.cfg-insignia-propietario {
+  color: #fff;
+  background-color: #111;
+}
+
+.cfg-insignia-ok {
+  color: #1e6b3a;
+  background-color: #e3f4e9;
+}
+
+.cfg-insignia-off {
+  color: var(--gastos-rojo);
+  background-color: var(--gastos-rojo-fondo);
+}
+
+.cfg-vos {
+  color: var(--gastos-gris);
+}
+
+.cfg-tabla-contenedor {
+  min-height: 0;
+}
+
+/* Listas simples (categorías y medios de pago): una columna angosta; el campo de agregar,
+   el botón y la lista comparten el mismo ancho. */
+.cfg-columna {
+  max-width: 820px;
+}
+
+.cfg-descripcion {
+  margin: 0 0 0.75rem;
+}
+
+.cfg-agregar {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.cfg-agregar-campo {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cfg-entrada-agregar {
+  width: 100%;
+}
+
+.cfg-lista {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cfg-fila-lista {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.cfg-fila-lista:last-child {
+  border-bottom: none;
+}
+
+.cfg-fila-lista:hover {
+  background-color: #fafafa;
+}
+
+.cfg-fila-nombre {
+  flex: 1 1 auto;
+  font-size: 0.92rem;
+}
+
+.cfg-fila-acciones {
+  flex: 0 0 auto;
+}
+
+/* Mensaje reutilizable "sin categorías" / "sin medios de pago" */
+.sin-opciones {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--gastos-gris);
+}
+
+.sin-opciones strong {
+  color: var(--color-texto);
+}
+
+.sin-opciones a {
+  color: var(--color-primario);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .cfg-agregar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+}

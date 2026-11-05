@@ -1,14 +1,14 @@
 // --- LÓGICA DEL MÓDULO DE GASTOS OPERATIVOS (módulo ES, sin pantalla) ---
 // Reglas tomadas del Módulo 8 y del Sprint 2:
-// - Obligatorios: fecha (no futura), concepto (texto libre) y monto > 0. Opcional: medio de pago.
+// - Obligatorios: fecha (la elige el usuario, puede ser futura), concepto (texto libre) y monto > 0. Opcional: medio de pago.
 // - No modifican el inventario.
 // - Los totales NUNCA se guardan: se calculan siempre sumando la lista, así que editar la fecha
 //   o el monto de un gasto se refleja solo en la sumatoria.
-// - Ocultar es solo visual: un gasto oculto no sale en la lista pero SIGUE sumando en el total.
-// Los nombres de campo (medio_pago_id, oculto, …) son provisorios hasta cerrar el contrato con Back.
+// - Los gastos solo se editan o se eliminan (con confirmación): no se ocultan.
+// Los nombres de campo (medio_pago_id, …) son provisorios hasta cerrar el contrato con Back.
 
 import { aNumero, fechaParaEnviar, fechaParaMostrar } from "./formatos.js";
-import { validarFechaNoFutura, validarNumeroPositivo, validarObligatorio } from "./validadores.js";
+import { validarNumeroPositivo, validarObligatorio } from "./validadores.js";
 
 export const AGRUPACIONES = ["dia", "mes", "anio"];
 
@@ -27,13 +27,11 @@ const fechaAIso = (valor) => {
 
 // Devuelve { campo: mensaje } con los errores del formulario; vacío si todo está bien.
 // Los mismos nombres de campo que usa el Backend en { errores: { campo: mensaje } }.
-export const validarGasto = (datos = {}, ahora = new Date()) => {
+export const validarGasto = (datos = {}) => {
   const errores = {};
 
   const iso = fechaAIso(datos.fecha);
-  const errorFecha = iso
-    ? validarFechaNoFutura(iso, "La fecha", ahora)
-    : validarObligatorio(datos.fecha, "La fecha") || "La fecha no es una fecha válida.";
+  const errorFecha = iso ? "" : validarObligatorio(datos.fecha, "La fecha") || "La fecha no es una fecha válida.";
   if (errorFecha) errores.fecha = errorFecha;
 
   const errorConcepto = validarObligatorio(datos.concepto, "El concepto");
@@ -69,19 +67,16 @@ export const buscarGastos = (gastos, texto) => {
   );
 };
 
-// Filtros de la lista: rango de fechas (aaaa-mm-dd, inclusivo) y visibilidad.
-// Por defecto muestra los visibles; con ocultos: true muestra solo los ocultos (para poder volver a mostrarlos).
-export const filtrarGastos = (gastos, { desde, hasta, ocultos = false } = {}) =>
-  gastos.filter(
-    (g) => Boolean(g.oculto) === ocultos && (!desde || g.fecha >= desde) && (!hasta || g.fecha <= hasta),
-  );
+// Filtro de la lista: rango de fechas (aaaa-mm-dd, inclusivo).
+export const filtrarGastos = (gastos, { desde, hasta } = {}) =>
+  gastos.filter((g) => (!desde || g.fecha >= desde) && (!hasta || g.fecha <= hasta));
 
 const aCentavos = (monto) => Math.round(aNumero(monto) * 100);
 
 const clavePeriodo = (fecha, agrupar) => fecha.slice(0, { dia: 10, mes: 7, anio: 4 }[agrupar]);
 
 // Total del período y total por día, mes o año (agrupar: "dia", "mes" o "anio").
-// Suma en centavos para no arrastrar errores de decimales. Incluye los gastos ocultos.
+// Suma en centavos para no arrastrar errores de decimales.
 export const resumirGastos = (gastos, { desde, hasta, agrupar = "dia" } = {}) => {
   if (!AGRUPACIONES.includes(agrupar)) {
     throw new RangeError(`agrupar debe ser uno de: ${AGRUPACIONES.join(", ")}`);

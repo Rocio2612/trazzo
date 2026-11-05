@@ -351,3 +351,27 @@
   background-color: #111;
   border-radius: 8px;
 }
+
+/* Total del período */
+.gastos-total {
+  margin-bottom: 1rem;
+  padding: 0.9rem 1.1rem;
+  background-color: #fff;
+  border: 1px solid var(--color-borde);
+  border-radius: 10px;
+}
+
+.gastos-total-titulo {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6c757d;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.gastos-total-valor {
+  margin: 0.15rem 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+}

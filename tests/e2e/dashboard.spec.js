@@ -138,7 +138,7 @@ test.describe("Módulos según el rol", () => {
     ["cuentas_corrientes", "ver_datos_completos", true, false],
     ["cuentas_corrientes", "ocultar", true, false],
     ["cuentas_corrientes", "eliminar", true, false],
-    ["gastos", "ocultar", true, false],
+    ["gastos", "eliminar", true, false],
     ["negocio", "editar", true, false],
     ["personal", "habilitar", true, false],
     ["categorias", "crear", true, false],
