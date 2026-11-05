@@ -132,6 +132,14 @@ test.describe("Configuración: Personal", () => {
     await expect(page.getByTestId("personal-vacio")).toHaveText("Sin resultados");
   });
 
+  test("cancelar cierra el modal sin preguntar aunque se haya cargado algo", async ({ page }) => {
+    await abrir(page, "/configuracion.html");
+    await page.getByTestId("personal-nuevo").click();
+    await page.locator("#nombre").fill("A medias");
+    await page.getByTestId("modal-cancelar").click();
+    await expect(page.getByTestId("modal")).toHaveCount(0);
+  });
+
   test("el Empleado no entra a Configuración", async ({ page }) => {
     await abrir(page, "/configuracion.html", "CAJERO");
     await expect(page).toHaveURL(/dashboard\.html$/);

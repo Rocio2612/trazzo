@@ -209,7 +209,7 @@ export const crearPanelPersonal = () => {
   });
 
   // --- Barra superior: buscador y "Nuevo usuario" ---
-  const buscador = h("input", { type: "search", class: "gastos-entrada gastos-buscador", placeholder: "Buscar por nombre, usuario o correo…", "data-testid": "personal-buscador", "aria-label": "Buscar" });
+  const buscador = h("input", { type: "search", class: "gastos-entrada gastos-buscador-entrada", placeholder: "Buscar por nombre, usuario o correo…", "data-testid": "personal-buscador", "aria-label": "Buscar" });
   buscador.addEventListener("input", () => {
     ctx.q = buscador.value;
     refrescar();
@@ -219,6 +219,6 @@ export const crearPanelPersonal = () => {
   botonNuevo.append(crearSvg(ICONOS.mas), h("span", { text: "Nuevo usuario" }));
   botonNuevo.addEventListener("click", () => formulario(null));
 
-  const panel = h("section", { id: "panel-personal", "data-modulo": MODULO }, h("div", { class: "gastos-barra" }, buscador, botonNuevo), zonaTabla);
+  const panel = h("section", { id: "panel-personal", "data-modulo": MODULO }, h("div", { class: "gastos-barra" }, h("div", { class: "gastos-buscador" }, crearSvg(ICONOS.lupa), buscador), botonNuevo), zonaTabla);
   return { panel, cargar };
 };

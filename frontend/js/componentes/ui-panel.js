@@ -12,6 +12,7 @@ export const ICONOS = {
   mas: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
   habilitar: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
   deshabilitar: '<circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>',
+  lupa: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
   candado:
     '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
 };
@@ -112,25 +113,18 @@ export const confirmar = ({ titulo, cuerpo, textoOk, claseOk = "btn-primario", t
   aceptar.focus();
 };
 
-const preguntarDescarte = (alDescartar) =>
-  confirmar({
-    titulo: "Hay datos sin guardar",
-    cuerpo: [h("p", { text: "Si cerrás ahora, se pierde lo que cargaste. ¿Querés descartarlo?" })],
-    textoOk: "Descartar",
-    claseOk: "btn-peligro",
-    textoCancelar: "Seguir editando",
-    alAceptar: alDescartar,
-  });
-
 // --- Formularios -----------------------------------------------------------------
 
 // Un campo con su etiqueta y su lugar para el error.
-// spec: { nombre, etiqueta, tipo, opciones: [{ valor, texto }], obligatorio, placeholder, ayuda, autocomplete, solo_lectura }
+// spec: { nombre, etiqueta, tipo ("textarea" para texto largo), opciones: [{ valor, texto }], obligatorio, placeholder,
+//         ayuda, autocomplete, solo_lectura, maxlength, grupo (los campos seguidos con el mismo grupo van en una fila) }
 export const crearCampo = (spec, valor = "") => {
   const id = spec.id || spec.nombre;
   const control = spec.opciones
     ? h("select", { id, name: spec.nombre, class: "gastos-entrada" }, spec.opciones.map((o) => h("option", { value: o.valor, text: o.texto })))
-    : h("input", {
+    : spec.tipo === "textarea"
+      ? h("textarea", { id, name: spec.nombre, rows: spec.filas || 3, placeholder: spec.placeholder, class: "gastos-entrada gastos-textarea", maxlength: spec.maxlength })
+      : h("input", {
         id,
         name: spec.nombre,
         type: spec.tipo || "text",
@@ -158,6 +152,17 @@ export const crearCampo = (spec, valor = "") => {
   return { fila, control, mostrarError };
 };
 
+// Los campos seguidos con el mismo `grupo` se muestran juntos en una fila (por ejemplo, tipo y número de documento).
+const agruparCampos = (campos, partes) => {
+  const resultado = [];
+  campos.forEach((c, i) => {
+    const fila = partes[c.nombre].fila;
+    if (c.grupo && campos[i - 1]?.grupo === c.grupo) resultado[resultado.length - 1].push(fila);
+    else resultado.push(c.grupo ? [fila] : fila);
+  });
+  return resultado.map((item) => (Array.isArray(item) ? h("div", { class: "cfg-fila-doble" }, item) : item));
+};
+
 // Modal con un formulario. `validar(datos)` devuelve { campo: mensaje } y `alGuardar(datos)` puede ser
 // asíncrona: si lanza un error con `errores` ({ campo: mensaje }) los muestra junto a cada campo; si lanza
 // otro error, lo avisa. Mientras guarda, el botón queda deshabilitado (un doble clic no duplica el registro).
@@ -169,14 +174,12 @@ export const abrirFormularioModal = ({ titulo, campos, valores = {}, avisos, val
 
   const cancelar = boton("Cancelar", "btn-outline", { "data-testid": "modal-cancelar" });
   const guardar = boton(textoGuardar, "btn-primario", { "data-testid": "modal-guardar" });
-  let sinGuardar = false;
   let enviando = false;
 
   const modal = abrirModal({
     titulo,
-    cuerpo: [zonaAvisos, campos.map((c) => partes[c.nombre].fila)],
+    cuerpo: [zonaAvisos, agruparCampos(campos, partes)],
     pie: [cancelar, guardar],
-    alIntentarCerrar: (cerrar) => (sinGuardar ? preguntarDescarte(cerrar) : cerrar()),
   });
   cancelar.addEventListener("click", modal.intentarCerrar);
 
@@ -185,7 +188,6 @@ export const abrirFormularioModal = ({ titulo, campos, valores = {}, avisos, val
   campos.forEach(({ nombre }) => {
     const { control, mostrarError } = partes[nombre];
     control.addEventListener(control.tagName === "SELECT" ? "change" : "input", () => {
-      sinGuardar = true;
       mostrarError("");
       actualizarAvisos();
     });
@@ -206,7 +208,6 @@ export const abrirFormularioModal = ({ titulo, campos, valores = {}, avisos, val
     guardar.textContent = "Guardando…";
     try {
       await alGuardar(datos);
-      sinGuardar = false;
       modal.cerrar();
     } catch (error) {
       enviando = false;

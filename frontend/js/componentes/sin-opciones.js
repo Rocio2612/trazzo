@@ -1,6 +1,7 @@
 // --- MENSAJE REUTILIZABLE "SIN CATEGORÍAS" / "SIN MEDIOS DE PAGO" (módulo ES) ---
 // Se muestra en las pantallas que ofrecen una lista de opciones (Productos, Ventas, Gastos, Pagos)
-// cuando el Admin todavía no cargó ninguna, para que sepan dónde crearlas (Administración > Configuración).
+// cuando el Admin todavía no cargó ninguna, para que sepan dónde crearlas (Administración > Configuración,
+// o Proveedores en el caso de los proveedores).
 //
 // Uso:
 //   import { crearSinOpciones } from "./componentes/sin-opciones.js";
@@ -21,6 +22,12 @@ export const TIPOS_SIN_OPCIONES = {
     ayuda: "Todavía no hay medios de pago cargados.",
     destino: "configuracion.html#medios-pago",
     modulo: "medios_pago",
+  },
+  proveedores: {
+    texto: "Sin proveedores",
+    ayuda: "Todavía no hay proveedores cargados.",
+    destino: "proveedores.html",
+    modulo: "proveedores",
   },
 };
 

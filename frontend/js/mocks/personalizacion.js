@@ -65,7 +65,12 @@ export const servicioPersonal = {
 };
 
 // --- Listas maestras ---------------------------------------------------------------
-const listas = {
+// Se guardan en el navegador (localStorage) para que otras pantallas, como Gastos, vean los mismos medios de
+// pago y categorías que se cargan en Configuración. Es solo para esta etapa: con el Backend publicado, se
+// leen de la API y se borra esto. Al cerrar sesión se limpia (todas las claves "trazzo_" se borran).
+const CLAVE_LISTAS = "trazzo_mock_listas";
+
+const LISTAS_INICIALES = () => ({
   categorias: [
     { id: 1, nombre: "Remeras" },
     { id: 2, nombre: "Pantalones" },
@@ -74,20 +79,50 @@ const listas = {
     { id: 1, nombre: "Efectivo", por_defecto: true },
     { id: 2, nombre: "Transferencia", por_defecto: false },
   ],
+});
+
+const leerListas = () => {
+  try {
+    const guardado = JSON.parse(localStorage.getItem(CLAVE_LISTAS));
+    if (guardado && Array.isArray(guardado.categorias) && Array.isArray(guardado.medios_pago)) return guardado;
+  } catch {
+    // Sin almacenamiento o con datos dañados: se parte de las listas iniciales.
+  }
+  return LISTAS_INICIALES();
 };
-let siguienteIdLista = 10;
+
+const guardarListas = (listas) => {
+  try {
+    localStorage.setItem(CLAVE_LISTAS, JSON.stringify(listas));
+  } catch {
+    // Sin almacenamiento: la pantalla funciona igual, pero otras pantallas no ven los cambios.
+  }
+};
+
+// Lectura síncrona de una lista guardada ("categorias" o "medios_pago"), para el helper de otras pantallas.
+export const listarListaMock = (tipo) => leerListas()[tipo].map((e) => ({ ...e }));
 
 export const servicioLista = (tipo) => ({
-  listar: async () => listas[tipo].map((e) => ({ ...e })),
+  listar: async () => listarListaMock(tipo),
   crear: async (nombre) => {
-    const elemento = { id: siguienteIdLista++, nombre, por_defecto: false };
+    const listas = leerListas();
+    const todosLosIds = [...listas.categorias, ...listas.medios_pago].map((e) => e.id);
+    const elemento = { id: Math.max(9, ...todosLosIds) + 1, nombre, por_defecto: false };
     listas[tipo].push(elemento);
+    guardarListas(listas);
     return { ...elemento };
   },
-  actualizar: async (id, nombre) => ({ ...Object.assign(listas[tipo].find((e) => e.id === id), { nombre }) }),
+  actualizar: async (id, nombre) => {
+    const listas = leerListas();
+    const elemento = Object.assign(listas[tipo].find((e) => e.id === id), { nombre });
+    guardarListas(listas);
+    return { ...elemento };
+  },
   eliminar: async (id) => {
+    const listas = leerListas();
     const elemento = listas[tipo].find((e) => e.id === id);
     if (elemento.por_defecto) throw new Error("Efectivo es el medio de pago por defecto y no se puede eliminar.");
     listas[tipo].splice(listas[tipo].indexOf(elemento), 1);
+    guardarListas(listas);
   },
 });

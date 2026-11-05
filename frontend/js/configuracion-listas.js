@@ -136,7 +136,12 @@ export const crearPanelLista = (tipo) => {
         { class: "gastos-tarjeta" },
         ctx.elementos.length === 0
           ? h("div", { class: "gastos-vacio" }, crearSinOpciones(tipo, { conEnlace: false }))
-          : h("ul", { class: "cfg-lista", "data-testid": `${tipo}-lista` }, ctx.elementos.map(filaDeElemento)),
+          : h(
+              "div",
+              { class: "cfg-lista-scroll" },
+              h("div", { class: "cfg-lista-cabecera" }, h("span", { text: "Nombre" }), h("span", { text: "Acciones" })),
+              h("ul", { class: "cfg-lista", "data-testid": `${tipo}-lista` }, ctx.elementos.map(filaDeElemento)),
+            ),
       ),
     );
 
