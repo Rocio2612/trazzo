@@ -1,0 +1,31 @@
+/* --- PANTALLA DE PROVEEDORES ---
+   Se usa junto con css/gastos.css (tarjetas, tabla, modales, botones) y css/configuracion.css (insignias). */
+
+.prov-acciones {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.prov-tipo {
+  display: inline-block;
+  min-width: 2.6rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--gastos-gris);
+}
+
+.prov-documento {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* La descripción de compra se corta con "…" en la tabla; completa se ve al pasar el mouse o al editar. */
+.prov-descripcion {
+  display: block;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
