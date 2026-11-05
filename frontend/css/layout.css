@@ -53,8 +53,8 @@
 }
 
 .sidebar-grupo-titulo {
-  padding: 1.25rem 0.75rem 0.4rem;
-  font-size: 0.65rem;
+  padding: 0.9rem 0.75rem 0.25rem;
+  font-size: 0.58rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -65,8 +65,8 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.55rem 0.75rem;
-  margin-bottom: 2px;
+  padding: 0.38rem 0.75rem;
+  margin-bottom: 1px;
   border-radius: 8px;
   font-size: 0.9rem;
   font-weight: 500;
@@ -457,4 +457,18 @@
 .btn-peligro:hover { 
   background-color: #c82333; 
   border-color: #bd2130; 
+}
+
+/* CONTENIDO FIJO: las pantallas que llevan la clase `contenido-fijo` en su <main> usan este comportamiento.
+   Al cerrar el menú lateral el contenido no se ensancha: conserva el ancho que tenía con el menú abierto y
+   se desplaza a la izquierda junto con el menú (la pantalla gana justo lo que el menú pierde: ancho menos
+   contraído, 180 px). En celular el menú se superpone y no cambia el ancho, así que no se aplica. */
+.sidebar-contraida .contenido-fijo {
+  width: calc(100% - (var(--lateral-ancho) - var(--lateral-ancho-contraido)));
+}
+
+@media (max-width: 768px) {
+  .sidebar-contraida .contenido-fijo {
+    width: auto;
+  }
 }
