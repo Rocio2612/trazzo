@@ -268,7 +268,7 @@ const iniciarPantalla = () => {
   const valorTotal = h("p", { class: "gastos-total-valor", "data-testid": "gastos-total", text: formatearDinero(0) });
   const detalleTotal = h("span", { class: "gastos-total-chip", "data-testid": "gastos-total-detalle" });
   const tituloTotal = h("p", { class: "gastos-total-titulo", "data-testid": "gastos-total-titulo" });
-  const zonaTotal = h("div", { class: "gastos-total" }, h("div", { class: "gastos-total-linea" }, tituloTotal, valorTotal), detalleTotal);
+  const zonaTotal = h("div", { class: "gastos-total" }, tituloTotal, h("div", { class: "gastos-total-fila" }, valorTotal, detalleTotal));
 
   const formularioGasto = async (gasto) => {
     const esNuevo = !gasto;
@@ -390,9 +390,8 @@ const iniciarPantalla = () => {
 
   pagina.replaceChildren(
     h("div", { class: "gastos-encabezado" }, h("h1", { text: "Gastos operativos" })),
-    h("div", { class: "gastos-acciones" }, h("div", { class: "gastos-selector" }, crearSvg(ICONO_CALENDARIO), selectorPeriodo), botonNuevo),
-    zonaTotal,
-    h("div", { class: "gastos-barra" }, h("div", { class: "gastos-buscador" }, crearSvg(ICONO_LUPA), buscador)),
+    h("div", { class: "gastos-acciones" }, zonaTotal, botonNuevo),
+    h("div", { class: "gastos-barra gastos-barra-junta" }, h("div", { class: "gastos-buscador" }, crearSvg(ICONO_LUPA), buscador), selectorPeriodo),
     zonaTabla,
   );
   refrescar();

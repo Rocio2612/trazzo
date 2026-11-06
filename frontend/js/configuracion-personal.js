@@ -219,6 +219,6 @@ export const crearPanelPersonal = () => {
   botonNuevo.append(crearSvg(ICONOS.mas), h("span", { text: "Nuevo usuario" }));
   botonNuevo.addEventListener("click", () => formulario(null));
 
-  const panel = h("section", { id: "panel-personal", "data-modulo": MODULO }, h("div", { class: "gastos-barra" }, h("div", { class: "gastos-buscador" }, crearSvg(ICONOS.lupa), buscador), botonNuevo), zonaTabla);
+  const panel = h("section", { id: "panel-personal", "data-modulo": MODULO }, h("div", { class: "gastos-barra gastos-barra-junta" }, h("div", { class: "gastos-buscador" }, crearSvg(ICONOS.lupa), buscador), botonNuevo), zonaTabla);
   return { panel, cargar };
 };

@@ -29,10 +29,10 @@
 /* Fila con el selector de período a la izquierda y "+ Nuevo gasto" a la derecha */
 .gastos-acciones {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 0.6rem;
-  margin: 1.75rem 0 0.75rem;
+  margin: 0.25rem 0 0.75rem;
 }
 
 .gastos-selector {
@@ -81,6 +81,11 @@
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 1rem;
+}
+
+/* Variante con el filtro o botón pegado al buscador (la fila sigue ocupando todo el ancho del cuadro). */
+.gastos-barra-junta {
+  gap: 0.3rem;
 }
 
 .gastos-buscador {
@@ -180,7 +185,7 @@
 /* Cuadro con scroll propio que se ve siempre: tiene un alto fijo según la pantalla y la barra vertical
    (la nativa del navegador) queda a la vista aunque haya pocas filas. Cada pantalla ajusta --tabla-descuento (lo que ocupa arriba). */
 .gastos-tabla-contenedor {
-  height: calc(100vh - var(--tabla-descuento, 380px));
+  height: calc(100vh - var(--tabla-descuento, 360px));
   min-height: 240px;
   overflow-x: auto;
   overflow-y: scroll;
@@ -375,41 +380,38 @@
 /* Total del período: monto a la izquierda y cantidad de gastos a la derecha */
 .gastos-total {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: fit-content;
+  min-width: 250px;
+  margin: 0;
   padding: 0.8rem 1.25rem;
   background-color: #fff;
   border: 1px solid var(--color-borde);
   border-radius: 10px;
 }
 
-/* El título, los dos puntos y el monto van en una sola línea: "Total acumulado: $ 995.051,25" */
-.gastos-total-linea {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.6rem;
-}
-
 .gastos-total-titulo {
   margin: 0;
-  font-size: 1.5rem;
-  line-height: 1;
+  font-size: 0.8rem;
   font-weight: 600;
-  color: #495057;
+  color: var(--gastos-gris);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.gastos-total-titulo::after {
-  content: ":";
+.gastos-total-fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
 .gastos-total-valor {
   margin: 0;
-  font-size: 2rem;
+  font-size: 1.8rem;
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.2;
   color: var(--color-primario);
 }
 
