@@ -43,8 +43,8 @@ describe("validarGasto", () => {
     expect(validarGasto({ ...valido, fecha: "5/3/2026" }, hoy).fecha).toBe("La fecha no es una fecha válida.");
   });
 
-  it("rechaza una fecha futura", () => {
-    expect(validarGasto({ ...valido, fecha: "16-06-2026" }, hoy).fecha).toBe("La fecha no puede ser futura.");
+  it("acepta una fecha futura (la elige el usuario)", () => {
+    expect(validarGasto({ ...valido, fecha: "16-06-2026" }, hoy)).toEqual({});
   });
 
   it("acepta la fecha de hoy", () => {
@@ -106,14 +106,8 @@ describe("buscarGastos", () => {
 });
 
 describe("filtrarGastos", () => {
-  it("por defecto oculta los gastos ocultos", () => {
-    const ids = filtrarGastos(GASTOS_EJEMPLO).map((g) => g.id);
-    expect(ids).not.toContain(7);
-    expect(ids).toHaveLength(6);
-  });
-
-  it("con ocultos: true muestra solo los ocultos", () => {
-    expect(filtrarGastos(GASTOS_EJEMPLO, { ocultos: true }).map((g) => g.id)).toEqual([7]);
+  it("sin filtros devuelve todos los gastos", () => {
+    expect(filtrarGastos(GASTOS_EJEMPLO)).toHaveLength(7);
   });
 
   it("el rango de fechas incluye los dos extremos", () => {
@@ -123,7 +117,7 @@ describe("filtrarGastos", () => {
 });
 
 describe("resumirGastos (sumatoria del período)", () => {
-  it("suma todo lo que hay en el período, incluidos los gastos ocultos", () => {
+  it("suma todo lo que hay en el período", () => {
     const resumen = resumirGastos(GASTOS_EJEMPLO);
     expect(resumen.total).toBe(450000 + 38250.5 + 21000 + 15500.75 + 450000 + 8300 + 12000);
     expect(resumen.cantidad).toBe(7);
@@ -198,11 +192,6 @@ describe("resumirGastos (sumatoria del período)", () => {
     expect(resumirGastos(sinLuz).total).toBe(resumirGastos(GASTOS_EJEMPLO).total - 38250.5);
   });
 
-  it("ocultar un gasto no cambia la sumatoria", () => {
-    const luzOculta = GASTOS_EJEMPLO.map((g) => (g.id === 2 ? { ...g, oculto: true } : g));
-    expect(resumirGastos(luzOculta).total).toBe(resumirGastos(GASTOS_EJEMPLO).total);
-  });
-
   it("rechaza una agrupación que no existe", () => {
     expect(() => resumirGastos(GASTOS_EJEMPLO, { agrupar: "semana" })).toThrow(RangeError);
   });
@@ -226,14 +215,13 @@ describe("datos simulados", () => {
   it("la lista simulada tiene el formato { items, total, pagina }", () => {
     const lista = listarGastosSimulado(GASTOS_EJEMPLO);
     expect(Object.keys(lista).sort()).toEqual(["items", "pagina", "total"]);
-    expect(lista).toMatchObject({ total: 6, pagina: 1 });
+    expect(lista).toMatchObject({ total: 7, pagina: 1 });
   });
 
   it("pagina, busca y filtra", () => {
-    expect(listarGastosSimulado(GASTOS_EJEMPLO, { porPagina: 4, pagina: 2 }).items).toHaveLength(2);
+    expect(listarGastosSimulado(GASTOS_EJEMPLO, { porPagina: 4, pagina: 2 }).items).toHaveLength(3);
     expect(listarGastosSimulado(GASTOS_EJEMPLO, { q: "luz" }).total).toBe(1);
-    expect(listarGastosSimulado(GASTOS_EJEMPLO, { ocultos: true }).total).toBe(1);
-    expect(listarGastosSimulado(GASTOS_EJEMPLO, { desde: "2026-04-01" }).total).toBe(2);
+    expect(listarGastosSimulado(GASTOS_EJEMPLO, { desde: "2026-04-01" }).total).toBe(3);
   });
 
   it("una página inválida se toma como la primera", () => {

@@ -27,6 +27,10 @@ const ICONOS = {
     '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
   reportes:
     '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
+  negocio:
+    '<path d="M3 9l1-5h16l1 5"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/>',
+  configuracion:
+    '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>',
   campana:
     '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
   panel_lateral:
@@ -56,6 +60,13 @@ const MENU = [
       { modulo: "bienes_uso", etiqueta: "Bienes de Uso", href: "bienes-uso.html", disponible: true },
       { modulo: "gastos", etiqueta: "Gastos", href: "gastos.html", disponible: true },
       { modulo: "reportes", etiqueta: "Reportes", href: "reportes.html", disponible: true },
+    ],
+  },
+  {
+    grupo: "Administración",
+    items: [
+      { modulo: "negocio", icono: "negocio", etiqueta: "Mi negocio", href: "perfil-negocio.html", disponible: true },
+      { modulo: "personal", icono: "configuracion", etiqueta: "Configuración", href: "configuracion.html", disponible: true },
     ],
   },
 ];
@@ -145,7 +156,7 @@ const crearBarraLateral = (estructura) => {
 
     nav.appendChild(crear("div", "sidebar-grupo-titulo", grupo));
     permitidos.forEach((item) => {
-      const enlace = crearEnlace(item.modulo, item.etiqueta);
+      const enlace = crearEnlace(item.icono || item.modulo, item.etiqueta);
       enlace.dataset.modulo = item.modulo;
       enlace.dataset.testid = `menu-${item.modulo}`;
       if (item.disponible) {

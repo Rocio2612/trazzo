@@ -31,7 +31,7 @@ const PERMISOS = {
     ],
     bienes_uso: ["ver", "crear", "editar", "ocultar", "eliminar"],
     insumos: ["ver", "crear", "editar", "ocultar", "eliminar"],
-    gastos: ["ver", "crear", "editar", "ocultar", "eliminar"],
+    gastos: ["ver", "crear", "editar", "eliminar"],
     clientes: ["ver", "crear", "editar", "ocultar", "eliminar", "seleccionar"],
     ventas: ["ver", "crear", "editar", "ticket", "ocultar", "eliminar", "anular"],
     cuentas_corrientes: [
