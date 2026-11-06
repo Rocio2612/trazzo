@@ -6,31 +6,15 @@
     <title>Trazzo - Insumos</title>
     <link rel="stylesheet" href="css/base.css">
     <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/gastos.css">
 </head>
 <body>
-
-    <main class="contenido-fijo">
-        <div class="contenido-modulo" style="padding: 2rem;">
-            
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h1>Insumos</h1>
-                <button id="btn-nuevo-insumo" class="btn btn-primario" data-testid="insumos-nuevo">
-                    + Nuevo insumo
-                </button>
-            </div>
-
-            <!-- Acá tu tabla.js va a inyectar el buscador y la tabla -->
-            <div id="contenedor-tabla"></div>
-        </div>
-    </main>
+    <main id="insumos-pagina" class="gastos-pagina" data-modulo="insumos"></main>
 
     <script src="js/config.js"></script>
     <script src="js/api.js"></script>
     <script src="js/roles.js"></script>
     <script type="module" src="js/layout.js"></script>
-    
-    <!-- Llamamos a tu script de insumos -->
     <script type="module" src="js/insumos.js"></script>
-
 </body>
 </html>
