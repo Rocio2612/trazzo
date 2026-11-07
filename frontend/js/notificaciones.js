@@ -1,101 +1,103 @@
-// js/notificaciones.js
-import { generarTextoAlerta } from "./utils/productosUtils.js";
-
-let pollingInterval = null;
+// Trazzo - Sprint 2 - Notificaciones y Alertas de Stock
+import { fetchAPI } from "./api.js";
 
 export const iniciarNotificaciones = () => {
-  const campanaContador = document.getElementById("campana-contador");
-  if (!campanaContador) return; // Si no hay campana en esta vista, no hace nada
+  const btnCampana = document.getElementById("btn-campana");
+  const contador = document.getElementById("campana-contador");
+  const panel = document.getElementById("panel-alertas");
+  if (!btnCampana || !contador) return;
+
+  let pollingInterval;
 
   const actualizarContador = async () => {
-    if (document.hidden) return; // Pausar si la pestaña está oculta
+    if (document.hidden) return;
     try {
       const data = await fetchAPI("/notificaciones/contador");
       if (data.cantidad > 0) {
-        campanaContador.textContent =
-          data.cantidad > 99 ? "99+" : data.cantidad;
-        campanaContador.style.display = "inline-block";
+        contador.textContent = data.cantidad > 99 ? "99+" : data.cantidad;
+        contador.style.display = "flex";
       } else {
-        campanaContador.style.display = "none";
+        contador.style.display = "none";
       }
     } catch (error) {
-      console.warn("Error al consultar notificaciones (silencioso)");
+      console.warn("Fallo al consultar alertas", error);
     }
   };
 
-  // Polling cada 45 segundos
   actualizarContador();
   pollingInterval = setInterval(actualizarContador, 45000);
 
-  // Pausar/Reanudar con visibilitychange
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      clearInterval(pollingInterval);
-    } else {
+    if (document.hidden) clearInterval(pollingInterval);
+    else {
       actualizarContador();
       pollingInterval = setInterval(actualizarContador, 45000);
     }
   });
 
-  // Lógica para abrir/cerrar el panel de alertas (asumiendo un dropdown)
-  const btnCampana = document.getElementById("campana");
-  const panelAlertas = document.getElementById("panel-alertas");
+  btnCampana.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (!panel) return;
+    panel.classList.toggle("hidden");
+    if (!panel.classList.contains("hidden")) {
+      cargarAlertas(panel, actualizarContador);
+    }
+  });
 
-  if (btnCampana && panelAlertas) {
-    btnCampana.addEventListener("click", async () => {
-      panelAlertas.classList.toggle("hidden");
-      if (!panelAlertas.classList.contains("hidden")) {
-        cargarListaAlertas(panelAlertas);
-      }
-    });
-  }
+  document.addEventListener("click", (e) => {
+    if (panel && !panel.contains(e.target) && !btnCampana.contains(e.target)) {
+      panel.classList.add("hidden");
+    }
+  });
 };
 
-const cargarListaAlertas = async (contenedor) => {
-  contenedor.innerHTML = "<p>Cargando...</p>"; // Solo carga estática segura
+const cargarAlertas = async (contenedor, actualizarContador) => {
+  contenedor.innerHTML = ""; // Limpiar
   try {
     const alertas = await fetchAPI("/notificaciones");
-    contenedor.innerHTML = ""; // Limpiar
-
     if (alertas.length === 0) {
       const p = document.createElement("p");
-      p.className = "texto-vacio";
       p.textContent = "Sin alertas";
+      p.style.textAlign = "center";
+      p.style.color = "#8c8c8c";
       contenedor.appendChild(p);
       return;
     }
 
     alertas.forEach((alerta) => {
       const div = document.createElement("div");
-      div.className = "alerta-item";
+      div.style.cssText =
+        "display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; border-bottom:1px solid #eee;";
 
-      const p = document.createElement("p");
-      p.textContent = generarTextoAlerta(
-        alerta.producto_nombre,
-        alerta.stock_actual,
-      );
+      const p = document.createElement("span");
+      p.textContent = `Quedan ${alerta.stock_actual} de ${alerta.producto_nombre}`;
+      p.style.fontSize = "0.85rem";
+      p.style.color = "#212529";
 
-      const btnDescartar = document.createElement("button");
-      btnDescartar.textContent = "Descartar";
-      btnDescartar.className = "btn btn-outline btn-sm";
-      btnDescartar.setAttribute("data-testid", `alerta-descartar-${alerta.id}`);
+      const btn = document.createElement("button");
+      btn.textContent = "Eliminar";
+      btn.style.cssText =
+        "padding: 0.2rem 0.5rem; font-size: 0.75rem; cursor: pointer; background: white; border: 1px solid #ccc; border-radius: 4px;";
 
-      btnDescartar.onclick = async () => {
+      btn.onclick = async () => {
         try {
-          await fetchAPI(`/notificaciones/${alerta.id}/descartar`, "PATCH");
+          // Endpoint actualizado según Sprint 2 (Módulo 4)
+          await fetchAPI(
+            `/notificaciones/${alerta.id}/eliminar-vista`,
+            "PATCH",
+          );
           div.remove();
-          // Actualizar contador rápido
-          document.getElementById("campana-contador").click();
+          actualizarContador();
         } catch (e) {
-          alert("Error al descartar alerta");
+          alert("Error al eliminar la alerta");
         }
       };
 
       div.appendChild(p);
-      div.appendChild(btnDescartar);
+      div.appendChild(btn);
       contenedor.appendChild(div);
     });
   } catch (error) {
-    contenedor.innerHTML = "<p>Error al cargar alertas.</p>";
+    contenedor.textContent = "Error al cargar alertas.";
   }
 };

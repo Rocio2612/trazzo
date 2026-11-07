@@ -3,13 +3,116 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Trazzo - Productos</title>
+    <title>Trazzo Sprint 2 - Productos</title>
     <link rel="stylesheet" href="css/base.css" />
-    <link rel="stylesheet" href="css/layout.css" />
+
     <style>
+      body {
+        background-color: #f8f9fa;
+        font-family: "Inter", sans-serif;
+        margin: 0;
+      }
+      .productos-pagina {
+        padding: 1.5rem 2rem 3rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+      }
+      .productos-cabecera {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .productos-cabecera h1 {
+        font-size: 1.8rem;
+        color: #111111;
+        margin: 0;
+      }
+      .productos-barra {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+      }
+      .productos-barra input[type="text"] {
+        flex: 1 1 280px;
+        padding: 0.6rem 1rem;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        font-family: inherit;
+      }
+      .chip-filtro {
+        padding: 0.6rem 1.2rem;
+        border: 1px solid #dee2e6;
+        border-radius: 999px;
+        background: #ffffff;
+        cursor: pointer;
+        font-weight: 500;
+        transition: 0.2s;
+        font-family: inherit;
+        color: #212529;
+      }
+      .chip-filtro.activo {
+        background: #111111;
+        color: #ffffff;
+        border-color: #111111;
+      }
+      .productos-tarjeta {
+        background: #ffffff;
+        border: 1px solid #dee2e6;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .tabla-scroll {
+        max-height: calc(100vh - 320px);
+        overflow-y: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+      }
+      th {
+        position: sticky;
+        top: 0;
+        background: #ffffff;
+        color: #8c8c8c;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        padding: 1rem;
+        border-bottom: 1px solid #dee2e6;
+        z-index: 10;
+      }
+      td {
+        padding: 1rem;
+        border-bottom: 1px solid #f1f3f5;
+        color: #212529;
+        font-size: 0.9rem;
+      }
+      tr:hover td {
+        background-color: #f8f9fa;
+      }
+      .acciones-flex {
+        display: flex;
+        gap: 0.5rem;
+      }
+      .btn-icono {
+        background: #ffffff;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        padding: 0.4rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: 0.2s;
+        color: #212529;
+      }
+      .btn-icono:hover {
+        background: #f8f9fa;
+      }
       .badge {
-        padding: 0.2rem 0.5rem;
-        border-radius: 12px;
+        padding: 0.2rem 0.6rem;
+        border-radius: 999px;
         font-size: 0.75rem;
         font-weight: bold;
       }
@@ -21,73 +124,139 @@
         background: #fff7e0;
         color: #7a5200;
       }
-      .banner-ambar {
-        background: #fff7e0;
-        border: 1px solid #f3d68a;
-        color: #7a5200;
-        padding: 0.5rem;
-        border-radius: 6px;
-        margin-bottom: 1rem;
-        font-size: 0.9rem;
-      }
-      .hidden {
-        display: none !important;
-      }
       .modal-backdrop {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.5);
+        background: rgba(0, 0, 0, 0.4);
         display: flex;
         justify-content: center;
         align-items: center;
         z-index: 1000;
       }
-      .modal-content {
-        background: white;
-        padding: 2rem;
-        border-radius: 8px;
+      .modal-caja {
+        background: #ffffff;
+        border-radius: 12px;
         width: 100%;
-        max-width: 500px;
+        max-width: 540px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        max-height: 90vh;
+        overflow-y: auto;
+      }
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
       }
       .form-group {
         margin-bottom: 1rem;
       }
       .form-group label {
         display: block;
-        margin-bottom: 0.25rem;
+        font-size: 0.9rem;
+        margin-bottom: 0.3rem;
       }
       .form-control {
         width: 100%;
-        padding: 0.5rem;
+        padding: 0.6rem;
         border: 1px solid #dee2e6;
-        border-radius: 4px;
+        border-radius: 6px;
+        box-sizing: border-box;
+        font-family: inherit;
       }
-      .error-message {
-        color: red;
-        font-size: 0.8rem;
-        margin-top: 0.25rem;
+      .banner-ambar {
+        background: #fff7e0;
+        border: 1px solid #f3d68a;
+        color: #7a5200;
+        padding: 0.8rem;
+        border-radius: 6px;
+        margin-bottom: 1rem;
+        font-size: 0.85rem;
       }
-      .acciones {
-        display: flex;
-        gap: 0.5rem;
+      .hidden {
+        display: none !important;
       }
-      .btn-icon {
-        background: none;
-        border: 1px solid #dee2e6;
-        border-radius: 4px;
-        cursor: pointer;
-        padding: 0.2rem 0.5rem;
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #111111;
+        color: #ffffff;
+        padding: 0.8rem 1.5rem;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s;
+        z-index: 2000;
       }
-      .texto-vacio {
-        text-align: center;
-        color: gray;
-        padding: 2rem;
+      .toast.mostrar {
+        opacity: 1;
       }
     </style>
   </head>
   <body>
-    <main class="contenido contenido-fijo" style="padding: 2rem">
-      <!-- Panel de Alertas Oculto por defecto -->
+    <header
+      style="
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        padding: 1rem 2rem;
+        border-bottom: 1px solid #ccc;
+        background: white;
+      "
+    >
+      <div
+        id="btn-campana"
+        style="
+          position: relative;
+          cursor: pointer;
+          margin-right: 1.5rem;
+          display: flex;
+        "
+      >
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#111"
+          stroke-width="2"
+        >
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <span
+          id="campana-contador"
+          style="
+            background: #111;
+            color: white;
+            border-radius: 50%;
+            padding: 2px 6px;
+            font-size: 0.7rem;
+            position: absolute;
+            top: -5px;
+            right: -10px;
+            display: none;
+          "
+          >0</span
+        >
+      </div>
+      <button
+        class="btn btn-outline"
+        style="
+          border-color: #111;
+          color: #111;
+          padding: 0.5rem 1rem;
+          background: transparent;
+          border-radius: 6px;
+          cursor: pointer;
+        "
+      >
+        Cerrar Sesión
+      </button>
       <div
         id="panel-alertas"
         class="hidden"
@@ -98,59 +267,39 @@
           background: white;
           border: 1px solid #ccc;
           padding: 1rem;
-          width: 300px;
+          width: 320px;
           z-index: 100;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+          border-radius: 8px;
         "
-      >
-        <!-- Se llena con JS -->
-      </div>
+      ></div>
+    </header>
 
-      <!-- Encabezado de la página -->
-      <div
-        style="
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1rem;
-        "
-      >
-        <!-- A la izquierda -->
+    <main class="productos-pagina">
+      <div class="productos-cabecera">
         <h1>Productos</h1>
-
-        <!-- A la derecha -->
         <div style="display: flex; gap: 1rem">
-          <!-- Botón Historial -->
           <a
             href="historial-reposiciones.html"
-            class="btn btn-outline"
-            style="display: flex; align-items: center; gap: 0.5rem"
+            style="
+              text-decoration: none;
+              padding: 0.6rem 1rem;
+              border: 1px solid #dee2e6;
+              border-radius: 6px;
+              color: #212529;
+            "
+            >Historial de Reposición</a
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path
-                d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"
-              ></path>
-              <path d="M3 3v5h5"></path>
-              <path d="M12 7v5l4 2"></path>
-            </svg>
-            Historial de reposición
-          </a>
-
-          <!-- Botón Nuevo Producto -->
           <button
             class="btn btn-primario"
-            onclick="
-              document
-                .getElementById('modal-producto')
-                .classList.remove('hidden')
+            id="btn-nuevo-producto"
+            style="
+              padding: 0.6rem 1rem;
+              background: #0056b3;
+              color: white;
+              border: none;
+              border-radius: 6px;
+              cursor: pointer;
             "
           >
             + Nuevo producto
@@ -158,41 +307,48 @@
         </div>
       </div>
 
-      <div style="display: flex; gap: 1rem; margin-bottom: 1rem">
-        <input
-          type="text"
-          placeholder="Buscar por nombre..."
-          class="form-control"
-          style="max-width: 300px"
-        />
-        <button class="btn btn-outline">Stock bajo</button>
-        <button class="btn btn-outline">Ver ocultos</button>
+      <div class="productos-barra">
+        <input type="text" id="buscador" placeholder="Buscar por nombre..." />
+        <button id="btn-stock-bajo" class="chip-filtro">Stock bajo</button>
+        <button id="btn-ver-ocultos" class="chip-filtro">Ver ocultos</button>
       </div>
 
-      <table style="width: 100%; border-collapse: collapse; text-align: left">
-        <thead>
-          <tr style="border-bottom: 2px solid #eee">
-            <th>NOMBRE</th>
-            <th>CATEGORÍA</th>
-            <th>COSTO</th>
-            <th>PRECIO</th>
-            <th>STOCK</th>
-            <th>MÍNIMO</th>
-            <th>PROVEEDOR</th>
-            <th>CREADO POR</th>
-            <th>ACCIONES</th>
-          </tr>
-        </thead>
-        <tbody id="productos-tbody">
-          <!-- Se llena con JS -->
-        </tbody>
-      </table>
+      <div class="productos-tarjeta">
+        <div class="tabla-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>NOMBRE</th>
+                <th>CATEGORÍA</th>
+                <th>COSTO</th>
+                <th>PRECIO</th>
+                <th>STOCK</th>
+                <th>MÍNIMO</th>
+                <th>PROVEEDOR</th>
+                <th>ACCIONES</th>
+              </tr>
+            </thead>
+            <tbody id="productos-tbody"></tbody>
+          </table>
+        </div>
+      </div>
     </main>
 
     <!-- MODAL: NUEVO/EDITAR PRODUCTO -->
     <div id="modal-producto" class="modal-backdrop hidden">
-      <div class="modal-content">
-        <h2>Nuevo / Editar Producto</h2>
+      <div class="modal-caja">
+        <div class="modal-header">
+          <h2>Nuevo / Editar Producto</h2>
+          <button
+            type="button"
+            class="btn-icono"
+            onclick="
+              document.getElementById('modal-producto').classList.add('hidden')
+            "
+          >
+            ✕
+          </button>
+        </div>
         <form id="form-producto">
           <input type="hidden" id="prod-id" />
 
@@ -203,69 +359,94 @@
           <div class="form-group">
             <label>Nombre *</label>
             <input type="text" id="nombre" class="form-control" required />
-            <div id="error-nombre" class="error-message hidden"></div>
-          </div>
-          <div class="form-group">
-            <label>Costo unitario *</label>
-            <input
-              type="number"
-              id="costo_unitario"
-              class="form-control"
-              required
-              min="0.01"
-              step="0.01"
-            />
-            <div id="error-costo_unitario" class="error-message hidden"></div>
-          </div>
-          <div class="form-group">
-            <label>Precio de venta *</label>
-            <input
-              type="number"
-              id="precio_venta"
-              class="form-control"
-              required
-              min="0.01"
-              step="0.01"
-            />
-            <div id="error-precio_venta" class="error-message hidden"></div>
-          </div>
-          <div class="form-group">
-            <label>Stock actual *</label>
-            <input
-              type="number"
-              id="stock_actual"
-              class="form-control"
-              required
-              min="0"
-            />
-          </div>
-          <div class="form-group">
-            <label>Stock mínimo de alerta *</label>
-            <input
-              type="number"
-              id="stock_minimo"
-              class="form-control"
-              required
-              min="0"
-            />
-          </div>
-          <div class="form-group">
-            <label>Categoría (opcional)</label>
-            <select id="categoria" class="form-control">
-              <option value="">Sin categorías</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Proveedor (opcional)</label>
-            <input
-              type="text"
-              id="proveedor"
-              class="form-control"
-              placeholder="Nombre o razón social"
-            />
           </div>
 
-          <div style="text-align: right; margin-top: 1rem">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem">
+            <div class="form-group">
+              <label>Precio Compra *</label>
+              <input
+                type="number"
+                id="precio_compra"
+                class="form-control"
+                required
+                min="0.01"
+                step="0.01"
+              />
+            </div>
+            <div class="form-group">
+              <label>Rentabilidad (%) (Opcional)</label>
+              <input
+                type="number"
+                id="rentabilidad"
+                class="form-control"
+                min="0"
+                step="0.1"
+                value="0"
+              />
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem">
+            <div class="form-group">
+              <label>IVA (%) *</label>
+              <select id="iva_alicuota" class="form-control">
+                <option value="21">21%</option>
+                <option value="10.5">10.5%</option>
+                <option value="27">27%</option>
+                <option value="0">0%</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Precio de Venta *</label>
+              <input
+                type="number"
+                id="precio_venta"
+                class="form-control"
+                required
+                min="0.01"
+                step="0.01"
+              />
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem">
+            <div class="form-group">
+              <label>Stock Actual *</label>
+              <input
+                type="number"
+                id="cantidad"
+                class="form-control"
+                required
+                min="0"
+              />
+            </div>
+            <div class="form-group">
+              <label>Stock Mínimo *</label>
+              <input
+                type="number"
+                id="stock_minimo"
+                class="form-control"
+                required
+                min="0"
+              />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Categoría (opcional)</label>
+            <select id="categoria_id" class="form-control">
+              <option value="">Sin categorías creadas</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Proveedor *</label>
+            <select id="proveedor_id" class="form-control" required>
+              <option value="">Seleccione proveedor...</option>
+            </select>
+          </div>
+
+          <div style="text-align: right; margin-top: 1.5rem">
             <button
               type="button"
               class="btn btn-outline"
@@ -277,7 +458,19 @@
             >
               Cancelar
             </button>
-            <button type="submit" class="btn btn-primario">Guardar</button>
+            <button
+              type="submit"
+              class="btn btn-primario"
+              style="
+                background: #0056b3;
+                color: white;
+                padding: 0.5rem 1rem;
+                border: none;
+                border-radius: 6px;
+              "
+            >
+              Guardar
+            </button>
           </div>
         </form>
       </div>
@@ -285,11 +478,21 @@
 
     <!-- MODAL: REPOSICIÓN -->
     <div id="modal-reposicion" class="modal-backdrop hidden">
-      <div class="modal-content">
-        <h2>Reposición de Stock</h2>
-        <p style="color: #7a5200; font-size: 0.9rem; margin-bottom: 1rem">
-          Aviso: Esta acción actualizará el costo del producto.
-        </p>
+      <div class="modal-caja">
+        <div class="modal-header">
+          <h2>Reposición de Stock</h2>
+          <button
+            type="button"
+            class="btn-icono"
+            onclick="
+              document
+                .getElementById('modal-reposicion')
+                .classList.add('hidden')
+            "
+          >
+            ✕
+          </button>
+        </div>
         <form id="form-reposicion">
           <input type="hidden" id="repo-prod-id" />
           <input type="hidden" id="repo-ultimo-costo" />
@@ -308,7 +511,7 @@
             <label>Monto total *</label>
             <input
               type="number"
-              id="repo-monto"
+              id="monto_total"
               class="form-control"
               required
               min="0.01"
@@ -317,14 +520,21 @@
           </div>
           <div class="form-group">
             <label>Fecha de adquisición *</label>
-            <input type="date" id="repo-fecha" class="form-control" required />
+            <input
+              type="date"
+              id="fecha_adquisicion"
+              class="form-control"
+              required
+            />
           </div>
           <div class="form-group">
-            <label>Proveedor (opcional)</label>
-            <input type="text" id="repo-proveedor" class="form-control" />
+            <label>Proveedor *</label>
+            <select id="proveedor_id_repo" class="form-control" required>
+              <option value="">Seleccione proveedor...</option>
+            </select>
           </div>
 
-          <div style="text-align: right; margin-top: 1rem">
+          <div style="text-align: right; margin-top: 1.5rem">
             <button
               type="button"
               class="btn btn-outline"
@@ -336,17 +546,96 @@
             >
               Cancelar
             </button>
-            <button type="submit" class="btn btn-primario">Confirmar</button>
+            <button
+              type="submit"
+              class="btn btn-primario"
+              style="
+                background: #0056b3;
+                color: white;
+                padding: 0.5rem 1rem;
+                border: none;
+                border-radius: 6px;
+              "
+            >
+              Confirmar
+            </button>
           </div>
         </form>
       </div>
     </div>
 
+    <!-- MODAL: BAJA -->
+    <div id="modal-baja" class="modal-backdrop hidden">
+      <div class="modal-caja">
+        <div class="modal-header">
+          <h2>Registrar Baja</h2>
+          <button
+            type="button"
+            class="btn-icono"
+            onclick="
+              document.getElementById('modal-baja').classList.add('hidden')
+            "
+          >
+            ✕
+          </button>
+        </div>
+        <form id="form-baja">
+          <input type="hidden" id="baja-prod-id" />
+          <div class="form-group">
+            <label>Cantidad a dar de baja *</label>
+            <input
+              type="number"
+              id="baja-cantidad"
+              class="form-control"
+              required
+              min="1"
+            />
+          </div>
+          <div class="form-group">
+            <label>Motivo *</label>
+            <select id="baja-motivo" class="form-control" required>
+              <option value="roto">Roto</option>
+              <option value="perdido">Perdido</option>
+              <option value="no_utilizado">No utilizado</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Fecha *</label>
+            <input type="date" id="baja-fecha" class="form-control" required />
+          </div>
+          <div style="text-align: right; margin-top: 1.5rem">
+            <button
+              type="button"
+              class="btn btn-outline"
+              onclick="
+                document.getElementById('modal-baja').classList.add('hidden')
+              "
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              class="btn btn-primario"
+              style="
+                background: #0056b3;
+                color: white;
+                padding: 0.5rem 1rem;
+                border: none;
+                border-radius: 6px;
+              "
+            >
+              Registrar Baja
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
     <script src="js/config.js"></script>
-    <script src="js/api.js"></script>
+    <!-- api.js y productosUtils.js se cargan solos como módulos vía los import -->
     <script type="module" src="js/productos.js"></script>
-    <script src="js/roles.js"></script>
-    <script type="module" src="js/layout.js"></script>
     <script type="module">
       import { iniciarNotificaciones } from "./js/notificaciones.js";
       iniciarNotificaciones();

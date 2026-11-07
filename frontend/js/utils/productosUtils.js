@@ -1,32 +1,32 @@
 // js/utils/productosUtils.js
 
-/**
- * Calcula el monto total de reposición.
- */
-export const calcularMontoReposicion = (cantidad, ultimoCosto) => {
-  if (!cantidad || !ultimoCosto || cantidad <= 0 || ultimoCosto <= 0) return 0;
-  return cantidad * ultimoCosto;
+export const calcularPrecioVenta = (
+  precioCompra,
+  rentabilidad = 0,
+  iva = 21,
+) => {
+  if (!precioCompra || precioCompra <= 0) return 0;
+  const neto = precioCompra * (1 + rentabilidad / 100);
+  const conIva = neto * (1 + iva / 100);
+  return Number(conIva.toFixed(2));
 };
 
-/**
- * Evalúa si el precio es menor al costo para mostrar el banner.
- */
-export const precioMenorAlCosto = (precio, costo) => {
-  if (!precio || !costo) return false;
-  return parseFloat(precio) < parseFloat(costo);
+export const precioMenorAlCosto = (precioVenta, precioCompra) => {
+  if (!precioVenta || !precioCompra) return false;
+  return parseFloat(precioVenta) < parseFloat(precioCompra);
 };
 
-/**
- * Genera el texto de la alerta de stock.
- */
-export const generarTextoAlerta = (nombreProducto, stockActual) => {
-  if (stockActual === 0) return `Sin stock: ${nombreProducto}`;
-  return `Quedan ${stockActual} unidades de ${nombreProducto}`;
+export const calcularMontoReposicion = (cantidad, ultimoPrecioCompra) => {
+  if (
+    !cantidad ||
+    !ultimoPrecioCompra ||
+    cantidad <= 0 ||
+    ultimoPrecioCompra <= 0
+  )
+    return 0;
+  return Number((cantidad * ultimoPrecioCompra).toFixed(2));
 };
 
-/**
- * Formatea un número como moneda argentina.
- */
 export const formatearMoneda = (valor) => {
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
