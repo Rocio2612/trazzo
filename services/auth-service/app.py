@@ -56,21 +56,19 @@ SECRET_KEY = os.getenv("JWT_SECRET", "clave_por_defecto")
 
 def get_db_connection():
     """
-    Abre una conexión TCP física contra PostgreSQL usando las credenciales del .env.
-    Se define search_path=auth para interactuar directamente con el esquema del microservicio.
+    Abre una conexión TCP física contra PostgreSQL.
+    Configura search_path a nivel de protocolo (options) para que todas las consultas
+    encuentren el esquema 'auth' sin fallar.
     """
     conn = psycopg2.connect(
-        host=os.getenv("DB_HOST"), 
-        database=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
+        host=os.getenv("DB_HOST", "127.0.0.1"), 
+        database=os.getenv("DB_NAME", "trazzo"),
+        user=os.getenv("DB_USER", "postgres"),
         password=os.getenv("DB_PASSWORD"),
-        port=os.getenv("DB_PORT")
-    ) #Abre la conexion y la guarda en la variable conn
-
-    # Garantizamos que las consultas busquen en el esquema auth sin prefijar tabla por tabla
-    with conn.cursor() as cur: # Abre un cursor temporal
-        cur.execute("SET search_path TO auth, public;") #Configura el esquema de trabajo
-    return conn #Entrega la conexion
+        port=os.getenv("DB_PORT", "5432"),
+        options="-c search_path=auth,public"
+    )
+    return conn
 
 def token_esta_bloqueado(jti):
     """
@@ -102,8 +100,16 @@ def registro():
     usuario = datos.get('usuario') or datos.get('usuario_admin')
     password = datos.get('password') or datos.get('contrasena') or datos.get('clave')
     correo = datos.get('correo') or datos.get('email')
-    nombre_comercial = datos.get('nombre_comercial') or datos.get('nombre_negocio') or 'Sin nombre'
+
+    # Si el front no manda nombre, usamos id_negocio para cumplir el NOT NULL
+    nombre_comercial = datos.get('nombre_negocio') or datos.get('nombre_comercial') or id_negocio
     rubro = datos.get('rubro') or 'General'
+    
+    # Si el front aún no manda categoría, por defecto es MONOTRIBUTISTA
+    categoria_impositiva = (datos.get('categoria_impositiva') or 'MONOTRIBUTISTA').strip().upper()
+
+    if categoria_impositiva not in ['RESPONSABLE_INSCRIPTO', 'MONOTRIBUTISTA', 'EXENTO']:
+        categoria_impositiva = 'MONOTRIBUTISTA'
 
     if not id_negocio or not usuario or not password or not correo:
         return jsonify({"status": "error", "mensaje": "Faltan datos obligatorios"}), 400
@@ -113,18 +119,21 @@ def registro():
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
-        # Inserta el negocio
+        # Inserta el negocio con esquema explícito
         cur.execute(
-            "INSERT INTO emprendimientos (identificador, nombre_comercial, rubro) VALUES (%s, %s, %s) RETURNING id",
-            (id_negocio, nombre_comercial, rubro)
+            """INSERT INTO auth.emprendimientos (identificador, nombre_comercial, rubro, categoria_impositiva) 
+               VALUES (%s, %s, %s, %s) RETURNING id, categoria_impositiva""",
+            (id_negocio.lower().strip(), nombre_comercial.strip(), rubro.strip(), categoria_impositiva)
         )
-        emprendimiento_id = cur.fetchone()['id']
+        emp = cur.fetchone()
+        emprendimiento_id = emp['id']
+        emp_categoria = emp['categoria_impositiva']
 
-        # Inserta el usuario admin inicial
+        # Inserta el usuario admin con esquema explícito
         cur.execute(
-            """INSERT INTO usuarios (emprendimiento_id, usuario, correo, password_hash, rol) 
+            """INSERT INTO auth.usuarios (emprendimiento_id, usuario, correo, password_hash, rol) 
                VALUES (%s, %s, %s, %s, 'PROPIETARIO') RETURNING id""",
-            (emprendimiento_id, usuario, correo, password_hash)
+            (emprendimiento_id, usuario.lower().strip(), correo.lower().strip(), password_hash)
         )
         usuario_id = cur.fetchone()['id']
         conn.commit()
@@ -138,8 +147,10 @@ def registro():
         #token rapido 
         payload_access = {
             "usuario_id": usuario_id,
-            "usuario": usuario,
+            "usuario": usuario.lower().strip(),
             "negocio_id": emprendimiento_id,
+            #agregado
+            "categoria_impositiva": emp_categoria,
             "rol": "PROPIETARIO",
             "jti": access_jti,
             "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=15)
@@ -187,9 +198,9 @@ def login():
 
     try:
         cur.execute(
-            """SELECT u.*, e.identificador AS negocio 
+            """SELECT u.*, e.identificador AS negocio, e.categoria_impositiva 
                FROM usuarios u JOIN emprendimientos e ON u.emprendimiento_id = e.id 
-               WHERE e.identificador = %s AND u.usuario = %s AND u.activo = TRUE""",
+               WHERE lower(e.identificador) = %s AND lower(u.usuario) = %s AND u.activo = TRUE""",
             (id_negocio, usuario)
         )
         usuario_bd = cur.fetchone()
@@ -202,6 +213,8 @@ def login():
                 "usuario_id": usuario_bd['id'],
                 "usuario": usuario_bd['usuario'],
                 "negocio_id": usuario_bd['emprendimiento_id'],
+                #agregado
+                "categoria_impositiva": usuario_bd['categoria_impositiva'],
                 "rol": usuario_bd['rol'],
                 "jti": access_jti,
                 "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=15)
@@ -410,8 +423,9 @@ def refresh():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(
-            """SELECT u.id, u.usuario, u.rol, u.activo, u.emprendimiento_id 
+            """SELECT u.id, u.usuario, u.rol, u.activo, u.emprendimiento_id, e.categoria_impositiva 
                FROM usuarios u 
+               JOIN emprendimientos e ON u.emprendimiento_id = e.id 
                WHERE u.id = %s""",
             (usuario_id,)
         )
@@ -431,6 +445,8 @@ def refresh():
             "usuario_id": usuario['id'],
             "usuario": usuario['usuario'],
             "negocio_id": usuario['emprendimiento_id'],
+            #agregado
+            "categoria_impositiva": usuario['categoria_impositiva'],
             "rol": usuario['rol'],
             "jti": nuevo_access_jti,
             "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=15)
@@ -578,10 +594,10 @@ def restablecer_password():
         conn.close()
 
 #ACTUALIZAR DATOS DEL NEGOCIO (PUT /api/negocio)
-@app.route('/api/negocio', methods=['PUT'])
+@app.route('/api/auth/negocio', methods=['PUT'])
 def actualizar_negocio():
     """
-    Permite al PROPIETARIO o ADMIN actualizar el nombre comercial y/o rubro de su negocio.
+    Permite al PROPIETARIO o ADMIN actualizar el nombre comercial, rubro de su negocio o/y categoria impositiva del negocio.
     Aplica Control de Acceso por Roles (RBAC) rechazando a roles no autorizados (CAJERO) con 403.
     Garantiza aislamiento multi-tenant extrayendo el negocio_id estrictamente del JWT.
     """
@@ -618,12 +634,22 @@ def actualizar_negocio():
         datos = request.get_json(silent=True) or {}
         nombre_comercial = datos.get('nombre_comercial') or datos.get('nombre')
         rubro = datos.get('rubro')
+        categoria_impositiva = datos.get('categoria_impositiva')
 
-        if not nombre_comercial and not rubro:
+        # Validación de al menos un campo presente
+        if not nombre_comercial and not rubro and not categoria_impositiva:
             return jsonify({
                 "status": "error", 
-                "mensaje": "Debe proporcionar al menos un campo para actualizar (nombre_comercial o rubro)"
+                "mensaje": "Debe proporcionar al menos un campo para actualizar (nombre_comercial, rubro o categoria_impositiva)"
             }), 400
+
+        if categoria_impositiva:
+            categoria_impositiva = categoria_impositiva.strip().upper()
+            if categoria_impositiva not in ['RESPONSABLE_INSCRIPTO', 'MONOTRIBUTISTA', 'EXENTO']:
+                return jsonify({
+                    "status": "error",
+                    "mensaje": "Categoría impositiva inválida. Debe ser RESPONSABLE_INSCRIPTO, MONOTRIBUTISTA o EXENTO"
+                }), 400
 
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -633,10 +659,11 @@ def actualizar_negocio():
             cur.execute(
                 """UPDATE emprendimientos 
                    SET nombre_comercial = COALESCE(%s, nombre_comercial),
-                       rubro = COALESCE(%s, rubro)
+                       rubro = COALESCE(%s, rubro),
+                       categoria_impositiva = COALESCE(%s, categoria_impositiva)
                    WHERE id = %s
-                   RETURNING id, identificador, nombre_comercial, rubro""",
-                (nombre_comercial, rubro, negocio_id)
+                   RETURNING id, identificador, nombre_comercial, rubro, categoria_impositiva""",
+                (nombre_comercial, rubro, categoria_impositiva, negocio_id)
             )
             negocio_actualizado = cur.fetchone()
 
@@ -651,7 +678,8 @@ def actualizar_negocio():
                 "negocio": {
                     "identificador": negocio_actualizado['identificador'],
                     "nombre_comercial": negocio_actualizado['nombre_comercial'],
-                    "rubro": negocio_actualizado['rubro']
+                    "rubro": negocio_actualizado['rubro'],
+                    "categoria_impositiva": negocio_actualizado['categoria_impositiva']
                 }
             }), 200
 

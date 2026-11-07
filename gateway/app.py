@@ -17,12 +17,15 @@ ORIGENES_PERMITIDOS = [
 ]
 CORS(app, resources={r"/api/*": {"origins": ORIGENES_PERMITIDOS}}, supports_credentials=True)
 
+#Temporal y cambiar dependiendo del SM
 SERVICES = {
     "auth": os.getenv("AUTH_URL", "http://127.0.0.1:5001"),
-    "productos": os.getenv("PRODUCTOS_URL", "http://127.0.0.1:5002")
+    "productos": os.getenv("PRODUCTOS_URL", "http://127.0.0.1:5002"),
+    "finanzas": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
+    "notificaciones": os.getenv("NOTIFICACIONES_URL", "http://127.0.0.1:5006")
 }
-
-@app.route('/api/<service>/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])
+#Agregado PATCH Y OPTIONS
+@app.route('/api/<service>/<path:path>', methods=['GET', 'POST', 'PUT' , 'PATCH' , 'DELETE', 'OPTIONS'])
 def proxy(service, path):
     if service not in SERVICES:
         return jsonify({"error": "Servicio no encontrado"}), 404
