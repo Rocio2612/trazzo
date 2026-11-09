@@ -119,7 +119,7 @@ test.describe("Proveedores", () => {
     await expect(filas(page)).toHaveCount(2);
     const conMovimientos = page.getByTestId("proveedores-eliminar-5");
     await expect(conMovimientos).toBeDisabled();
-    await expect(conMovimientos).toHaveAttribute("title", /reposiciones o insumos asociados/);
+    await expect(conMovimientos).toHaveAttribute("title", /productos o reposiciones asociados/);
     await expect(page.getByTestId("proveedores-eliminar-4")).toBeEnabled();
   });
 
@@ -234,9 +234,9 @@ test.describe("Proveedores: estructura de la pantalla", () => {
     await expect(celda(page, 6, COL.descripcion).locator(".prov-descripcion")).toHaveAttribute("title", larga);
   });
 
-  test("con un nombre de 100 letras seguidas y una descripción de 500 caracteres no aparece scroll horizontal", async ({ page }) => {
+  test("con un nombre de 150 letras seguidas y una descripción larguísima no aparece scroll horizontal", async ({ page }) => {
     await abrir(page);
-    await crearProveedor(page, { nombre: "N".repeat(100), descripcion: "palabra ".repeat(62) });
+    await crearProveedor(page, { nombre: "N".repeat(150), descripcion: "palabra ".repeat(800) });
     const desborda = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
     expect(desborda).toBe(false);
   });
@@ -373,10 +373,10 @@ test.describe("Proveedores: formulario y validaciones", () => {
     });
   }
 
-  test("los campos tienen su largo máximo: nombre 100, número 13, teléfono 25 y descripción 500", async ({ page }) => {
+  test("los campos tienen el largo de la base: nombre 150, número 13 y teléfono 50", async ({ page }) => {
     await abrir(page);
     await page.getByTestId("proveedores-nuevo").click();
-    for (const [id, max] of [["nombre", 100], ["numero_documento", 13], ["telefono", 25], ["descripcion_compra", 500]]) {
+    for (const [id, max] of [["nombre", 150], ["numero_documento", 13], ["telefono", 50]]) {
       await expect(page.locator(`#${id}`)).toHaveAttribute("maxlength", String(max));
       await page.locator(`#${id}`).click();
       await page.keyboard.insertText("1".repeat(max + 50));
@@ -753,7 +753,7 @@ test.describe("Proveedores: ocultar, restaurar y eliminar", () => {
     await page.getByTestId("proveedores-ver-ocultos").click();
     const boton = page.getByTestId("proveedores-eliminar-5");
     await expect(boton).toBeDisabled();
-    await expect(boton).toHaveAttribute("title", "Eliminar: Tiene reposiciones o insumos asociados: solo se puede ocultar.");
+    await expect(boton).toHaveAttribute("title", "Eliminar: Tiene productos o reposiciones asociados: solo se puede ocultar.");
     await boton.click({ force: true });
     await expect(modal(page)).toHaveCount(0);
     await expect(filas(page)).toHaveCount(2);
@@ -764,7 +764,7 @@ test.describe("Proveedores: ocultar, restaurar y eliminar", () => {
     await page.getByTestId("proveedores-ver-ocultos").click();
     await page.getByTestId("proveedores-eliminar-4").click();
     await expect(modal(page)).toContainText('¿Eliminar a "Cooperativa La Esperanza" definitivamente?');
-    await expect(modal(page)).toContainText("Se borra del sistema. No tiene reposiciones ni insumos asociados.");
+    await expect(modal(page)).toContainText("Se borra del sistema. No tiene productos ni reposiciones asociados.");
     await expect(modal(page)).toContainText("Esta acción no se puede deshacer.");
   });
 
@@ -1096,5 +1096,68 @@ test.describe("Proveedores: sin «Creado por»", () => {
     const ultima = page.getByTestId("proveedores-fila-1").locator("td").last();
     await expect(ultima.getByRole("button", { name: "Editar" })).toBeVisible();
     await expect(ultima.getByRole("button", { name: "Ocultar" })).toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Largos de la base: nombre VARCHAR(150), teléfono VARCHAR(50) y descripción de compra TEXT (sin máximo).
+// ---------------------------------------------------------------------------
+
+test.describe("Proveedores: largos de la base", () => {
+  test("la descripción de compra no tiene largo máximo: el campo deja escribir lo que haga falta", async ({ page }) => {
+    await abrir(page);
+    await page.getByTestId("proveedores-nuevo").click();
+    await expect(page.locator("#descripcion_compra")).not.toHaveAttribute("maxlength", /.*/);
+    await page.locator("#descripcion_compra").click();
+    await page.keyboard.insertText("d".repeat(3000));
+    expect((await page.locator("#descripcion_compra").inputValue()).length).toBe(3000);
+  });
+
+  test("una descripción larga se guarda completa, se corta con «…» en la tabla y se ve entera al pasar el mouse y al editar", async ({ page }) => {
+    await abrir(page);
+    const larga = "Distribuidor de envases, cajas, bolsas y etiquetas. ".repeat(40).trim();
+    await crearProveedor(page, { descripcion: larga });
+    await expect(page.locator("#error-descripcion_compra")).toHaveCount(0);
+    await expect(celda(page, 6, COL.descripcion).locator(".prov-descripcion")).toHaveAttribute("title", larga);
+    await page.getByTestId("proveedores-editar-6").click();
+    await expect(page.locator("#descripcion_compra")).toHaveValue(larga);
+  });
+
+  test("el nombre admite hasta 150 caracteres y se guarda completo", async ({ page }) => {
+    await abrir(page);
+    const nombre = `${"Distribuidora ".repeat(11)}Norte`.slice(0, 150);
+    expect(nombre).toHaveLength(150);
+    await crearProveedor(page, { nombre });
+    await expect(celda(page, 6, COL.nombre)).toHaveText(nombre);
+  });
+
+  test("el campo de nombre no deja pasar de 150, y el de teléfono no deja pasar de 50", async ({ page }) => {
+    await abrir(page);
+    await page.getByTestId("proveedores-nuevo").click();
+    await expect(page.locator("#nombre")).toHaveAttribute("maxlength", "150");
+    await expect(page.locator("#telefono")).toHaveAttribute("maxlength", "50");
+    await page.locator("#nombre").click();
+    await page.keyboard.insertText("a".repeat(200));
+    expect((await page.locator("#nombre").inputValue()).length).toBe(150);
+  });
+
+  test("un teléfono largo (hasta 50 caracteres) con pocos números se acepta", async ({ page }) => {
+    await abrir(page);
+    const telefono = `11 4444 5555${" ".repeat(20)}int 23`.replace("int 23", "23");
+    expect(telefono.length).toBeLessThanOrEqual(50);
+    await crearProveedor(page, { telefono });
+    await expect(celda(page, 6, COL.telefono)).toContainText("11 4444 5555");
+  });
+
+  test("el teléfono sigue pidiendo entre 6 y 15 números aunque el campo sea más largo", async ({ page }) => {
+    await abrir(page);
+    await intentarGuardar(page, { telefono: "1".repeat(20) });
+    await expect(errorDe(page, "telefono")).toHaveText("El teléfono debe tener entre 6 y 15 números (puede llevar +, espacios, guiones y paréntesis).");
+  });
+
+  test("sin descripción sigue siendo válido, y con una descripción de solo espacios se guarda vacía", async ({ page }) => {
+    await abrir(page);
+    await crearProveedor(page, { descripcion: "     " });
+    await expect(celda(page, 6, COL.descripcion)).toHaveText("—");
   });
 });

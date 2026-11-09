@@ -53,3 +53,34 @@ export const formatearDinero = (valor) => {
   const numero = aNumero(valor);
   return Number.isFinite(numero) ? FORMATO_DINERO.format(numero) : "";
 };
+
+// --- Fechas con hora (TIMESTAMPTZ de la base) ---------------------------------------------------
+
+const dosDigitos = (numero) => String(numero).padStart(2, "0");
+
+// Convierte lo que devuelve la base en una fecha local. "2026-03-05T11:30:00Z" es un instante, y se ve en la
+// hora de quien mira. Un texto solo con día ("2026-03-05", sin hora) es una fecha de calendario: se toma como
+// ese día a las 00:00 locales, para que la zona horaria no lo corra un día. Devuelve null si no es una fecha.
+const aFechaLocal = (valor) => {
+  if (valor === null || valor === undefined || String(valor).trim() === "") return null;
+  const soloDia = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(valor).trim());
+  if (soloDia) {
+    const [anio, mes, dia] = [Number(soloDia[1]), Number(soloDia[2]), Number(soloDia[3])];
+    const fecha = new Date(anio, mes - 1, dia);
+    // new Date corrige solo los días que no existen (el 45 de un mes se vuelve otro mes): se rechazan.
+    return fecha.getFullYear() === anio && fecha.getMonth() === mes - 1 && fecha.getDate() === dia ? fecha : null;
+  }
+  const fecha = new Date(valor);
+  return Number.isNaN(fecha.getTime()) ? null : fecha;
+};
+
+// "2026-03-05T11:30:00Z" -> "05-03-2026 08:30" (en Argentina). Devuelve "" si no es una fecha válida.
+export const fechaHoraParaMostrar = (valor) => {
+  const fecha = aFechaLocal(valor);
+  if (!fecha) return "";
+  const dia = `${dosDigitos(fecha.getDate())}-${dosDigitos(fecha.getMonth() + 1)}-${fecha.getFullYear()}`;
+  return `${dia} ${dosDigitos(fecha.getHours())}:${dosDigitos(fecha.getMinutes())}`;
+};
+
+// Solo el día: "2026-03-05T11:30:00Z" -> "05-03-2026". Devuelve "" si no es una fecha válida.
+export const fechaDeMarcaParaMostrar = (valor) => fechaHoraParaMostrar(valor).slice(0, 10);

@@ -81,17 +81,26 @@ export const formatearDocumento = (tipo, numero) => {
 
 // --- Ficha -------------------------------------------------------------------------
 
+// Largos de la base (productos.proveedores): nombre VARCHAR(150) y teléfono VARCHAR(50). La descripción de
+// compra es TEXT: no tiene largo máximo.
+export const NOMBRE_PROVEEDOR_MAXIMO = 150;
+export const TELEFONO_PROVEEDOR_MAXIMO = 50;
+
 export const validarProveedor = (datos = {}) => {
   const errores = {};
 
   if (vacio(datos.nombre)) errores.nombre = "Rellene el nombre o razón social.";
-  else if (String(datos.nombre).trim().length > 100) errores.nombre = "El nombre no puede superar los 100 caracteres.";
+  else if (String(datos.nombre).trim().length > NOMBRE_PROVEEDOR_MAXIMO) {
+    errores.nombre = `El nombre no puede superar los ${NOMBRE_PROVEEDOR_MAXIMO} caracteres.`;
+  }
 
   Object.assign(errores, validarDocumento(datos.tipo_documento, datos.numero_documento));
 
   if (!vacio(datos.telefono)) {
     const t = String(datos.telefono);
-    if (/[^\d\s()+-]/.test(t) || soloDigitos(t).length < 6 || soloDigitos(t).length > 15) {
+    if (t.trim().length > TELEFONO_PROVEEDOR_MAXIMO) {
+      errores.telefono = `El teléfono no puede superar los ${TELEFONO_PROVEEDOR_MAXIMO} caracteres.`;
+    } else if (/[^\d\s()+-]/.test(t) || soloDigitos(t).length < 6 || soloDigitos(t).length > 15) {
       errores.telefono = "El teléfono debe tener entre 6 y 15 números (puede llevar +, espacios, guiones y paréntesis).";
     }
   }
@@ -106,9 +115,6 @@ export const validarProveedor = (datos = {}) => {
     errores.categoria_impositiva = "Elija la categoría impositiva.";
   }
 
-  if (String(datos.descripcion_compra ?? "").trim().length > 500) {
-    errores.descripcion_compra = "La descripción no puede superar los 500 caracteres.";
-  }
   return errores;
 };
 
@@ -153,9 +159,11 @@ export const estaOculto = (proveedor) => proveedor.activo === false;
 export const filtrarProveedores = (proveedores, { ocultos = false } = {}) =>
   proveedores.filter((p) => estaOculto(p) === ocultos);
 
-export const MOTIVO_CON_MOVIMIENTOS = "Tiene reposiciones o insumos asociados: solo se puede ocultar.";
+// En la base, productos.proveedor_id y reposiciones.proveedor_id apuntan al proveedor sin borrado en cascada:
+// cualquier producto (de reventa, de uso o insumo) o reposición asociados impide eliminarlo.
+export const MOTIVO_CON_MOVIMIENTOS = "Tiene productos o reposiciones asociados: solo se puede ocultar.";
 
-// Se elimina únicamente si ya está oculto y no tiene reposiciones ni insumos asociados.
+// Se elimina únicamente si ya está oculto y no tiene productos ni reposiciones asociados.
 export const puedeEliminarProveedor = (proveedor) => {
   if (!estaOculto(proveedor)) return { permitido: false, motivo: "Primero hay que ocultarlo." };
   if (proveedor.tiene_movimientos) return { permitido: false, motivo: MOTIVO_CON_MOVIMIENTOS };

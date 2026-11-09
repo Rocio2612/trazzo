@@ -119,8 +119,8 @@ describe("validarProveedor", () => {
     expect(validarProveedor({ ...valido, categoria_impositiva: "CONSUMIDOR_FINAL" }).categoria_impositiva).toBeDefined();
   });
 
-  it("limita la descripción a 500 caracteres", () => {
-    expect(validarProveedor({ ...valido, descripcion_compra: "a".repeat(501) }).descripcion_compra).toMatch(/500/);
+  it("la descripción no tiene largo máximo (es TEXT en la base)", () => {
+    expect(validarProveedor({ ...valido, descripcion_compra: "a".repeat(501) })).toEqual({});
   });
 });
 
@@ -169,7 +169,7 @@ describe("puedeEliminarProveedor", () => {
     expect(puedeEliminarProveedor({ activo: true, tiene_movimientos: false })).toEqual({ permitido: false, motivo: "Primero hay que ocultarlo." });
   });
 
-  it("oculto pero con reposiciones o insumos: solo se puede ocultar", () => {
+  it("oculto pero con productos o reposiciones: solo se puede ocultar", () => {
     expect(puedeEliminarProveedor({ activo: false, tiene_movimientos: true })).toEqual({ permitido: false, motivo: MOTIVO_CON_MOVIMIENTOS });
   });
 
@@ -195,6 +195,8 @@ import { cargarProveedores, llenarSelectProveedores } from "../../frontend/js/se
 import {
   CATEGORIAS_PROVEEDOR,
   ETIQUETA_CATEGORIA_CORTA,
+  NOMBRE_PROVEEDOR_MAXIMO,
+  TELEFONO_PROVEEDOR_MAXIMO,
   TIPOS_DOCUMENTO,
 } from "../../frontend/js/proveedores.js";
 
@@ -332,15 +334,18 @@ describe("formatearDocumento: casos límite", () => {
 });
 
 describe("validarProveedor: nombre", () => {
-  it("acepta 100 caracteres y rechaza 101", () => {
+  it("acepta hasta 150 caracteres (VARCHAR(150) en la base) y rechaza 151", () => {
+    expect(NOMBRE_PROVEEDOR_MAXIMO).toBe(150);
     expect(validarProveedor({ ...valido, nombre: "a".repeat(100) })).toEqual({});
-    expect(validarProveedor({ ...valido, nombre: "a".repeat(101) }).nombre).toBe(
-      "El nombre no puede superar los 100 caracteres.",
+    expect(validarProveedor({ ...valido, nombre: "a".repeat(101) })).toEqual({});
+    expect(validarProveedor({ ...valido, nombre: "a".repeat(150) })).toEqual({});
+    expect(validarProveedor({ ...valido, nombre: "a".repeat(151) }).nombre).toBe(
+      "El nombre no puede superar los 150 caracteres.",
     );
   });
 
   it("los espacios de los costados no cuentan para el largo", () => {
-    expect(validarProveedor({ ...valido, nombre: `  ${"a".repeat(100)}  ` })).toEqual({});
+    expect(validarProveedor({ ...valido, nombre: `  ${"a".repeat(150)}  ` })).toEqual({});
   });
 
   it.each([[""], ["   "], [null], [undefined]])("un nombre vacío (%j) pide completarlo", (nombre) => {
@@ -395,12 +400,13 @@ describe("validarProveedor: categoría impositiva, descripción y combinaciones"
     expect(validarProveedor({ ...valido, categoria_impositiva }).categoria_impositiva).toBe("Elija la categoría impositiva.");
   });
 
-  it("la descripción acepta 500 caracteres y rechaza 501, sin contar los espacios de los costados", () => {
-    expect(validarProveedor({ ...valido, descripcion_compra: "a".repeat(500) })).toEqual({});
-    expect(validarProveedor({ ...valido, descripcion_compra: ` ${"a".repeat(500)} ` })).toEqual({});
-    expect(validarProveedor({ ...valido, descripcion_compra: "a".repeat(501) }).descripcion_compra).toBe(
-      "La descripción no puede superar los 500 caracteres.",
-    );
+  it.each([[500], [501], [5000], [100000]])("la descripción acepta %i caracteres: no tiene largo máximo", (largo) => {
+    expect(validarProveedor({ ...valido, descripcion_compra: "a".repeat(largo) })).toEqual({});
+  });
+
+  it("la descripción larga viaja completa, recortada de los costados", () => {
+    const larga = "palabra ".repeat(1000).trim();
+    expect(armarPayloadProveedor({ ...valido, descripcion_compra: `  ${larga}  ` }).descripcion_compra).toBe(larga);
   });
 
   it("la descripción vacía o nula es válida", () => {
@@ -423,12 +429,10 @@ describe("validarProveedor: categoría impositiva, descripción y combinaciones"
       telefono: "x",
       correo: "x",
       categoria_impositiva: "",
-      descripcion_compra: "a".repeat(501),
     });
     expect(Object.keys(errores).sort()).toEqual([
       "categoria_impositiva",
       "correo",
-      "descripcion_compra",
       "nombre",
       "numero_documento",
       "telefono",
@@ -571,7 +575,7 @@ describe("puedeEliminarProveedor: casos límite", () => {
   });
 
   it("el motivo con movimientos es el texto compartido", () => {
-    expect(MOTIVO_CON_MOVIMIENTOS).toBe("Tiene reposiciones o insumos asociados: solo se puede ocultar.");
+    expect(MOTIVO_CON_MOVIMIENTOS).toBe("Tiene productos o reposiciones asociados: solo se puede ocultar.");
   });
 
   it("los proveedores de ejemplo cumplen la regla", () => {
@@ -993,5 +997,42 @@ describe("cargarProveedores: respeta «activo»", () => {
       ]),
     );
     expect((await cargarProveedores()).map((p) => p.nombre)).toEqual(["Activo", "Sin dato"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Largo del teléfono según la base (VARCHAR(50)).
+// ---------------------------------------------------------------------------
+
+describe("teléfono del proveedor: largo de la base", () => {
+  it("el máximo es 50", () => {
+    expect(TELEFONO_PROVEEDOR_MAXIMO).toBe(50);
+  });
+
+  it("acepta un teléfono de exactamente 50 caracteres (con pocos números y muchos espacios)", () => {
+    const de50 = `1144445555${" ".repeat(39)}1`;
+    expect(de50).toHaveLength(50);
+    expect(validarProveedor({ ...valido, telefono: de50 })).toEqual({});
+  });
+
+  it("uno de 51 caracteres se rechaza por el largo", () => {
+    const de51 = `1144445555${" ".repeat(40)}1`;
+    expect(de51).toHaveLength(51);
+    expect(validarProveedor({ ...valido, telefono: de51 }).telefono).toBe("El teléfono no puede superar los 50 caracteres.");
+  });
+
+  it("un teléfono de más de 50 caracteres se rechaza por el largo, no por los números", () => {
+    expect(validarProveedor({ ...valido, telefono: `11 ${"-".repeat(60)}` }).telefono).toBe(
+      "El teléfono no puede superar los 50 caracteres.",
+    );
+  });
+
+  it("los espacios de los costados no cuentan para el largo", () => {
+    expect(validarProveedor({ ...valido, telefono: ` ${"1".repeat(12)} ` })).toEqual({});
+  });
+
+  it("sigue exigiendo entre 6 y 15 números aunque el campo admita 50 caracteres", () => {
+    expect(validarProveedor({ ...valido, telefono: "1".repeat(16) }).telefono).toMatch(/entre 6 y 15 números/);
+    expect(validarProveedor({ ...valido, telefono: "12345" }).telefono).toMatch(/entre 6 y 15 números/);
   });
 });

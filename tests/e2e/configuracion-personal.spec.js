@@ -42,7 +42,7 @@ const registros = (page, clave) => page.evaluate((c) => window[c] || [], clave);
 const filas = (page) => page.getByTestId("personal-tabla").locator("tbody tr");
 const fila = (page, id) => page.getByTestId(`personal-fila-${id}`);
 const celda = (page, id, columna) => fila(page, id).locator("td").nth(columna);
-const COL = { nombre: 0, usuario: 1, correo: 2, rol: 3, estado: 4, acciones: 5 };
+const COL = { nombre: 0, usuario: 1, correo: 2, rol: 3, estado: 4, alta: 5, acciones: 6 };
 const toast = (page) => page.locator(".gastos-toast");
 const modal = (page) => page.getByTestId("modal");
 const guardar = (page) => page.getByTestId("modal-guardar");
@@ -75,7 +75,7 @@ test.describe("Configuración > Personal: pantalla", () => {
     await abrir(page);
     await expect(page.getByRole("heading", { name: "Configuración", level: 1 })).toBeVisible();
     await expect(page.getByRole("tab")).toHaveText(["Personal", "Categorías", "Medios de pago"]);
-    await expect(page.getByTestId("personal-tabla").locator("thead th")).toHaveText(["Nombre", "Usuario", "Correo", "Rol", "Estado", "Acciones"]);
+    await expect(page.getByTestId("personal-tabla").locator("thead th")).toHaveText(["Nombre", "Usuario", "Correo", "Rol", "Estado", "Alta", "Acciones"]);
     await expect(page.getByTestId("personal-buscador")).toHaveAttribute("placeholder", "Buscar por nombre, usuario o correo…");
     await expect(page.getByTestId("personal-nuevo")).toHaveText("Nuevo usuario");
   });
@@ -968,5 +968,139 @@ test.describe("Configuración > Personal: el correo que acepta la base", () => {
     await page.locator("#correo").press("Enter");
     await expect(errorDe(page, "correo")).toBeVisible();
     await expect(filas(page)).toHaveCount(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// En la base nombre y apellido pueden ser NULL (por ejemplo, el Propietario que se crea al registrar el negocio).
+// ---------------------------------------------------------------------------
+
+test.describe("Configuración > Personal: personas sin nombre ni apellido", () => {
+  const PROPIETARIO_SIN_NOMBRE = ['nombre: "Ana", apellido: "Pérez"', "nombre: null, apellido: null"];
+  const EMPLEADA_SIN_NOMBRE = ['nombre: "Sofía", apellido: "Díaz"', "nombre: null, apellido: null"];
+  const EMPLEADO_SIN_NOMBRE = ['nombre: "Marcos", apellido: "Ruiz"', "nombre: null, apellido: null"];
+  const SOLO_SIN_APELLIDO = ['nombre: "Luis", apellido: "Gómez"', 'nombre: "Luis", apellido: null'];
+
+  test("en la lista se muestra el usuario, y nunca «null»", async ({ page }) => {
+    await abrir(page, { reemplazos: [PROPIETARIO_SIN_NOMBRE] });
+    await expect(celda(page, 1, COL.nombre)).toContainText("propietario1");
+    await expect(celda(page, 1, COL.nombre)).toContainText("(vos)");
+    await expect(page.getByTestId("personal-tabla")).not.toContainText(/null|undefined/);
+  });
+
+  test("con solo el nombre, se muestra ese nombre", async ({ page }) => {
+    await abrir(page, { reemplazos: [SOLO_SIN_APELLIDO] });
+    await expect(celda(page, 2, COL.nombre)).toHaveText("Luis");
+    await expect(page.getByTestId("personal-tabla")).not.toContainText(/null|undefined/);
+  });
+
+  test("los avisos de habilitar, deshabilitar y eliminar usan el usuario", async ({ page }) => {
+    await abrir(page, { reemplazos: [EMPLEADA_SIN_NOMBRE, EMPLEADO_SIN_NOMBRE] });
+    await page.getByTestId("personal-deshabilitar-3").click();
+    await expect(modal(page)).toContainText("¿Deshabilitar a cajero1?");
+    await page.getByTestId("modal-confirmar").click();
+    await expect(toast(page)).toHaveText("cajero1 fue deshabilitado");
+
+    await page.getByTestId("personal-habilitar-4").click();
+    await expect(modal(page)).toContainText("¿Habilitar a cajero2? Podrá iniciar sesión con sus credenciales.");
+    await page.getByTestId("modal-confirmar").click();
+    await expect(toast(page)).toHaveText("cajero2 fue habilitado");
+
+    await page.getByTestId("personal-eliminar-3").click();
+    await expect(modal(page)).toContainText("¿Eliminar a cajero1 definitivamente?");
+    await page.getByTestId("modal-confirmar").click();
+    await expect(toast(page)).toHaveText("cajero1 fue eliminado");
+  });
+
+  test("se encuentran por su usuario y no por la palabra «null»", async ({ page }) => {
+    await abrir(page, { reemplazos: [PROPIETARIO_SIN_NOMBRE] });
+    await page.getByTestId("personal-buscador").fill("propietario");
+    await expect(fila(page, 1)).toBeVisible();
+    await page.getByTestId("personal-buscador").fill("null");
+    await expect(page.getByTestId("personal-vacio")).toHaveText("Sin resultados");
+  });
+
+  test("al editar al Propietario sin nombre, el formulario abre con los campos vacíos y pide completarlos", async ({ page }) => {
+    await abrir(page, { reemplazos: [PROPIETARIO_SIN_NOMBRE, REGISTRAR[1]] });
+    await page.getByTestId("personal-editar-1").click();
+    await expect(page.locator("#nombre")).toHaveValue("");
+    await expect(page.locator("#apellido")).toHaveValue("");
+    await guardar(page).click();
+    await expect(errorDe(page, "nombre")).toHaveText("Rellene el nombre.");
+    await expect(errorDe(page, "apellido")).toHaveText("Rellene el apellido.");
+    await llenar(page, { nombre: "Ana", apellido: "Pérez" });
+    await guardar(page).click();
+    await expect(toast(page)).toHaveText("Usuario actualizado");
+    await expect(celda(page, 1, COL.nombre)).toContainText("Ana Pérez");
+  });
+
+  test("el resto de la fila no se ve afectado: rol, estado y botones", async ({ page }) => {
+    await abrir(page, { reemplazos: [PROPIETARIO_SIN_NOMBRE] });
+    await expect(celda(page, 1, COL.rol)).toHaveText("Propietario");
+    await expect(celda(page, 1, COL.estado)).toHaveText("Habilitado");
+    await expect(page.getByTestId("personal-editar-1")).toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fecha_creacion de la base: la lista del personal muestra cuándo se dio de alta cada persona.
+// ---------------------------------------------------------------------------
+
+test.describe("Configuración > Personal: fecha de alta", () => {
+  test.use({ timezoneId: "America/Argentina/Buenos_Aires" });
+
+  test("cada fila muestra el día de alta de la persona", async ({ page }) => {
+    await abrir(page);
+    await expect(celda(page, 1, COL.alta)).toHaveText("15-01-2026");
+    await expect(celda(page, 2, COL.alta)).toHaveText("03-02-2026");
+    await expect(celda(page, 3, COL.alta)).toHaveText("20-02-2026");
+    await expect(celda(page, 4, COL.alta)).toHaveText("10-03-2026");
+  });
+
+  test("al pasar el mouse se ve también la hora", async ({ page }) => {
+    await abrir(page);
+    await expect(celda(page, 1, COL.alta).locator("span")).toHaveAttribute("title", "Alta: 15-01-2026 11:00");
+    await expect(celda(page, 3, COL.alta).locator("span")).toHaveAttribute("title", "Alta: 20-02-2026 09:15");
+  });
+
+  test("una persona nueva queda con la fecha de hoy", async ({ page }) => {
+    await page.clock.setFixedTime(new Date("2026-06-10T15:00:00Z"));
+    await abrir(page);
+    await crearUsuario(page);
+    await expect(celda(page, 5, COL.alta)).toHaveText("10-06-2026");
+    await expect(celda(page, 5, COL.alta).locator("span")).toHaveAttribute("title", "Alta: 10-06-2026 12:00");
+  });
+
+  test("editar, deshabilitar y habilitar no cambian la fecha de alta", async ({ page }) => {
+    await abrir(page);
+    await page.getByTestId("personal-editar-3").click();
+    await llenar(page, { apellido: "Editada" });
+    await guardar(page).click();
+    await expect(celda(page, 3, COL.nombre)).toContainText("Editada");
+    await page.getByTestId("personal-deshabilitar-3").click();
+    await page.getByTestId("modal-confirmar").click();
+    await page.getByTestId("personal-habilitar-3").click();
+    await page.getByTestId("modal-confirmar").click();
+    await expect(celda(page, 3, COL.alta)).toHaveText("20-02-2026");
+  });
+
+  test("si falta la fecha de alta se ve un guion y nunca «null» ni «Invalid Date»", async ({ page }) => {
+    await abrir(page, { reemplazos: [['fecha_creacion: "2026-02-03T10:30:00Z"', "fecha_creacion: null"]] });
+    await expect(celda(page, 2, COL.alta)).toHaveText("—");
+    await expect(page.getByTestId("personal-tabla")).not.toContainText(/null|Invalid Date|undefined/);
+  });
+
+  test("la columna Alta convive con el resto: los botones siguen en la última columna", async ({ page }) => {
+    await abrir(page);
+    await expect(celda(page, 3, COL.acciones).getByRole("button", { name: "Editar" })).toBeVisible();
+    await expect(celda(page, 3, COL.acciones).getByRole("button", { name: "Eliminar" })).toBeVisible();
+  });
+
+  test("la ficha que se envía al editar no lleva la fecha de alta", async ({ page }) => {
+    await abrir(page, { reemplazos: REGISTRAR });
+    await page.getByTestId("personal-editar-3").click();
+    await guardar(page).click();
+    await expect(toast(page)).toHaveText("Usuario actualizado");
+    expect((await registros(page, "__actualizar"))[0].datos).not.toHaveProperty("fecha_creacion");
   });
 });

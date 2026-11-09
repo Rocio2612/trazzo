@@ -2,7 +2,7 @@
 // Mientras tanto los datos viven en memoria y se pierden al recargar. Cuando exista el Backend solo hay
 // que reemplazar el contenido de estas funciones por llamadas a fetchAPI (cada una ya es asíncrona):
 //   GET/POST /proveedores · PUT /proveedores/{id} · PATCH /proveedores/{id}/ocultar | /mostrar · DELETE /proveedores/{id}
-// `tiene_movimientos` lo calcula el Backend: es verdadero si el proveedor tiene reposiciones o insumos.
+// `tiene_movimientos` lo calcula el Backend: es verdadero si el proveedor tiene productos o reposiciones asociados.
 // Los nombres de campo son provisorios hasta cerrar el contrato con Back.
 // La tabla productos.proveedores no guarda quién creó al proveedor, así que la pantalla no muestra "Creado por".
 

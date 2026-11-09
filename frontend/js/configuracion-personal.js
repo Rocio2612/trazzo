@@ -11,6 +11,7 @@ import {
   CORREO_MAXIMO,
   ETIQUETA_ROL,
   MOTIVO_ULTIMO_ADMIN,
+  nombreCompleto,
   puedeDeshabilitarPersona,
   puedeEditarPersona,
   puedeEliminarPersona,
@@ -18,6 +19,7 @@ import {
   ROLES,
   validarPersona,
 } from "./personalizacion.js";
+import { fechaDeMarcaParaMostrar, fechaHoraParaMostrar } from "./formatos.js";
 import { servicioPersonal } from "./mocks/personalizacion.js";
 import { obtenerSesion } from "./sesion.js";
 
@@ -29,6 +31,7 @@ const COLUMNAS = [
   { titulo: "Correo" },
   { titulo: "Rol" },
   { titulo: "Estado" },
+  { titulo: "Alta" },
   { titulo: "Acciones", clase: "acciones-columna" },
 ];
 
@@ -94,7 +97,6 @@ export const crearPanelPersonal = () => {
   };
 
   // --- Habilitar, deshabilitar y eliminar ---
-  const nombreCompleto = (p) => `${p.nombre} ${p.apellido}`;
 
   const pedirHabilitar = (p) =>
     confirmar({
@@ -143,6 +145,12 @@ export const crearPanelPersonal = () => {
   // --- Tabla ---
   const insignia = (texto, clase) => h("span", { class: `cfg-insignia ${clase}`, text: texto });
 
+  // Fecha de alta (fecha_creacion de la base). Al pasar el mouse se ve también la hora.
+  const fechaDeAlta = (p) => {
+    const dia = fechaDeMarcaParaMostrar(p.fecha_creacion);
+    return dia ? h("span", { title: `Alta: ${fechaHoraParaMostrar(p.fecha_creacion)}`, text: dia }) : h("span", { class: "gastos-sin-dato", text: "—" });
+  };
+
   // Un botón que no corresponde se oculta. Si solo falta que quede otro administrador activo, se muestra
   // deshabilitado con la razón, para que se entienda por qué no se puede.
   const botonSegunRegla = (regla, icono, etiqueta, accion, p, clase = "") => {
@@ -174,6 +182,7 @@ export const crearPanelPersonal = () => {
       p.correo,
       insignia(ETIQUETA_ROL[p.rol] || p.rol, p.rol === ROLES.PROPIETARIO ? "cfg-insignia-propietario" : ""),
       p.activo ? insignia("Habilitado", "cfg-insignia-ok") : insignia("Deshabilitado", "cfg-insignia-off"),
+      fechaDeAlta(p),
       botonesFila(p),
     ];
     return h("tr", { "data-testid": `personal-fila-${p.id}` }, celdas.map((celda, i) => h("td", { class: COLUMNAS[i].clase }, celda)));

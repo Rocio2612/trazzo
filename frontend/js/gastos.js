@@ -8,7 +8,7 @@
 // - Los gastos solo se editan o se eliminan (con confirmación): no se ocultan.
 // Los nombres de campo (medio_pago_id, …) son provisorios hasta cerrar el contrato con Back.
 
-import { aNumero, fechaParaEnviar, fechaParaMostrar } from "./formatos.js";
+import { aNumero, fechaHoraParaMostrar, fechaParaEnviar, fechaParaMostrar } from "./formatos.js";
 import { validarFechaNoFutura, validarNumeroPositivo, validarObligatorio } from "./validadores.js";
 
 export const AGRUPACIONES = ["dia", "mes", "anio"];
@@ -16,8 +16,7 @@ export const AGRUPACIONES = ["dia", "mes", "anio"];
 // Dinero en NUMERIC(12,2): hasta 10 dígitos enteros y 2 decimales.
 const MONTO_MAXIMO = 9999999999.99;
 
-// Largo máximo del concepto (provisorio: confirmar con Back el tamaño de la columna).
-export const CONCEPTO_MAXIMO = 100;
+// El concepto es TEXT en la base (finanzas.gastos_operativos.concepto): no tiene largo máximo.
 
 const FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -41,10 +40,7 @@ export const validarGasto = (datos = {}, ahora = new Date()) => {
     : validarObligatorio(datos.fecha, "La fecha") || "La fecha no es una fecha válida.";
   if (errorFecha) errores.fecha = errorFecha;
 
-  let errorConcepto = validarObligatorio(datos.concepto, "El concepto");
-  if (!errorConcepto && String(datos.concepto).trim().length > CONCEPTO_MAXIMO) {
-    errorConcepto = `El concepto admite hasta ${CONCEPTO_MAXIMO} caracteres.`;
-  }
+  const errorConcepto = validarObligatorio(datos.concepto, "El concepto");
   if (errorConcepto) errores.concepto = errorConcepto;
 
   let errorMonto = validarNumeroPositivo(datos.monto, "El monto");
@@ -139,3 +135,17 @@ export const etiquetaPeriodo = (periodo, agrupar) => {
   if (agrupar === "mes") return `${periodo.slice(5, 7)}-${periodo.slice(0, 4)}`;
   return periodo;
 };
+
+// Quién y cuándo creó y modificó un gasto, a partir de los datos de auditoría de la base
+// (creado_por, creado_en, modificado_por, modificado_en). Si no hay nada que mostrar devuelve "".
+// Ejemplo: "Creado por admin1 el 05-03-2026 08:30 · Modificado por admin2 el 06-03-2026 09:10".
+const describirMarca = (verbo, quien, cuando) => {
+  const fecha = fechaHoraParaMostrar(cuando);
+  if (!quien && !fecha) return "";
+  return `${verbo}${quien ? ` por ${quien}` : ""}${fecha ? ` el ${fecha}` : ""}`;
+};
+
+export const describirAuditoria = (gasto) =>
+  [describirMarca("Creado", gasto.creado_por, gasto.creado_en), describirMarca("Modificado", gasto.modificado_por, gasto.modificado_en)]
+    .filter(Boolean)
+    .join(" · ");

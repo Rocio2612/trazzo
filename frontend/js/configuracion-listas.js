@@ -13,6 +13,7 @@ export const TEXTOS_LISTA = {
   categorias: {
     singular: "categoría",
     articulo: "una categoría",
+    maximo: 100, // productos.categorias.nombre es VARCHAR(100)
     creado: "Categoría creada",
     etiquetaEntrada: "Nombre de la categoría",
     placeholder: "Ej.: remeras, pantalones",
@@ -22,6 +23,7 @@ export const TEXTOS_LISTA = {
   medios_pago: {
     singular: "medio de pago",
     articulo: "un medio de pago",
+    maximo: 50, // finanzas.medios_pago.nombre es VARCHAR(50)
     creado: "Medio de pago creado",
     etiquetaEntrada: "Nombre del medio de pago",
     placeholder: "Ej.: transferencia, tarjeta de débito",
@@ -44,7 +46,7 @@ export const crearPanelLista = (tipo) => {
   const nombresExcepto = (id) => ctx.elementos.filter((e) => e.id !== id).map((e) => e.nombre);
 
   // --- Agregar (campo en línea) ---
-  const entrada = h("input", { type: "text", class: "gastos-entrada cfg-entrada-agregar", placeholder: textos.placeholder, maxlength: 50, "aria-label": textos.etiquetaEntrada, "data-testid": `${tipo}-nombre` });
+  const entrada = h("input", { type: "text", class: "gastos-entrada cfg-entrada-agregar", placeholder: textos.placeholder, maxlength: textos.maximo, "aria-label": textos.etiquetaEntrada, "data-testid": `${tipo}-nombre` });
   const errorAgregar = h("p", { class: "gastos-error", hidden: true, "data-testid": `${tipo}-error` });
   const botonAgregar = boton("", "btn-primario gastos-btn-con-icono", { "data-testid": `${tipo}-agregar`, "data-modulo": tipo, "data-accion": "crear" });
   botonAgregar.append(crearSvg(ICONOS.mas), h("span", { text: "Agregar" }));
@@ -58,7 +60,7 @@ export const crearPanelLista = (tipo) => {
   let agregando = false;
   const agregar = async () => {
     if (agregando) return;
-    const error = validarNombreLista(entrada.value, nombresExcepto(null), textos.articulo);
+    const error = validarNombreLista(entrada.value, nombresExcepto(null), textos.articulo, textos.maximo);
     mostrarErrorAgregar(error);
     if (error) return entrada.focus();
     agregando = true;
@@ -83,10 +85,10 @@ export const crearPanelLista = (tipo) => {
   const editar = (elemento) =>
     abrirFormularioModal({
       titulo: `Editar ${textos.singular}`,
-      campos: [{ nombre: "nombre", etiqueta: "Nombre", obligatorio: true, maxlength: 50 }],
+      campos: [{ nombre: "nombre", etiqueta: "Nombre", obligatorio: true, maxlength: textos.maximo }],
       valores: { nombre: elemento.nombre },
       validar: (datos) => {
-        const error = validarNombreLista(datos.nombre, nombresExcepto(elemento.id), textos.articulo);
+        const error = validarNombreLista(datos.nombre, nombresExcepto(elemento.id), textos.articulo, textos.maximo);
         return error ? { nombre: error } : {};
       },
       alGuardar: async (datos) => {

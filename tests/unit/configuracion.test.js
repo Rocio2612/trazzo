@@ -6,6 +6,7 @@ import {
   CORREO_MAXIMO,
   ETIQUETA_ROL,
   MOTIVO_ULTIMO_ADMIN,
+  nombreCompleto,
   puedeDeshabilitarPersona,
   puedeEditarPersona,
   puedeEliminarPersona,
@@ -408,8 +409,11 @@ describe("validarNombreLista: casos límite", () => {
 describe("textos de las pestañas de lista", () => {
   it("categorías y medios de pago tienen todos sus textos", () => {
     for (const tipo of ["categorias", "medios_pago"]) {
-      expect(Object.keys(TEXTOS_LISTA[tipo]).sort()).toEqual(["articulo", "aviso", "creado", "eliminar", "etiquetaEntrada", "placeholder", "singular"]);
-      Object.values(TEXTOS_LISTA[tipo]).forEach((texto) => expect(texto.length).toBeGreaterThan(3));
+      expect(Object.keys(TEXTOS_LISTA[tipo]).sort()).toEqual(["articulo", "aviso", "creado", "eliminar", "etiquetaEntrada", "maximo", "placeholder", "singular"]);
+      Object.values(TEXTOS_LISTA[tipo])
+        .filter((valor) => typeof valor === "string")
+        .forEach((texto) => expect(texto.length).toBeGreaterThan(3));
+      expect(Number.isInteger(TEXTOS_LISTA[tipo].maximo)).toBe(true);
     }
   });
 
@@ -740,5 +744,255 @@ describe("el Propietario conserva su rol al editarse", () => {
 
   it("al editarlo, su rol viaja en el payload sin cambios", () => {
     expect(armarPayloadPersona(propietario, { esNuevo: false }).rol).toBe("PROPIETARIO");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// «Eliminar» frente a `activo` (como en la base): categorías y medios de pago se desactivan en vez de borrarse.
+// ---------------------------------------------------------------------------
+
+describe("listas: eliminar desactiva (activo = false) en vez de borrar", () => {
+  it("el elemento eliminado deja de listarse pero sigue guardado, inactivo", async () => {
+    const datos = simularAlmacenamiento();
+    await servicioLista("categorias").eliminar(2);
+    expect((await servicioLista("categorias").listar()).map((c) => c.nombre)).toEqual(["Remeras"]);
+    const guardado = JSON.parse(datos.get(CLAVE)).categorias;
+    expect(guardado).toHaveLength(2);
+    expect(guardado.find((c) => c.id === 2)).toMatchObject({ nombre: "Pantalones", activo: false });
+  });
+
+  it("los elementos de ejemplo parten activos", async () => {
+    simularAlmacenamiento();
+    for (const tipo of ["categorias", "medios_pago"]) {
+      (await servicioLista(tipo).listar()).forEach((e) => expect(e.activo).toBe(true));
+    }
+  });
+
+  it("listarListaMock (lo que ven otras pantallas, como Gastos) no incluye lo eliminado", async () => {
+    simularAlmacenamiento();
+    await servicioLista("medios_pago").eliminar(2);
+    expect(listarListaMock("medios_pago").map((m) => m.nombre)).toEqual(["Efectivo"]);
+  });
+
+  it("lo guardado sin el dato «activo» (listas anteriores) se toma como activo", async () => {
+    simularAlmacenamiento({ [CLAVE]: JSON.stringify({ categorias: [{ id: 1, nombre: "Vieja" }], medios_pago: [{ id: 1, nombre: "Efectivo", es_predeterminado: true }] }) });
+    expect((await servicioLista("categorias").listar()).map((c) => c.nombre)).toEqual(["Vieja"]);
+  });
+
+  it("lo guardado con activo en falso no se lista", async () => {
+    simularAlmacenamiento({
+      [CLAVE]: JSON.stringify({
+        categorias: [{ id: 1, nombre: "Visible", activo: true }, { id: 2, nombre: "Oculta", activo: false }],
+        medios_pago: [{ id: 1, nombre: "Efectivo", es_predeterminado: true, activo: true }],
+      }),
+    });
+    expect((await servicioLista("categorias").listar()).map((c) => c.nombre)).toEqual(["Visible"]);
+  });
+
+  it("eliminar dos veces el mismo elemento no rompe y sigue sin listarse", async () => {
+    simularAlmacenamiento();
+    await servicioLista("categorias").eliminar(1);
+    await expect(servicioLista("categorias").eliminar(1)).resolves.toBeUndefined();
+    expect((await servicioLista("categorias").listar()).map((c) => c.id)).toEqual([2]);
+  });
+
+  it("el medio de pago predeterminado sigue sin poder eliminarse y queda activo", async () => {
+    simularAlmacenamiento();
+    await expect(servicioLista("medios_pago").eliminar(1)).rejects.toThrow(/por defecto/);
+    expect((await servicioLista("medios_pago").listar()).find((m) => m.id === 1).activo).toBe(true);
+  });
+
+  it("los ids nuevos no reutilizan los de lo eliminado", async () => {
+    simularAlmacenamiento();
+    const eliminado = await servicioLista("categorias").crear("Para borrar");
+    await servicioLista("categorias").eliminar(eliminado.id);
+    const nuevo = await servicioLista("categorias").crear("Otra");
+    expect(nuevo.id).toBeGreaterThan(eliminado.id);
+  });
+});
+
+describe("listas: el nombre de lo eliminado sigue ocupado (el índice único de la base cuenta los desactivados)", () => {
+  it("no se puede crear una categoría con el nombre de una eliminada, y el mensaje lo aclara", async () => {
+    simularAlmacenamiento();
+    await servicioLista("categorias").eliminar(1);
+    await expect(servicioLista("categorias").crear("Remeras")).rejects.toMatchObject({
+      errores: { nombre: "Ya existe una categoría con ese nombre (puede estar eliminada)." },
+    });
+    expect((await servicioLista("categorias").listar()).map((c) => c.nombre)).toEqual(["Pantalones"]);
+  });
+
+  it("lo mismo con un medio de pago, con el género correcto", async () => {
+    simularAlmacenamiento();
+    await servicioLista("medios_pago").eliminar(2);
+    await expect(servicioLista("medios_pago").crear("Transferencia")).rejects.toMatchObject({
+      errores: { nombre: "Ya existe un medio de pago con ese nombre (puede estar eliminado)." },
+    });
+  });
+
+  it("no distingue mayúsculas ni espacios de los costados", async () => {
+    simularAlmacenamiento();
+    await servicioLista("categorias").eliminar(1);
+    await expect(servicioLista("categorias").crear("  REMERAS  ")).rejects.toThrow(/Ya existe una categoría/);
+    await expect(servicioLista("categorias").crear("remeras")).rejects.toThrow(/Ya existe una categoría/);
+  });
+
+  it("tampoco se puede crear uno con el nombre de uno que está a la vista", async () => {
+    simularAlmacenamiento();
+    await expect(servicioLista("categorias").crear("remeras")).rejects.toMatchObject({ errores: { nombre: expect.any(String) } });
+  });
+
+  it("un nombre que nadie tuvo se puede usar después de eliminar otro", async () => {
+    simularAlmacenamiento();
+    await servicioLista("categorias").eliminar(1);
+    await expect(servicioLista("categorias").crear("Camperas")).resolves.toMatchObject({ nombre: "Camperas", activo: true });
+  });
+
+  it("renombrar a un nombre de uno eliminado se rechaza, pero conservar el propio nombre no", async () => {
+    simularAlmacenamiento();
+    await servicioLista("categorias").eliminar(1);
+    await expect(servicioLista("categorias").actualizar(2, "Remeras")).rejects.toMatchObject({ errores: { nombre: expect.any(String) } });
+    await expect(servicioLista("categorias").actualizar(2, "Pantalones")).resolves.toMatchObject({ nombre: "Pantalones" });
+    await expect(servicioLista("categorias").actualizar(2, "PANTALONES")).resolves.toMatchObject({ nombre: "PANTALONES" });
+  });
+
+  it("un rechazo no deja cambios a medias", async () => {
+    const datos = simularAlmacenamiento();
+    await servicioLista("categorias").eliminar(1);
+    const antes = datos.get(CLAVE);
+    await servicioLista("categorias").crear("Remeras").catch(() => {});
+    await servicioLista("categorias").actualizar(2, "Remeras").catch(() => {});
+    expect(datos.get(CLAVE)).toBe(antes);
+  });
+
+  it("las categorías y los medios de pago son independientes: el nombre eliminado de una lista se puede usar en la otra", async () => {
+    simularAlmacenamiento();
+    await servicioLista("medios_pago").eliminar(2);
+    await expect(servicioLista("categorias").crear("Transferencia")).resolves.toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Largos de la base: el nombre de una categoría admite 100 (VARCHAR(100)) y el de un medio de pago 50
+// (VARCHAR(50)); nombre y apellido pueden ser NULL en la base.
+// ---------------------------------------------------------------------------
+
+describe("largo del nombre de las listas, según la base", () => {
+  it("categorías: hasta 100 caracteres", () => {
+    expect(TEXTOS_LISTA.categorias.maximo).toBe(100);
+    expect(validarNombreLista("a".repeat(100), [], "una categoría", TEXTOS_LISTA.categorias.maximo)).toBeNull();
+    expect(validarNombreLista("a".repeat(101), [], "una categoría", TEXTOS_LISTA.categorias.maximo)).toBe(
+      "El nombre no puede superar los 100 caracteres.",
+    );
+  });
+
+  it("medios de pago: hasta 50 caracteres", () => {
+    expect(TEXTOS_LISTA.medios_pago.maximo).toBe(50);
+    expect(validarNombreLista("a".repeat(50), [], "un medio de pago", TEXTOS_LISTA.medios_pago.maximo)).toBeNull();
+    expect(validarNombreLista("a".repeat(51), [], "un medio de pago", TEXTOS_LISTA.medios_pago.maximo)).toBe(
+      "El nombre no puede superar los 50 caracteres.",
+    );
+  });
+
+  it("un nombre de 51 a 100 caracteres vale para una categoría pero no para un medio de pago", () => {
+    const nombre = "a".repeat(75);
+    expect(validarNombreLista(nombre, [], "una categoría", TEXTOS_LISTA.categorias.maximo)).toBeNull();
+    expect(validarNombreLista(nombre, [], "un medio de pago", TEXTOS_LISTA.medios_pago.maximo)).toMatch(/50 caracteres/);
+  });
+
+  it("sin indicar el máximo se mantiene el de 50", () => {
+    expect(validarNombreLista("a".repeat(50))).toBeNull();
+    expect(validarNombreLista("a".repeat(51))).toBe("El nombre no puede superar los 50 caracteres.");
+  });
+
+  it("los espacios de los costados no cuentan para el largo, con cualquier máximo", () => {
+    expect(validarNombreLista(` ${"a".repeat(100)} `, [], "una categoría", 100)).toBeNull();
+  });
+});
+
+describe("nombre de una persona cuando la base no lo tiene (nombre y apellido pueden ser NULL)", () => {
+  it("con nombre y apellido los junta", () => {
+    expect(nombreCompleto({ nombre: "Ana", apellido: "Pérez", usuario: "ana1" })).toBe("Ana Pérez");
+  });
+
+  it("con solo uno de los dos, muestra ese", () => {
+    expect(nombreCompleto({ nombre: "Ana", apellido: null, usuario: "ana1" })).toBe("Ana");
+    expect(nombreCompleto({ nombre: null, apellido: "Pérez", usuario: "ana1" })).toBe("Pérez");
+    expect(nombreCompleto({ nombre: "Ana", usuario: "ana1" })).toBe("Ana");
+  });
+
+  it("sin ninguno de los dos, muestra el usuario", () => {
+    expect(nombreCompleto({ nombre: null, apellido: null, usuario: "propietario1" })).toBe("propietario1");
+    expect(nombreCompleto({ usuario: "propietario1" })).toBe("propietario1");
+  });
+
+  it.each([[""], ["   "], [undefined]])("un nombre vacío (%j) cuenta como ausente", (vacio) => {
+    expect(nombreCompleto({ nombre: vacio, apellido: vacio, usuario: "ana1" })).toBe("ana1");
+    expect(nombreCompleto({ nombre: "Ana", apellido: vacio, usuario: "ana1" })).toBe("Ana");
+  });
+
+  it("recorta los espacios de cada parte", () => {
+    expect(nombreCompleto({ nombre: "  Ana ", apellido: " Pérez  ", usuario: "ana1" })).toBe("Ana Pérez");
+  });
+
+  it("nunca devuelve «null» ni «undefined» como texto", () => {
+    for (const persona of [{ nombre: null, apellido: null, usuario: "u1" }, { usuario: "u1" }, { nombre: null, apellido: "X", usuario: "u1" }]) {
+      expect(nombreCompleto(persona)).not.toMatch(/null|undefined/);
+    }
+  });
+
+  it("sin nombre, apellido ni usuario devuelve texto vacío y no rompe", () => {
+    expect(nombreCompleto({})).toBe("");
+  });
+
+  it("al buscar, una persona sin nombre ni apellido se encuentra por su usuario o correo", () => {
+    const lista = [{ nombre: null, apellido: null, usuario: "propietario1", correo: "ana@x.com" }];
+    expect(buscarPersonal(lista, "propietario")).toHaveLength(1);
+    expect(buscarPersonal(lista, "ana@")).toHaveLength(1);
+    expect(buscarPersonal(lista, "null")).toHaveLength(0);
+  });
+
+  it("al editar a alguien sin nombre, el formulario lo pide (es obligatorio en la pantalla)", () => {
+    const sinNombre = { usuario: "propietario1", correo: "ana@kiosco.com", nombre: "", apellido: "", rol: "PROPIETARIO", password: "" };
+    expect(Object.keys(validarPersona(sinNombre, { esNuevo: false })).sort()).toEqual(["apellido", "nombre"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fecha_creacion de los usuarios (la columna «Alta» de la lista).
+// ---------------------------------------------------------------------------
+
+describe("servicio simulado del personal: fecha de alta (fecha_creacion)", () => {
+  it("las personas de ejemplo traen su fecha de alta", async () => {
+    const servicio = await cargarPersonal();
+    (await servicio.listar()).forEach((p) => expect(Number.isNaN(new Date(p.fecha_creacion).getTime())).toBe(false));
+  });
+
+  it("al crear a alguien se completa sola con el momento actual", async () => {
+    const servicio = await cargarPersonal();
+    const antes = Date.now();
+    const creado = await servicio.crear(nuevoUsuario);
+    const despues = Date.now();
+    const alta = new Date(creado.fecha_creacion).getTime();
+    expect(alta).toBeGreaterThanOrEqual(antes);
+    expect(alta).toBeLessThanOrEqual(despues);
+  });
+
+  it("editar a alguien no cambia su fecha de alta", async () => {
+    const servicio = await cargarPersonal();
+    const antes = (await servicio.listar()).find((p) => p.id === 3).fecha_creacion;
+    await servicio.actualizar(3, { ...nuevoUsuario, usuario: "cajero1", correo: "sofia@kioscochicha.com", apellido: "Díaz Luna" });
+    expect((await servicio.listar()).find((p) => p.id === 3).fecha_creacion).toBe(antes);
+  });
+
+  it("deshabilitar y habilitar tampoco la cambian", async () => {
+    const servicio = await cargarPersonal();
+    const antes = (await servicio.listar()).find((p) => p.id === 3).fecha_creacion;
+    await servicio.deshabilitar(3);
+    await servicio.habilitar(3);
+    expect((await servicio.listar()).find((p) => p.id === 3).fecha_creacion).toBe(antes);
+  });
+
+  it("la ficha que se envía al guardar no incluye la fecha de alta (la completa la base)", () => {
+    expect(armarPayloadPersona({ ...persona, fecha_creacion: "2026-01-01T00:00:00Z" })).not.toHaveProperty("fecha_creacion");
   });
 });

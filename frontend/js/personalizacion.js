@@ -44,6 +44,14 @@ export const CORREO_PERSONAL_VALIDO = /^[A-Za-z0-9%+_-]+(\.[A-Za-z0-9%+_-]+)*@([
 
 // --- Campos de una persona ---------------------------------------------------------
 
+// Cómo se nombra a una persona en la lista y en los avisos. En la base `nombre` y `apellido` pueden ser NULL
+// (por ejemplo, el Propietario que se crea al registrar el negocio): sin ninguno de los dos se usa el usuario.
+export const nombreCompleto = (persona) =>
+  [persona.nombre, persona.apellido]
+    .map((parte) => String(parte ?? "").trim())
+    .filter(Boolean)
+    .join(" ") || String(persona.usuario ?? "");
+
 export const validarUsuario = (valor) => {
   if (vacio(valor)) return "Rellene el usuario.";
   const usuario = String(valor);
@@ -197,10 +205,11 @@ export const armarPayloadNegocio = (datos) => ({
 
 // `existentes` son los nombres ya cargados (sin contar el que se está editando).
 // `articulo` completa el mensaje de repetido: "Ya existe una categoría con ese nombre."
-export const validarNombreLista = (valor, existentes = [], articulo = "un elemento") => {
+// `maximo` es el largo de la columna: 100 en productos.categorias y 50 en finanzas.medios_pago.
+export const validarNombreLista = (valor, existentes = [], articulo = "un elemento", maximo = 50) => {
   if (vacio(valor)) return "Rellene el nombre.";
   const nombre = String(valor).trim();
-  if (nombre.length > 50) return "El nombre no puede superar los 50 caracteres.";
+  if (nombre.length > maximo) return `El nombre no puede superar los ${maximo} caracteres.`;
   const repetido = existentes.some((n) => String(n).trim().toLowerCase() === nombre.toLowerCase());
   return repetido ? `Ya existe ${articulo} con ese nombre.` : null;
 };

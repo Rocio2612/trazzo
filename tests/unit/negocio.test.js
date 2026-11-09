@@ -151,7 +151,14 @@ describe("servicio simulado del negocio", () => {
       nombre_comercial: "Kiosco Chicha",
       rubro: "Kiosco",
       categoria_impositiva: "MONOTRIBUTISTA",
+      fecha_registro: "2026-01-15T14:00:00Z",
     });
+  });
+
+  it("la fecha de registro no cambia al guardar los datos del negocio", async () => {
+    const servicio = await cargarServicio();
+    await servicio.guardar({ nombre_comercial: "Otro", rubro: null, categoria_impositiva: "EXENTO" });
+    expect((await servicio.obtener()).fecha_registro).toBe("2026-01-15T14:00:00Z");
   });
 
   it("devuelve copias: modificar lo que devuelve no cambia lo guardado", async () => {

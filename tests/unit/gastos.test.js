@@ -309,19 +309,23 @@ describe("validarGasto: concepto", () => {
   );
 });
 
-describe("validarGasto: largo del concepto", () => {
-  it("acepta un concepto de exactamente 100 caracteres", () => {
-    expect(validarGasto({ ...valido, concepto: "a".repeat(100) }, hoy)).toEqual({});
+describe("validarGasto: el concepto no tiene largo máximo (es TEXT en la base)", () => {
+  it.each([[1], [100], [101], [500], [5000], [100000]])("acepta un concepto de %i caracteres", (largo) => {
+    expect(validarGasto({ ...valido, concepto: "a".repeat(largo) }, hoy)).toEqual({});
   });
 
-  it("rechaza uno de 101 caracteres", () => {
-    expect(validarGasto({ ...valido, concepto: "a".repeat(101) }, hoy).concepto).toBe(
-      "El concepto admite hasta 100 caracteres.",
-    );
+  it("un concepto largo con varias palabras también", () => {
+    expect(validarGasto({ ...valido, concepto: "Pago de alquiler y expensas del local. ".repeat(100) }, hoy)).toEqual({});
   });
 
-  it("los espacios de los costados no cuentan para el largo", () => {
-    expect(validarGasto({ ...valido, concepto: `   ${"a".repeat(100)}   ` }, hoy)).toEqual({});
+  it("sigue siendo obligatorio aunque se hayan quitado los límites", () => {
+    expect(validarGasto({ ...valido, concepto: "" }, hoy).concepto).toBe("Completá el concepto.");
+    expect(validarGasto({ ...valido, concepto: " ".repeat(500) }, hoy).concepto).toBe("Completá el concepto.");
+  });
+
+  it("el payload lleva el concepto completo, recortado de los costados", () => {
+    const largo = "x".repeat(2000);
+    expect(armarPayloadGasto({ ...valido, concepto: `  ${largo}  ` }).concepto).toBe(largo);
   });
 });
 
@@ -573,6 +577,97 @@ describe("datos simulados con los nombres de la base", () => {
       for (const campo of ["id", "fecha", "concepto", "monto", "medio_pago_id", "creado_por", "creado_en", "modificado_por", "modificado_en"]) {
         expect(g, campo).toHaveProperty(campo);
       }
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// «Eliminar» frente a `activo` (como en la base): un gasto eliminado queda inactivo y no se lista ni se suma.
+// ---------------------------------------------------------------------------
+
+describe("gastos: «activo» y los gastos eliminados", () => {
+  const conUnEliminado = GASTOS_EJEMPLO.map((g) => (g.id === 2 ? { ...g, activo: false } : { ...g }));
+
+  it("los gastos de ejemplo parten activos", () => {
+    GASTOS_EJEMPLO.forEach((g) => expect(g.activo).toBe(true));
+  });
+
+  it("la lista simulada no incluye los inactivos, ni en el total ni en las páginas", () => {
+    const lista = listarGastosSimulado(conUnEliminado);
+    expect(lista.total).toBe(6);
+    expect(lista.items.map((g) => g.id)).not.toContain(2);
+    expect(listarGastosSimulado(conUnEliminado, { porPagina: 4, pagina: 2 }).items).toHaveLength(2);
+  });
+
+  it("la búsqueda y el filtro de fechas tampoco los traen", () => {
+    expect(listarGastosSimulado(conUnEliminado, { q: "luz" }).total).toBe(0);
+    expect(listarGastosSimulado(conUnEliminado, { desde: "2026-03-05", hasta: "2026-03-05" }).items.map((g) => g.id)).toEqual([3]);
+  });
+
+  it("un gasto sin el dato «activo» se toma como activo", () => {
+    expect(listarGastosSimulado([{ id: 1, fecha: "2026-03-01", concepto: "Sin dato", monto: "1.00" }]).total).toBe(1);
+  });
+
+  it("el total del período no cuenta lo eliminado", () => {
+    const { items } = listarGastosSimulado(conUnEliminado);
+    expect(resumirGastos(items).total).toBe(resumirGastos(GASTOS_EJEMPLO).total - 38250.5);
+  });
+
+  it("si se eliminan todos, la lista queda vacía", () => {
+    const todosEliminados = GASTOS_EJEMPLO.map((g) => ({ ...g, activo: false }));
+    expect(listarGastosSimulado(todosEliminados)).toMatchObject({ items: [], total: 0 });
+  });
+
+  it("no modifica la lista que recibe", () => {
+    const copia = JSON.stringify(conUnEliminado);
+    listarGastosSimulado(conUnEliminado, { q: "a" });
+    expect(JSON.stringify(conUnEliminado)).toBe(copia);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Datos de auditoría de la base (creado_por, creado_en, modificado_por, modificado_en) a la vista.
+// ---------------------------------------------------------------------------
+
+import { describirAuditoria } from "../../frontend/js/gastos.js";
+
+describe("describirAuditoria", () => {
+  const creado = new Date(2026, 2, 5, 8, 30).toISOString();
+  const modificado = new Date(2026, 2, 6, 9, 10).toISOString();
+
+  it("un gasto sin modificar dice solo quién y cuándo lo creó", () => {
+    expect(describirAuditoria({ creado_por: "admin1", creado_en: creado, modificado_por: null, modificado_en: null })).toBe(
+      "Creado por admin1 el 05-03-2026 08:30",
+    );
+  });
+
+  it("uno modificado agrega quién y cuándo lo modificó", () => {
+    expect(describirAuditoria({ creado_por: "admin1", creado_en: creado, modificado_por: "admin2", modificado_en: modificado })).toBe(
+      "Creado por admin1 el 05-03-2026 08:30 · Modificado por admin2 el 06-03-2026 09:10",
+    );
+  });
+
+  it("si falta la fecha, dice solo quién", () => {
+    expect(describirAuditoria({ creado_por: "admin1" })).toBe("Creado por admin1");
+    expect(describirAuditoria({ creado_por: "admin1", modificado_por: "admin2" })).toBe("Creado por admin1 · Modificado por admin2");
+  });
+
+  it("si falta quién, dice solo cuándo", () => {
+    expect(describirAuditoria({ creado_en: creado })).toBe("Creado el 05-03-2026 08:30");
+  });
+
+  it("sin ningún dato devuelve vacío, y nunca «null» ni «undefined»", () => {
+    expect(describirAuditoria({})).toBe("");
+    expect(describirAuditoria({ creado_por: null, creado_en: null, modificado_por: null, modificado_en: null })).toBe("");
+    expect(describirAuditoria({ creado_por: "a", creado_en: "no es fecha" })).toBe("Creado por a");
+    expect(describirAuditoria({ creado_por: "a", creado_en: creado, modificado_por: null, modificado_en: null })).not.toMatch(/null|undefined/);
+  });
+
+  it("los gastos de ejemplo traen su auditoría completa y sin modificaciones", () => {
+    GASTOS_EJEMPLO.forEach((g) => {
+      const texto = describirAuditoria(g);
+      expect(texto).toMatch(/^Creado por admin1 el \d{2}-\d{2}-2026 \d{2}:\d{2}$/);
+      expect(texto).not.toMatch(/Modificado/);
     });
   });
 });

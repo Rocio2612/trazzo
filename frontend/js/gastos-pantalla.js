@@ -6,7 +6,7 @@
 // Todo se arma con textContent (nada de innerHTML con datos del usuario).
 
 import { fechaIsoDeHoy, fechaParaMostrar, formatearDinero } from "./formatos.js";
-import { armarPayloadGasto, CONCEPTO_MAXIMO, resumirGastos, validarGasto } from "./gastos.js";
+import { armarPayloadGasto, describirAuditoria, resumirGastos, validarGasto } from "./gastos.js";
 import { GASTOS_EJEMPLO, listarGastosSimulado } from "./mocks/gastos.js";
 import { cargarMediosPago } from "./servicios/medios-pago.js";
 
@@ -56,6 +56,7 @@ const servicio = {
       monto: datos.monto.toFixed(2),
       medio_pago_id: datos.medio_pago_id,
       medio_pago_nombre: datos.medio_pago_id === null ? null : nombreDeMedio(datos.medio_pago_id),
+      activo: true,
       creado_por: usuarioActual(),
       creado_en: new Date().toISOString(),
       modificado_por: null,
@@ -65,7 +66,8 @@ const servicio = {
     return gasto;
   },
   actualizar: (gasto, datos) => Object.assign(gasto, { fecha: datos.fecha, concepto: datos.concepto, monto: datos.monto.toFixed(2), medio_pago_id: datos.medio_pago_id, medio_pago_nombre: datos.medio_pago_id === null ? null : nombreDeMedio(datos.medio_pago_id), modificado_por: usuarioActual(), modificado_en: new Date().toISOString() }),
-  eliminar: (gasto) => gastos.splice(gastos.indexOf(gasto), 1),
+  // La tabla tiene `activo`: eliminar un gasto lo deja inactivo (no se borra la fila) y deja de listarse y sumarse.
+  eliminar: (gasto) => Object.assign(gasto, { activo: false, modificado_por: usuarioActual(), modificado_en: new Date().toISOString() }),
 };
 
 // Rango aaaa-mm-dd (inclusivo) de cada período, con la fecha de hoy del usuario.
@@ -174,7 +176,7 @@ const confirmar = ({ titulo, cuerpo, textoOk, claseOk = "btn-primario", textoCan
 // Formulario de gasto en un modal. Los errores salen junto a cada campo, con los nombres de campo del contrato.
 const CAMPOS_GASTO = [
   { nombre: "fecha", etiqueta: "Fecha", obligatorio: true, placeholder: "dd-mm-aaaa" },
-  { nombre: "concepto", etiqueta: "Concepto", obligatorio: true, placeholder: "Ej.: alquiler, luz, internet, flete", maxlength: CONCEPTO_MAXIMO },
+  { nombre: "concepto", etiqueta: "Concepto", obligatorio: true, placeholder: "Ej.: alquiler, luz, internet, flete" },
   { nombre: "monto", etiqueta: "Monto", tipo: "number", obligatorio: true },
   { nombre: "medio_pago_id", etiqueta: "Medio de pago (opcional)", esMedioDePago: true },
 ];
@@ -203,7 +205,7 @@ const abrirFormulario = ({ titulo, valores = {}, avisos, alGuardar }) => {
   });
 
   const leer = () => Object.fromEntries(CAMPOS_GASTO.map((c) => [c.nombre, controles[c.nombre].control.value]));
-  const actualizarAvisos = () => zonaAvisos.replaceChildren(...(avisos ? avisos() : []));
+  const actualizarAvisos = () => zonaAvisos.replaceChildren(...(avisos ? avisos().filter(Boolean) : []));
 
   const cancelar = boton("Cancelar", "btn-outline", { "data-testid": "modal-cancelar" });
   const guardar = boton("Guardar", "btn-primario", { "data-testid": "modal-guardar" });
@@ -290,7 +292,13 @@ const iniciarPantalla = () => {
     abrirFormulario({
       titulo: esNuevo ? "Nuevo gasto" : "Editar gasto",
       valores: gasto ? { fecha: fechaParaMostrar(gasto.fecha), concepto: gasto.concepto, monto: gasto.monto, medio_pago_id: gasto.medio_pago_id ?? "" } : { fecha: fechaParaMostrar(fechaIsoDeHoy()) },
-      avisos: () => (esNuevo ? [] : [bannerAmbar("Si cambiás la fecha o el monto, se recalcula el total del período.")]),
+      avisos: () =>
+        esNuevo
+          ? []
+          : [
+              bannerAmbar("Si cambiás la fecha o el monto, se recalcula el total del período."),
+              describirAuditoria(gasto) && h("p", { class: "gastos-ayuda", "data-testid": "gasto-auditoria", text: describirAuditoria(gasto) }),
+            ],
       alGuardar: (datos) => {
         if (esNuevo) servicio.crear(datos);
         else servicio.actualizar(gasto, datos);
@@ -332,7 +340,7 @@ const iniciarPantalla = () => {
   const COLUMNAS = [{ titulo: "Fecha" }, { titulo: "Concepto" }, { titulo: "Monto", clase: "num" }, { titulo: "Medio de pago" }, { titulo: "Creado por" }, { titulo: "Acciones", clase: "acciones-columna" }];
 
   const filaDeGasto = (gasto) => {
-    const celdas = [fechaParaMostrar(gasto.fecha), gasto.concepto, formatearDinero(gasto.monto), gasto.medio_pago_nombre || sinDato(), gasto.creado_por, botonesFila(gasto)];
+    const celdas = [fechaParaMostrar(gasto.fecha), gasto.concepto, formatearDinero(gasto.monto), gasto.medio_pago_nombre || sinDato(), h("span", { title: describirAuditoria(gasto) || null, text: gasto.creado_por }), botonesFila(gasto)];
     return h("tr", {}, celdas.map((celda, i) => h("td", { class: COLUMNAS[i].clase }, celda)));
   };
 

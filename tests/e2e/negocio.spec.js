@@ -747,3 +747,57 @@ test.describe("Mi negocio: errores del servidor en cualquier campo", () => {
     await expect(errorDe(page, "categoria_impositiva")).toHaveText("Categoría no permitida.");
   });
 });
+
+// ---------------------------------------------------------------------------
+// fecha_registro de la base: Mi negocio muestra cuándo se registró el negocio (solo lectura).
+// ---------------------------------------------------------------------------
+
+test.describe("Mi negocio: fecha de registro", () => {
+  test.use({ timezoneId: "America/Argentina/Buenos_Aires" });
+  const FECHA_REGISTRO = 'fecha_registro: "2026-01-15T14:00:00Z",';
+
+  test("muestra cuándo se registró el negocio, debajo del identificador, solo lectura", async ({ page }) => {
+    await abrir(page);
+    await expect(page.locator('label[for="fecha_registro"]')).toHaveText("Fecha de registro");
+    await expect(page.locator("#fecha_registro")).toHaveValue("15-01-2026");
+    await expect(page.locator("#fecha_registro")).toHaveAttribute("readonly", "");
+    await expect(page.locator("#fecha_registro")).toHaveClass(/cfg-solo-lectura/);
+    await expect(page.getByText("Se completa sola al registrar el negocio.")).toBeVisible();
+    const campos = await page.locator(".cfg-tarjeta label").allTextContents();
+    expect(campos.map((t) => t.trim()).slice(0, 3)).toEqual(["Identificador del negocio", "Fecha de registro", "Nombre o razón social *"]);
+  });
+
+  test("al pasar el mouse muestra también la hora", async ({ page }) => {
+    await abrir(page);
+    await expect(page.locator("#fecha_registro")).toHaveAttribute("title", "Registrado el 15-01-2026 11:00");
+  });
+
+  test("no se puede escribir en ese campo", async ({ page }) => {
+    await abrir(page);
+    await page.locator("#fecha_registro").click();
+    await page.keyboard.type("otra cosa");
+    await expect(page.locator("#fecha_registro")).toHaveValue("15-01-2026");
+  });
+
+  test("al guardar los datos del negocio no se envía y no cambia", async ({ page }) => {
+    await abrir(page, { reemplazos: [REGISTRAR_PAYLOADS] });
+    await page.locator("#nombre_comercial").fill("Otro nombre");
+    await guardar(page).click();
+    await expect(toast(page)).toHaveText("Datos del negocio actualizados");
+    expect(Object.keys((await payloads(page))[0]).sort()).toEqual(["categoria_impositiva", "nombre_comercial", "rubro"]);
+    await expect(page.locator("#fecha_registro")).toHaveValue("15-01-2026");
+  });
+
+  test("si el negocio no trae fecha de registro, el campo no se muestra", async ({ page }) => {
+    await abrir(page, { reemplazos: [[FECHA_REGISTRO, ""]] });
+    await expect(page.locator("#fecha_registro")).toHaveCount(0);
+    await expect(page.locator("#identificador")).toBeVisible();
+  });
+
+  test("el resto de los campos y el guardado siguen funcionando", async ({ page }) => {
+    await abrir(page);
+    await page.locator("#nombre_comercial").fill("Con fecha de registro");
+    await guardar(page).click();
+    await expect(toast(page)).toHaveText("Datos del negocio actualizados");
+  });
+});

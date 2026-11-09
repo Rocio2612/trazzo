@@ -2,10 +2,13 @@
 // Mismo formato que va a devolver la API: dinero como texto con 2 decimales, fechas en aaaa-mm-dd
 // y listas como { items, total, pagina }. Los nombres de campo son los de la tabla finanzas.gastos_operativos:
 // creado_por y modificado_por son el nombre del usuario (texto), y modificado_* queda vacío hasta que se edita.
+// `activo` es verdadero mientras el gasto existe: eliminar un gasto lo deja en falso (la lista y los totales
+// solo cuentan los activos).
 
 import { buscarGastos, filtrarGastos } from "../gastos.js";
 
 const auditoria = (usuario, en) => ({
+  activo: true,
   creado_por: usuario,
   creado_en: en,
   modificado_por: null,
@@ -22,9 +25,10 @@ export const GASTOS_EJEMPLO = [
   { id: 7, fecha: "2026-04-10", concepto: "Reparación de heladera", monto: "12000.00", medio_pago_id: null, medio_pago_nombre: null, ...auditoria("admin1", "2026-04-10T14:00:00Z") },
 ];
 
-// Simula GET /api/gastos?q=&desde=&hasta=&pagina=
+// Simula GET /api/gastos?q=&desde=&hasta=&pagina= (solo los gastos activos: los eliminados no se listan)
 export const listarGastosSimulado = (gastos, { q, desde, hasta, pagina = 1, porPagina = 20 } = {}) => {
-  const filtrados = buscarGastos(filtrarGastos(gastos, { desde, hasta }), q);
+  const activos = gastos.filter((g) => g.activo !== false);
+  const filtrados = buscarGastos(filtrarGastos(activos, { desde, hasta }), q);
   const numeroDePagina = Math.max(1, Number(pagina) || 1);
   const inicio = (numeroDePagina - 1) * porPagina;
   return {

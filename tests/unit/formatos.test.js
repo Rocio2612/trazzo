@@ -97,3 +97,67 @@ describe("aNumero", () => {
     expect(aNumero(valor)).toBeNaN();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fechas con hora (TIMESTAMPTZ de la base): se ven en la hora local de quien mira.
+// Las pruebas arman las fechas con la hora local para no depender de la zona horaria de la computadora.
+// ---------------------------------------------------------------------------
+
+import { fechaDeMarcaParaMostrar, fechaHoraParaMostrar } from "../../frontend/js/formatos.js";
+
+describe("fechaHoraParaMostrar", () => {
+  it("muestra día-mes-año y hora:minutos en la hora local", () => {
+    expect(fechaHoraParaMostrar(new Date(2026, 2, 5, 8, 30).toISOString())).toBe("05-03-2026 08:30");
+  });
+
+  it("rellena con cero el día, el mes, la hora y los minutos", () => {
+    expect(fechaHoraParaMostrar(new Date(2026, 0, 2, 3, 4).toISOString())).toBe("02-01-2026 03:04");
+  });
+
+  it("la medianoche y el último minuto del día", () => {
+    expect(fechaHoraParaMostrar(new Date(2026, 11, 31, 0, 0).toISOString())).toBe("31-12-2026 00:00");
+    expect(fechaHoraParaMostrar(new Date(2026, 11, 31, 23, 59).toISOString())).toBe("31-12-2026 23:59");
+  });
+
+  it("acepta un objeto Date y un número de milisegundos", () => {
+    expect(fechaHoraParaMostrar(new Date(2026, 5, 15, 10, 5))).toBe("15-06-2026 10:05");
+    expect(fechaHoraParaMostrar(new Date(2026, 5, 15, 10, 5).getTime())).toBe("15-06-2026 10:05");
+  });
+
+  it("un instante con zona (Z o -03:00) se convierte a la hora local, sin importar cómo venga escrito", () => {
+    const instante = new Date(2026, 2, 5, 8, 30);
+    expect(fechaHoraParaMostrar(instante.toISOString())).toBe(fechaHoraParaMostrar(instante.toISOString().replace("Z", "+00:00")));
+  });
+
+  it("un texto solo con el día se toma como ese día a las 00:00, sin correrse por la zona horaria", () => {
+    expect(fechaHoraParaMostrar("2026-03-05")).toBe("05-03-2026 00:00");
+    expect(fechaDeMarcaParaMostrar("2026-03-05")).toBe("05-03-2026");
+    expect(fechaDeMarcaParaMostrar("2026-12-31")).toBe("31-12-2026");
+  });
+
+  it.each([[null], [undefined], [""], ["   "], ["hoy"], ["2026-13-45"], [NaN], ["no es una fecha"]])("devuelve vacío si no es una fecha (%j)", (valor) => {
+    expect(fechaHoraParaMostrar(valor)).toBe("");
+    expect(fechaDeMarcaParaMostrar(valor)).toBe("");
+  });
+});
+
+describe("fechaDeMarcaParaMostrar", () => {
+  it("muestra solo el día", () => {
+    expect(fechaDeMarcaParaMostrar(new Date(2026, 2, 5, 23, 59).toISOString())).toBe("05-03-2026");
+  });
+
+  it("es el mismo día que la fecha con hora", () => {
+    const valor = new Date(2026, 8, 9, 12, 0).toISOString();
+    expect(fechaHoraParaMostrar(valor).startsWith(fechaDeMarcaParaMostrar(valor))).toBe(true);
+  });
+});
+
+describe("fechaHoraParaMostrar: días que no existen", () => {
+  it.each([["2026-02-30"], ["2026-04-31"], ["2025-02-29"], ["2026-00-10"], ["2026-12-00"], ["2026-13-01"]])("rechaza %s en vez de corregirla", (valor) => {
+    expect(fechaHoraParaMostrar(valor)).toBe("");
+  });
+
+  it("acepta el 29 de febrero de un año bisiesto", () => {
+    expect(fechaDeMarcaParaMostrar("2024-02-29")).toBe("29-02-2024");
+  });
+});

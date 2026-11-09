@@ -4,6 +4,7 @@
 // y los datos vienen de mocks/personalizacion.js hasta que Back publique PUT /negocio.
 
 import { avisar, bannerAmbar, boton, confirmar, crearCampo, h, ICONOS, crearSvg } from "./componentes/ui-panel.js";
+import { fechaDeMarcaParaMostrar, fechaHoraParaMostrar } from "./formatos.js";
 import { armarPayloadNegocio, CATEGORIAS_IMPOSITIVAS, RUBROS, validarNegocio } from "./personalizacion.js";
 import { servicioNegocio } from "./mocks/personalizacion.js";
 
@@ -30,6 +31,15 @@ const iniciarPantalla = async () => {
     guardado.identificador,
   );
   identificador.control.classList.add("cfg-solo-lectura");
+
+  // Fecha en que se registró el negocio (fecha_registro de la base): solo se ve, no se edita ni se envía.
+  const fechaDeRegistro = fechaDeMarcaParaMostrar(guardado.fecha_registro);
+  const registro = crearCampo(
+    { id: "fecha_registro", nombre: "fecha_registro", etiqueta: "Fecha de registro", solo_lectura: true, ayuda: "Se completa sola al registrar el negocio." },
+    fechaDeRegistro,
+  );
+  registro.control.classList.add("cfg-solo-lectura");
+  if (fechaDeRegistro) registro.control.title = `Registrado el ${fechaHoraParaMostrar(guardado.fecha_registro)}`;
 
   const nombre = crearCampo(
     { nombre: "nombre_comercial", etiqueta: "Nombre o razón social", obligatorio: true, maxlength: 100 },
@@ -187,6 +197,7 @@ const iniciarPantalla = async () => {
       "div",
       { class: "gastos-tarjeta cfg-tarjeta cfg-centrado" },
       identificador.fila,
+      fechaDeRegistro ? registro.fila : null,
       nombre.fila,
       rubro.fila,
       rubroOtro.fila,

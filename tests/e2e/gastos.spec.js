@@ -358,9 +358,9 @@ test.describe("Gastos: alta", () => {
     await expect(modal(page).locator("img")).toHaveCount(0);
   });
 
-  test("un concepto del largo máximo (100 caracteres seguidos) no rompe la tabla", async ({ page }) => {
+  test("un concepto larguísimo (5000 caracteres seguidos) no rompe la tabla", async ({ page }) => {
     await abrirGastos(page);
-    await crearGasto(page, { concepto: "x".repeat(100), monto: "10" });
+    await crearGasto(page, { concepto: "x".repeat(5000), monto: "10" });
     await expect(filas(page)).toHaveCount(8);
     await expect(page.getByTestId("gastos-eliminar-8")).toBeVisible();
     const desborda = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
@@ -832,16 +832,16 @@ test.describe("Gastos: acceso y teclado", () => {
     await expect(filas(page)).toHaveCount(6);
   });
 
-  test("el concepto admite como máximo 100 caracteres: el campo no deja escribir más", async ({ page }) => {
+  test("el concepto no tiene largo máximo (es TEXT en la base): el campo deja escribir lo que haga falta", async ({ page }) => {
     await abrirGastos(page);
     await page.getByTestId("gastos-nuevo").click();
-    await expect(page.locator("#concepto")).toHaveAttribute("maxlength", "100");
+    await expect(page.locator("#concepto")).not.toHaveAttribute("maxlength", /.*/);
     await page.locator("#concepto").click();
-    await page.keyboard.insertText("a".repeat(150));
-    expect((await page.locator("#concepto").inputValue()).length).toBe(100);
+    await page.keyboard.insertText("a".repeat(300));
+    expect((await page.locator("#concepto").inputValue()).length).toBe(300);
     await page.locator("#monto").fill("10");
     await guardar(page).click();
-    await expect(page.getByRole("row", { name: /a{100}/ })).toHaveCount(1);
+    await expect(page.getByRole("row", { name: /a{300}/ })).toHaveCount(1);
   });
 
   test("la pantalla no tira errores de JavaScript ni de red inesperados al usarla", async ({ page }) => {
@@ -1055,5 +1055,206 @@ test.describe("Gastos: lo que se envía y lo que se muestra, con los nombres de 
     await completar(page, { concepto: "Luz editada" });
     await guardar(page).click();
     await expect(page.getByRole("row", { name: /Luz editada/ }).locator("td").nth(4)).toHaveText("admin1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// «Eliminar» frente a `activo` (como en la base): un gasto eliminado queda inactivo y no se lista ni se suma.
+// Para quien usa la pantalla se ve igual que un borrado.
+// ---------------------------------------------------------------------------
+
+test.describe("Gastos: eliminar desactiva el gasto", () => {
+  const eliminarGasto = async (page, id) => {
+    await page.getByTestId(`gastos-eliminar-${id}`).click();
+    await page.getByTestId("modal-confirmar").click();
+    await expect(page.getByTestId(`gastos-eliminar-${id}`)).toHaveCount(0);
+  };
+
+  test("un gasto eliminado no vuelve a aparecer al cambiar de período, al buscar ni al crear otro", async ({ page }) => {
+    await fijarHoy(page, "2026-04-10");
+    await abrirGastos(page);
+    await eliminarGasto(page, 2);
+    await page.getByTestId("gastos-filtro-fecha").selectOption("anio");
+    await expect(page.getByTestId("gastos-eliminar-2")).toHaveCount(0);
+    await page.getByTestId("gastos-filtro-fecha").selectOption("todas");
+    await page.getByTestId("gastos-buscador").fill("luz");
+    await expect(page.getByTestId("gastos-tabla-vacio")).toHaveText("Sin resultados");
+    await page.getByTestId("gastos-buscador").fill("");
+    await crearGasto(page, { concepto: "Otro gasto", monto: "10" });
+    await expect(page.getByTestId("gastos-eliminar-2")).toHaveCount(0);
+    await expect(filas(page)).toHaveCount(7);
+  });
+
+  test("el total del período no cuenta lo eliminado, en ningún período", async ({ page }) => {
+    await fijarHoy(page, "2026-03-20");
+    await abrirGastos(page);
+    await page.getByTestId("gastos-filtro-fecha").selectOption("mes");
+    await expect(page.getByTestId("gastos-total")).toHaveText(/524\.751,25/);
+    await eliminarGasto(page, 2);
+    await expect(page.getByTestId("gastos-total")).toHaveText(/486\.500,75/);
+    await expect(page.getByTestId("gastos-total-detalle")).toHaveText("3 gastos");
+    await page.getByTestId("gastos-filtro-fecha").selectOption("todas");
+    await expect(page.getByTestId("gastos-total")).toHaveText(/956\.800,75/);
+  });
+
+  test("los gastos nuevos siguen teniendo un número propio aunque se hayan eliminado otros", async ({ page }) => {
+    await abrirGastos(page);
+    await eliminarGasto(page, 7);
+    await crearGasto(page, { concepto: "Después de eliminar", monto: "10" });
+    await expect(page.getByTestId("gastos-editar-8")).toBeVisible();
+    await expect(page.getByTestId("gastos-editar-7")).toHaveCount(0);
+  });
+
+  test("se pueden eliminar todos y volver a crear", async ({ page }) => {
+    await abrirGastos(page);
+    for (let id = 1; id <= 7; id++) await eliminarGasto(page, id);
+    await expect(page.getByTestId("gastos-tabla-vacio")).toHaveText("Sin gastos");
+    await crearGasto(page, { concepto: "Volver a empezar", monto: "100" });
+    await expect(filas(page)).toHaveCount(1);
+    await expect(page.getByTestId("gastos-total-detalle")).toHaveText("1 gasto");
+  });
+
+  test("un gasto eliminado se puede volver a crear con el mismo concepto y monto (no hay nombres únicos)", async ({ page }) => {
+    await abrirGastos(page);
+    await eliminarGasto(page, 2);
+    await crearGasto(page, { fecha: "05-03-2026", concepto: "Luz", monto: "38250.50" });
+    await expect(page.getByRole("row", { name: /Luz/ })).toHaveCount(1);
+    await expect(page.getByTestId("gastos-total")).toHaveText(TOTAL_INICIAL);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// El concepto es TEXT en la base: no tiene largo máximo.
+// ---------------------------------------------------------------------------
+
+test.describe("Gastos: el concepto no tiene largo máximo", () => {
+  test("un concepto de más de 100 caracteres, con palabras, se guarda completo", async ({ page }) => {
+    await abrirGastos(page);
+    const largo = "Pago de alquiler y expensas del local comercial, incluye el ajuste trimestral. ".repeat(6).trim();
+    expect(largo.length).toBeGreaterThan(400);
+    await crearGasto(page, { concepto: largo, monto: "100" });
+    await expect(filas(page).last().locator("td").nth(1)).toHaveText(largo);
+    await expect(aviso(page)).toHaveText("Gasto registrado");
+  });
+
+  test("no aparece ningún mensaje de largo al guardar un concepto largo", async ({ page }) => {
+    await abrirGastos(page);
+    await page.getByTestId("gastos-nuevo").click();
+    await completar(page, { concepto: "x".repeat(1500), monto: "100" });
+    await guardar(page).click();
+    await expect(errorDe(page, "concepto")).toBeHidden();
+    await expect(modal(page)).toHaveCount(0);
+  });
+
+  test("al editar un gasto con un concepto largo, el formulario lo abre completo", async ({ page }) => {
+    await abrirGastos(page);
+    const largo = "y".repeat(800);
+    await crearGasto(page, { concepto: largo, monto: "100" });
+    await page.getByTestId("gastos-editar-8").click();
+    await expect(page.locator("#concepto")).toHaveValue(largo);
+    await completar(page, { concepto: `${largo}!` });
+    await guardar(page).click();
+    await expect(filas(page).last().locator("td").nth(1)).toHaveText(`${largo}!`);
+  });
+
+  test("el concepto sigue siendo obligatorio", async ({ page }) => {
+    await abrirGastos(page);
+    await page.getByTestId("gastos-nuevo").click();
+    await completar(page, { concepto: "   ", monto: "100" });
+    await guardar(page).click();
+    await expect(errorDe(page, "concepto")).toHaveText("Completá el concepto.");
+  });
+
+  test("el diálogo de eliminar muestra el concepto largo completo", async ({ page }) => {
+    await abrirGastos(page);
+    const largo = "z".repeat(600);
+    await crearGasto(page, { concepto: largo, monto: "100" });
+    await page.getByTestId("gastos-eliminar-8").click();
+    await expect(modal(page)).toContainText(`¿Eliminar "${largo}" definitivamente?`);
+  });
+
+  test("la búsqueda encuentra el final de un concepto largo", async ({ page }) => {
+    await abrirGastos(page);
+    await crearGasto(page, { concepto: `${"a".repeat(500)} palabrafinal`, monto: "100" });
+    await page.getByTestId("gastos-buscador").fill("palabrafinal");
+    await expect(filas(page)).toHaveCount(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Datos de auditoría de la base (creado_por, creado_en, modificado_por, modificado_en) a la vista.
+// El navegador usa la hora de Buenos Aires para que las horas sean siempre las mismas.
+// ---------------------------------------------------------------------------
+
+test.describe("Gastos: quién y cuándo creó y modificó cada gasto", () => {
+  test.use({ timezoneId: "America/Argentina/Buenos_Aires" });
+  const AHORA = new Date("2026-04-10T15:00:00Z"); // 12:00 en Buenos Aires
+  const auditoria = (page) => page.getByTestId("gasto-auditoria");
+
+  test("al editar, el formulario dice quién y cuándo creó el gasto", async ({ page }) => {
+    await abrirGastos(page);
+    await page.getByTestId("gastos-editar-2").click();
+    await expect(auditoria(page)).toHaveText("Creado por admin1 el 05-03-2026 08:30");
+  });
+
+  test("al crear, el formulario no muestra datos de auditoría", async ({ page }) => {
+    await abrirGastos(page);
+    await page.getByTestId("gastos-nuevo").click();
+    await expect(auditoria(page)).toHaveCount(0);
+  });
+
+  test("«Creado por» muestra el nombre y, al pasar el mouse, el día y la hora", async ({ page }) => {
+    await abrirGastos(page);
+    const celdaCreador = filas(page).nth(1).locator("td").nth(4);
+    await expect(celdaCreador).toHaveText("admin1");
+    await expect(celdaCreador.locator("span")).toHaveAttribute("title", "Creado por admin1 el 05-03-2026 08:30");
+  });
+
+  test("un gasto recién creado dice que lo creó el usuario de la sesión, con la hora actual", async ({ page }) => {
+    await page.clock.setFixedTime(AHORA);
+    await abrirGastos(page);
+    await crearGasto(page, { fecha: "10-04-2026", concepto: "Nuevo", monto: "10" });
+    await expect(filas(page).last().locator("td").nth(4).locator("span")).toHaveAttribute("title", "Creado por usuario1 el 10-04-2026 12:00");
+    await page.getByTestId("gastos-editar-8").click();
+    await expect(auditoria(page)).toHaveText("Creado por usuario1 el 10-04-2026 12:00");
+  });
+
+  test("después de editar, se agrega quién y cuándo lo modificó, y lo de la creación no cambia", async ({ page }) => {
+    await page.clock.setFixedTime(AHORA);
+    await abrirGastos(page);
+    await page.getByTestId("gastos-editar-2").click();
+    await completar(page, { concepto: "Luz editada" });
+    await guardar(page).click();
+    await expect(aviso(page)).toHaveText("Gasto actualizado");
+    await page.getByTestId("gastos-editar-2").click();
+    await expect(auditoria(page)).toHaveText("Creado por admin1 el 05-03-2026 08:30 · Modificado por usuario1 el 10-04-2026 12:00");
+  });
+
+  test("un gasto sin modificar nunca dice «Modificado»", async ({ page }) => {
+    await abrirGastos(page);
+    for (const id of [1, 4, 7]) {
+      await page.getByTestId(`gastos-editar-${id}`).click();
+      await expect(auditoria(page)).not.toContainText("Modificado");
+      await page.getByTestId("modal-cancelar").click();
+    }
+  });
+
+  test("cancelar una edición no marca el gasto como modificado", async ({ page }) => {
+    await abrirGastos(page);
+    await page.getByTestId("gastos-editar-2").click();
+    await completar(page, { concepto: "No se guarda" });
+    await page.getByTestId("modal-cancelar").click();
+    await page.getByTestId("gastos-editar-2").click();
+    await expect(auditoria(page)).not.toContainText("Modificado");
+  });
+
+  test("la línea de auditoría convive con el aviso de recálculo y no lo reemplaza", async ({ page }) => {
+    await abrirGastos(page);
+    await page.getByTestId("gastos-editar-2").click();
+    await expect(modal(page).locator(".gastos-banner")).toHaveText("Si cambiás la fecha o el monto, se recalcula el total del período.");
+    await expect(auditoria(page)).toBeVisible();
+    await page.locator("#monto").fill("5");
+    await expect(modal(page).locator(".gastos-banner")).toHaveCount(1);
+    await expect(auditoria(page)).toHaveCount(1);
   });
 });

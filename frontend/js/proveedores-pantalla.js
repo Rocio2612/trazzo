@@ -1,6 +1,6 @@
 // --- PANTALLA DE PROVEEDORES (módulo ES) ---
 // Directorio de proveedores: tabla con buscador, alta y edición en un modal, ocultar y restaurar, y eliminar
-// definitivo solo si el proveedor está oculto y no tiene reposiciones ni insumos. La lógica (validación,
+// definitivo solo si el proveedor está oculto y no tiene productos ni reposiciones. La lógica (validación,
 // payload, reglas) está en proveedores.js y los datos vienen de mocks/proveedores.js hasta que Back
 // publique /api/proveedores. Solo el Admin entra (el Backend también lo valida).
 
@@ -22,7 +22,9 @@ import {
   estaOculto,
   ETIQUETA_CATEGORIA_CORTA,
   formatearDocumento,
+  NOMBRE_PROVEEDOR_MAXIMO,
   puedeEliminarProveedor,
+  TELEFONO_PROVEEDOR_MAXIMO,
   TIPOS_DOCUMENTO,
   validarProveedor,
 } from "./proveedores.js";
@@ -44,7 +46,7 @@ const COLUMNAS = [
 ];
 
 const CAMPOS = [
-  { nombre: "nombre", etiqueta: "Nombre o razón social", obligatorio: true, maxlength: 100 },
+  { nombre: "nombre", etiqueta: "Nombre o razón social", obligatorio: true, maxlength: NOMBRE_PROVEEDOR_MAXIMO },
   { nombre: "tipo_documento", etiqueta: "Tipo de documento", obligatorio: true, grupo: "documento", opciones: TIPOS_DOCUMENTO },
   { nombre: "numero_documento", etiqueta: "Número", obligatorio: true, grupo: "documento", maxlength: 13, placeholder: "Ej.: 30-71234567-1" },
   {
@@ -54,13 +56,12 @@ const CAMPOS = [
     opciones: [{ valor: "", texto: "Elegir…" }, ...CATEGORIAS_PROVEEDOR],
     ayuda: "Define cómo se registra el IVA de las compras a este proveedor.",
   },
-  { nombre: "telefono", etiqueta: "Teléfono (opcional)", grupo: "contacto", maxlength: 25, tipo: "tel" },
+  { nombre: "telefono", etiqueta: "Teléfono (opcional)", grupo: "contacto", maxlength: TELEFONO_PROVEEDOR_MAXIMO, tipo: "tel" },
   { nombre: "correo", etiqueta: "Correo (opcional)", grupo: "contacto", tipo: "email", maxlength: CORREO_MAXIMO },
   {
     nombre: "descripcion_compra",
     etiqueta: "Descripción de compra",
     tipo: "textarea",
-    maxlength: 500,
     placeholder: "Ej.: Distribuidor de envases y cajas de cartón",
     ayuda: "Qué mercadería, insumos o servicios le compras a este proveedor.",
   },
@@ -133,7 +134,7 @@ const iniciarPantalla = async () => {
       titulo: "Eliminar proveedor",
       cuerpo: [
         h("p", { text: `¿Eliminar a "${p.nombre}" definitivamente?` }),
-        bannerAmbar("Se borra del sistema. No tiene reposiciones ni insumos asociados."),
+        bannerAmbar("Se borra del sistema. No tiene productos ni reposiciones asociados."),
         h("p", { class: "gastos-ayuda", text: "Esta acción no se puede deshacer." }),
       ],
       textoOk: "Eliminar",
