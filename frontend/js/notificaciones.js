@@ -1,11 +1,17 @@
 // Trazzo - Sprint 2 - Notificaciones y Alertas de Stock
-import { fetchAPI } from "./api.js";
+// Lógica de la campana común del layout (ids: campana, campana-contador, panel-alertas).
+// Lo inicia layout.js en todas las pantallas. Usa fetchAPI global (api.js).
+
+let iniciado = false;
 
 export const iniciarNotificaciones = () => {
-  const btnCampana = document.getElementById("btn-campana");
+  if (iniciado) return;
+
+  const btnCampana = document.getElementById("campana");
   const contador = document.getElementById("campana-contador");
   const panel = document.getElementById("panel-alertas");
   if (!btnCampana || !contador) return;
+  iniciado = true;
 
   let pollingInterval;
 
@@ -15,9 +21,9 @@ export const iniciarNotificaciones = () => {
       const data = await fetchAPI("/notificaciones/contador");
       if (data.cantidad > 0) {
         contador.textContent = data.cantidad > 99 ? "99+" : data.cantidad;
-        contador.style.display = "flex";
+        contador.hidden = false;
       } else {
-        contador.style.display = "none";
+        contador.hidden = true;
       }
     } catch (error) {
       console.warn("Fallo al consultar alertas", error);
@@ -38,15 +44,15 @@ export const iniciarNotificaciones = () => {
   btnCampana.addEventListener("click", async (e) => {
     e.stopPropagation();
     if (!panel) return;
-    panel.classList.toggle("hidden");
-    if (!panel.classList.contains("hidden")) {
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden) {
       cargarAlertas(panel, actualizarContador);
     }
   });
 
   document.addEventListener("click", (e) => {
     if (panel && !panel.contains(e.target) && !btnCampana.contains(e.target)) {
-      panel.classList.add("hidden");
+      panel.hidden = true;
     }
   });
 };

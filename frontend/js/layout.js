@@ -1,5 +1,6 @@
 // --- IMPORTACIÓN DEL MODAL ---
 import { mostrarConfirmacion } from './componentes/modal-confirmacion.js';
+import { iniciarNotificaciones } from './notificaciones.js';
 
 // --- ESTRUCTURA COMÚN: BARRA LATERAL + ENCABEZADO ---
 // Requiere config.js, api.js y roles.js cargados antes. Se incluye al final del <body>.
@@ -209,7 +210,16 @@ const crearEncabezado = () => {
   cerrar.dataset.testid = "btn-cerrar-sesion";
   derecha.appendChild(cerrar);
 
-  encabezado.append(izquierda, derecha);
+  // Panel con la lista de alertas de stock. La lógica está en notificaciones.js.
+  const panelAlertas = crear("div");
+  panelAlertas.id = "panel-alertas";
+  panelAlertas.dataset.testid = "panel-alertas";
+  panelAlertas.hidden = true;
+  panelAlertas.style.cssText =
+    "position:fixed; right:1.5rem; top:65px; width:320px; max-height:70vh; overflow-y:auto; z-index:100; " +
+    "background:#fff; border:1px solid #ccc; border-radius:8px; padding:1rem; box-shadow:0 4px 12px rgba(0,0,0,0.1);";
+
+  encabezado.append(izquierda, derecha, panelAlertas);
   return encabezado;
 };
 
@@ -256,6 +266,7 @@ const iniciarLayout = () => {
   principal.appendChild(contenido);
 
   document.getElementById("btn-logout").addEventListener("click", cerrarSesion);
+  if (puedeHacer("notificaciones", "ver")) iniciarNotificaciones();
   aplicarPermisos();
 };
 
