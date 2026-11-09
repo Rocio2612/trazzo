@@ -228,3 +228,268 @@ describe("datos simulados", () => {
     expect(listarGastosSimulado(GASTOS_EJEMPLO, { pagina: -3 }).pagina).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Pruebas ampliadas (casos límite de validación, payload, búsqueda, filtro y resumen)
+// ---------------------------------------------------------------------------
+
+describe("validarGasto: fecha", () => {
+  it.each([[""], ["   "], [null], [undefined]])("una fecha vacía (%j) pide completarla", (fecha) => {
+    expect(validarGasto({ ...valido, fecha }, hoy).fecha).toBe("Completá la fecha.");
+  });
+
+  it.each([
+    ["00-01-2026"],
+    ["32-01-2026"],
+    ["15-13-2026"],
+    ["29-02-2025"], // 2025 no es bisiesto
+    ["2026-02-30"],
+    ["2026-13-01"],
+    ["05-03-26"],
+    ["05/03/2026"],
+    ["hoy"],
+  ])("rechaza la fecha %s", (fecha) => {
+    expect(validarGasto({ ...valido, fecha }, hoy).fecha).toBe("La fecha no es una fecha válida.");
+  });
+
+  it.each([["29-02-2024"], ["31-12-1999"], ["01-01-2099"], ["2024-02-29"]])("acepta la fecha %s", (fecha) => {
+    expect(validarGasto({ ...valido, fecha }, hoy)).toEqual({});
+  });
+});
+
+describe("validarGasto: concepto", () => {
+  it.each([[""], ["   "], ["\t\n"], [null], [undefined]])("un concepto vacío (%j) pide completarlo", (concepto) => {
+    expect(validarGasto({ ...valido, concepto }, hoy).concepto).toBe("Completá el concepto.");
+  });
+
+  it.each([["123"], ["Café ñandú"], ["<b>x</b>"], ["a"], ["Alquiler (local) - 50% / mes"]])(
+    "acepta el concepto %s",
+    (concepto) => {
+      expect(validarGasto({ ...valido, concepto }, hoy)).toEqual({});
+    },
+  );
+});
+
+describe("validarGasto: largo del concepto", () => {
+  it("acepta un concepto de exactamente 100 caracteres", () => {
+    expect(validarGasto({ ...valido, concepto: "a".repeat(100) }, hoy)).toEqual({});
+  });
+
+  it("rechaza uno de 101 caracteres", () => {
+    expect(validarGasto({ ...valido, concepto: "a".repeat(101) }, hoy).concepto).toBe(
+      "El concepto admite hasta 100 caracteres.",
+    );
+  });
+
+  it("los espacios de los costados no cuentan para el largo", () => {
+    expect(validarGasto({ ...valido, concepto: `   ${"a".repeat(100)}   ` }, hoy)).toEqual({});
+  });
+});
+
+describe("validarGasto: monto", () => {
+  it.each([[""], ["   "], [null], [undefined]])("un monto vacío (%j) pide completarlo", (monto) => {
+    expect(validarGasto({ ...valido, monto }, hoy).monto).toBe("Completá el monto.");
+  });
+
+  it.each([["1,5"], ["+5"], [".5"], ["5."], ["1e3"], ["NaN"], ["Infinity"], ["12abc"], ["1 000"]])(
+    "el monto %s no es un número válido",
+    (monto) => {
+      expect(validarGasto({ ...valido, monto }, hoy).monto).toBe("El monto debe ser un número.");
+    },
+  );
+
+  it.each([["0.00"], ["-0.01"], ["-1000"]])("el monto %s no es mayor a 0", (monto) => {
+    expect(validarGasto({ ...valido, monto }, hoy).monto).toBe("El monto debe ser mayor a 0.");
+  });
+
+  it("rechaza más de 2 decimales y montos que no entran en NUMERIC(12,2)", () => {
+    expect(validarGasto({ ...valido, monto: "9999999999.999" }, hoy).monto).toBe("El monto admite hasta 2 decimales.");
+    expect(validarGasto({ ...valido, monto: "10000000000.00" }, hoy).monto).toBe("El monto es demasiado grande.");
+  });
+
+  it("ignora los espacios alrededor y acepta ceros a la izquierda", () => {
+    expect(validarGasto({ ...valido, monto: " 100 " }, hoy)).toEqual({});
+    expect(validarGasto({ ...valido, monto: "007" }, hoy)).toEqual({});
+  });
+
+  it("solo informa el campo que está mal", () => {
+    expect(Object.keys(validarGasto({ ...valido, monto: "0" }, hoy))).toEqual(["monto"]);
+    expect(Object.keys(validarGasto({ ...valido, concepto: "" }, hoy))).toEqual(["concepto"]);
+    expect(Object.keys(validarGasto({ ...valido, fecha: "31-02-2026" }, hoy))).toEqual(["fecha"]);
+  });
+
+  it("informa todos los campos mal a la vez", () => {
+    expect(Object.keys(validarGasto({ fecha: "x", concepto: " ", monto: "-1" }, hoy)).sort()).toEqual([
+      "concepto",
+      "fecha",
+      "monto",
+    ]);
+  });
+});
+
+describe("armarPayloadGasto: casos límite", () => {
+  it("acepta la fecha ya en aaaa-mm-dd y no la modifica", () => {
+    expect(armarPayloadGasto({ ...valido, fecha: "2026-03-05" }).fecha).toBe("2026-03-05");
+  });
+
+  it("convierte el monto escrito como texto a número", () => {
+    expect(armarPayloadGasto({ ...valido, monto: "100.5" }).monto).toBe(100.5);
+    expect(armarPayloadGasto({ ...valido, monto: "007" }).monto).toBe(7);
+    expect(armarPayloadGasto({ ...valido, monto: " 20 " }).monto).toBe(20);
+  });
+
+  it("sin medio de pago (undefined, vacío o null) envía null", () => {
+    expect(armarPayloadGasto({ ...valido }).medio_pago_id).toBeNull();
+    expect(armarPayloadGasto({ ...valido, medio_pago_id: "" }).medio_pago_id).toBeNull();
+    expect(armarPayloadGasto({ ...valido, medio_pago_id: null }).medio_pago_id).toBeNull();
+  });
+
+  it("el medio de pago elegido viaja tal cual", () => {
+    expect(armarPayloadGasto({ ...valido, medio_pago_id: "3" }).medio_pago_id).toBe("3");
+  });
+
+  it("recorta el concepto y no toca su contenido", () => {
+    expect(armarPayloadGasto({ ...valido, concepto: "  <b>Luz</b> & gas  " }).concepto).toBe("<b>Luz</b> & gas");
+  });
+
+  it("no valida: con una fecha inválida la deja en null (por eso se valida antes)", () => {
+    expect(armarPayloadGasto({ ...valido, fecha: "31-02-2026" }).fecha).toBeNull();
+  });
+});
+
+describe("buscarGastos: casos límite", () => {
+  it("ignora los espacios alrededor y las mayúsculas", () => {
+    expect(buscarGastos(GASTOS_EJEMPLO, "  luz  ").map((g) => g.id)).toEqual([2]);
+  });
+
+  it("busca por parte de la palabra", () => {
+    expect(buscarGastos(GASTOS_EJEMPLO, "alq").map((g) => g.id)).toEqual([1, 5]);
+  });
+
+  it("los símbolos de expresiones regulares se buscan como texto y no rompen", () => {
+    expect(() => buscarGastos(GASTOS_EJEMPLO, "(")).not.toThrow();
+    expect(buscarGastos(GASTOS_EJEMPLO, ".*")).toEqual([]);
+    expect(buscarGastos(GASTOS_EJEMPLO, "[a-z]")).toEqual([]);
+    expect(buscarGastos([{ concepto: "Pago (cuota 1/3)", monto: "1.00" }], "(cuota")).toHaveLength(1);
+  });
+
+  it("un gasto sin medio de pago ni concepto no rompe la búsqueda", () => {
+    expect(buscarGastos([{ concepto: null, medio_pago_nombre: null }], "x")).toEqual([]);
+    expect(buscarGastos([{ monto: "1.00" }], "x")).toEqual([]);
+  });
+
+  it("no distingue tildes: ni las del texto buscado ni las del gasto", () => {
+    expect(buscarGastos(GASTOS_EJEMPLO, "reparacion").map((g) => g.id)).toEqual([7]);
+    expect(buscarGastos(GASTOS_EJEMPLO, "REPARACIÓN").map((g) => g.id)).toEqual([7]);
+    expect(buscarGastos(GASTOS_EJEMPLO, "viaticos").map((g) => g.id)).toEqual([6]);
+    expect(buscarGastos(GASTOS_EJEMPLO, "alquilér").map((g) => g.id)).toEqual([1, 5]);
+  });
+
+  it("la ñ y la ü se comparan sin acento pero siguen funcionando", () => {
+    const gastos = [{ concepto: "Cañería", monto: "1.00" }, { concepto: "Pingüino", monto: "1.00" }];
+    expect(buscarGastos(gastos, "caneria")).toHaveLength(1);
+    expect(buscarGastos(gastos, "pinguino")).toHaveLength(1);
+    expect(buscarGastos(gastos, "cañería")).toHaveLength(1);
+  });
+
+  it("busca por el medio de pago sin distinguir tildes", () => {
+    const gastos = [{ concepto: "Pago", monto: "1.00", medio_pago_nombre: "Débito" }];
+    expect(buscarGastos(gastos, "debito")).toHaveLength(1);
+  });
+
+  it("null o undefined como texto devuelven todo", () => {
+    expect(buscarGastos(GASTOS_EJEMPLO, null)).toHaveLength(7);
+    expect(buscarGastos(GASTOS_EJEMPLO, undefined)).toHaveLength(7);
+  });
+
+  it("no modifica la lista original", () => {
+    const copia = JSON.stringify(GASTOS_EJEMPLO);
+    buscarGastos(GASTOS_EJEMPLO, "luz");
+    expect(JSON.stringify(GASTOS_EJEMPLO)).toBe(copia);
+  });
+});
+
+describe("filtrarGastos: casos límite", () => {
+  it("solo con desde, incluye ese día y los posteriores", () => {
+    expect(filtrarGastos(GASTOS_EJEMPLO, { desde: "2026-04-02" }).map((g) => g.id)).toEqual([6, 7]);
+  });
+
+  it("solo con hasta, incluye ese día y los anteriores", () => {
+    expect(filtrarGastos(GASTOS_EJEMPLO, { hasta: "2026-03-05" }).map((g) => g.id)).toEqual([1, 2, 3]);
+  });
+
+  it("con desde mayor que hasta no devuelve nada", () => {
+    expect(filtrarGastos(GASTOS_EJEMPLO, { desde: "2026-04-01", hasta: "2026-03-01" })).toEqual([]);
+  });
+
+  it("un día sin gastos devuelve vacío", () => {
+    expect(filtrarGastos(GASTOS_EJEMPLO, { desde: "2026-03-20", hasta: "2026-03-20" })).toEqual([]);
+  });
+});
+
+describe("resumirGastos: casos límite", () => {
+  it("ignora los gastos con un monto que no es número", () => {
+    const gastos = [
+      { fecha: "2026-03-01", monto: "10.00" },
+      { fecha: "2026-03-01", monto: "abc" },
+      { fecha: "2026-03-01", monto: undefined },
+      { fecha: "2026-03-01", monto: "5.50" },
+    ];
+    expect(resumirGastos(gastos)).toMatchObject({ total: 15.5, cantidad: 2 });
+  });
+
+  it("devuelve null en desde y hasta cuando no se pasan, y agrupa por día por defecto", () => {
+    expect(resumirGastos(GASTOS_EJEMPLO)).toMatchObject({ desde: null, hasta: null, agrupar: "dia" });
+  });
+
+  it("suma muchos montos chicos sin errores de decimales", () => {
+    const gastos = Array.from({ length: 100 }, () => ({ fecha: "2026-03-01", monto: "0.10" }));
+    expect(resumirGastos(gastos).total).toBe(10);
+  });
+
+  it("suma el monto máximo permitido más un centavo sin perder precisión", () => {
+    const gastos = [
+      { fecha: "2026-03-01", monto: "9999999999.99" },
+      { fecha: "2026-03-01", monto: "0.01" },
+    ];
+    expect(resumirGastos(gastos).total).toBe(10000000000);
+  });
+
+  it("separa el mismo mes de años distintos", () => {
+    const gastos = [
+      { fecha: "2025-12-31", monto: "1.00" },
+      { fecha: "2026-12-01", monto: "2.00" },
+    ];
+    expect(resumirGastos(gastos, { agrupar: "mes" }).periodos.map((p) => p.periodo)).toEqual(["2025-12", "2026-12"]);
+    expect(resumirGastos(gastos, { agrupar: "anio" }).periodos).toHaveLength(2);
+  });
+
+  it("no modifica la lista que recibe", () => {
+    const gastos = Object.freeze(GASTOS_EJEMPLO.map((g) => Object.freeze({ ...g })));
+    expect(() => resumirGastos(gastos, { agrupar: "mes" })).not.toThrow();
+  });
+});
+
+describe("etiquetaPeriodo: casos límite", () => {
+  it("rellena con cero el día y el mes", () => {
+    expect(etiquetaPeriodo("2026-01-09", "dia")).toBe("09-01-2026");
+    expect(etiquetaPeriodo("2026-01", "mes")).toBe("01-2026");
+    expect(etiquetaPeriodo("2025-12", "mes")).toBe("12-2025");
+  });
+});
+
+describe("listarGastosSimulado: casos límite", () => {
+  it("una página más allá del final devuelve la lista vacía pero conserva el total", () => {
+    expect(listarGastosSimulado(GASTOS_EJEMPLO, { porPagina: 4, pagina: 5 })).toMatchObject({ items: [], total: 7, pagina: 5 });
+  });
+
+  it("combina búsqueda y rango de fechas", () => {
+    const lista = listarGastosSimulado(GASTOS_EJEMPLO, { q: "alquiler", desde: "2026-04-01" });
+    expect(lista.items.map((g) => g.id)).toEqual([5]);
+    expect(lista.total).toBe(1);
+  });
+
+  it("una página que no es número se toma como la primera", () => {
+    expect(listarGastosSimulado(GASTOS_EJEMPLO, { pagina: "abc" }).pagina).toBe(1);
+  });
+});

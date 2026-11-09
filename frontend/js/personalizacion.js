@@ -23,6 +23,19 @@ export const RUBROS = ["Gastronomía", "Indumentaria", "Tecnología", "Kiosco", 
 
 const vacio = (valor) => valor === null || valor === undefined || String(valor).trim() === "";
 
+// Para comparar textos sin distinguir mayúsculas ni tildes ("Pérez" = "perez").
+const sinTildes = (texto) =>
+  String(texto ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+
+// Largo máximo del correo (mismo criterio que el correo de los usuarios: VARCHAR(120)).
+export const CORREO_MAXIMO = 120;
+
+// Sin espacios, con una sola @, sin puntos seguidos ni al principio o al final de cada parte, y un dominio con punto.
+export const CORREO_VALIDO = /^[^\s@.]+(\.[^\s@.]+)*@([^\s@.]+\.)+[^\s@.]{2,}$/;
+
 // --- Campos de una persona ---------------------------------------------------------
 
 export const validarUsuario = (valor) => {
@@ -40,13 +53,16 @@ export const validarContrasena = (valor) => {
   if (!/[A-Z]/.test(clave)) return "La contraseña debe incluir al menos una letra mayúscula.";
   if (!/[a-z]/.test(clave)) return "La contraseña debe incluir al menos una letra minúscula.";
   if (!/\d/.test(clave)) return "La contraseña debe incluir al menos un número.";
-  if (!/[^A-Za-z0-9]/.test(clave)) return "La contraseña debe incluir al menos un símbolo especial.";
+  // El espacio no cuenta como símbolo especial.
+  if (!/[^A-Za-z0-9\s]/.test(clave)) return "La contraseña debe incluir al menos un símbolo especial.";
   return null;
 };
 
 export const validarCorreo = (valor) => {
   if (vacio(valor)) return "Rellene el correo.";
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(valor).trim()) ? null : "El correo no es válido.";
+  const correo = String(valor).trim();
+  if (correo.length > CORREO_MAXIMO) return `El correo no puede superar los ${CORREO_MAXIMO} caracteres.`;
+  return CORREO_VALIDO.test(correo) ? null : "El correo no es válido.";
 };
 
 // DNI: opcional. Si se carga, 7 u 8 números (sin puntos).
@@ -69,7 +85,9 @@ export const validarPersona = (datos = {}, { esNuevo = true } = {}) => {
   poner("nombre", vacio(datos.nombre) ? "Rellene el nombre." : null);
   poner("apellido", vacio(datos.apellido) ? "Rellene el apellido." : null);
   poner("dni", validarDni(datos.dni));
-  poner("rol", [ROLES.ADMIN, ROLES.CAJERO].includes(datos.rol) ? null : "Elija el rol.");
+  // El Propietario no se crea (en el alta no se ofrece ese rol), pero existe y se puede editar: conserva su rol.
+  const rolesValidos = esNuevo ? [ROLES.ADMIN, ROLES.CAJERO] : [ROLES.PROPIETARIO, ROLES.ADMIN, ROLES.CAJERO];
+  poner("rol", rolesValidos.includes(datos.rol) ? null : "Elija el rol.");
   return errores;
 };
 
@@ -87,13 +105,11 @@ export const armarPayloadPersona = (datos, { esNuevo = true } = {}) => {
   return payload;
 };
 
-// Búsqueda por nombre, apellido, usuario o correo, sin distinguir mayúsculas.
+// Búsqueda por nombre, apellido, usuario o correo, sin distinguir mayúsculas ni tildes.
 export const buscarPersonal = (personal, texto) => {
-  const buscado = String(texto ?? "").trim().toLowerCase();
+  const buscado = sinTildes(texto).trim();
   if (!buscado) return personal;
-  return personal.filter((p) =>
-    [p.nombre, p.apellido, p.usuario, p.correo].some((campo) => String(campo ?? "").toLowerCase().includes(buscado)),
-  );
+  return personal.filter((p) => [p.nombre, p.apellido, p.usuario, p.correo].some((campo) => sinTildes(campo).includes(buscado)));
 };
 
 // --- Qué puede hacer quien mira la lista --------------------------------------------

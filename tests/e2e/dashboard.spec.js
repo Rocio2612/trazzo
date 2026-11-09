@@ -182,7 +182,7 @@ test.describe("Barra lateral", () => {
   test("el ADMIN ve todos los grupos y todos los módulos", async ({ page }) => {
     await iniciarSesionComo(page, "ADMIN");
     await page.goto("/dashboard.html");
-    await expect(titulosDeGrupo(page)).toHaveText(["Ventas", "Productos", "Finanzas"]);
+    await expect(titulosDeGrupo(page)).toHaveText(["Ventas", "Productos", "Finanzas", "Administración"]);
     for (const nombre of MODULOS.filter((m) => !["notificaciones", "personal"].includes(m))) {
       await expect(page.getByTestId(`menu-${nombre}`)).toBeVisible();
     }
@@ -192,7 +192,7 @@ test.describe("Barra lateral", () => {
     await iniciarSesionComo(page, "ADMIN");
     await page.goto("/dashboard.html");
     const enlaces = page.locator(".sidebar-link");
-    await expect(enlaces).toHaveCount(10);
+    await expect(enlaces).toHaveCount(12); // los módulos del menú (con Mi negocio y Configuración) y el cierre de sesión
     for (const enlace of await enlaces.all()) {
       await expect(enlace.locator("svg")).toHaveCount(1);
     }
@@ -262,7 +262,7 @@ test.describe("Barra lateral", () => {
   ];
 
   // Pantallas que ya tienen contenido: no muestran el cartel "En construcción" y su título puede ser otro.
-  const TITULO_DE_PANTALLA = { productos: "Productos", gastos: "Gastos operativos" };
+  const TITULO_DE_PANTALLA = { productos: "Productos", proveedores: "Proveedores", gastos: "Gastos operativos" };
 
   for (const [modulo, archivo, titulo] of PANTALLAS) {
     const terminada = modulo in TITULO_DE_PANTALLA;

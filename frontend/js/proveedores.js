@@ -3,7 +3,10 @@
 // descripción de compra), búsqueda y cuándo se puede eliminar. El Backend repite todas las reglas:
 // esto es solo UX. Los nombres de campo son provisorios hasta cerrar el contrato con Back.
 
-import { CATEGORIAS_IMPOSITIVAS } from "./personalizacion.js";
+import { CATEGORIAS_IMPOSITIVAS, CORREO_MAXIMO, CORREO_VALIDO } from "./personalizacion.js";
+
+// El correo sigue la misma regla que el del personal (ver personalizacion.js).
+export { CORREO_MAXIMO };
 
 export const TIPOS_DOCUMENTO = [
   { valor: "CUIT", texto: "CUIT" },
@@ -29,6 +32,8 @@ export const soloDigitos = (valor) => String(valor ?? "").replace(/\D/g, "");
 
 const PESOS_CUIT = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
 const PREFIJOS_CUIT = ["20", "23", "24", "27", "30", "33", "34"];
+// El CUIL es de personas: los prefijos 30, 33 y 34 son de empresas y solo valen para un CUIT.
+const PREFIJOS_CUIL = ["20", "23", "24", "27"];
 
 // Dígito verificador que le corresponde a los primeros 10 números de un CUIT o CUIL.
 // Devuelve null si ese CUIT no puede existir (el resto da 10).
@@ -57,6 +62,10 @@ export const validarDocumento = (tipo, numero) => {
   if (/[^\d\s.-]/.test(String(numero))) return { numero_documento: "Solo se admiten números." };
   if (tipo === "DNI") {
     return /^\d{7,8}$/.test(digitos) ? {} : { numero_documento: "El DNI debe tener 7 u 8 números." };
+  }
+  const prefijo = digitos.slice(0, 2);
+  if (tipo === "CUIL" && digitos.length === 11 && PREFIJOS_CUIT.includes(prefijo) && !PREFIJOS_CUIL.includes(prefijo)) {
+    return { numero_documento: "El CUIL no es válido: el prefijo debe ser 20, 23, 24 o 27." };
   }
   const motivo = validarCuit(digitos);
   return motivo ? { numero_documento: motivo.replace("El CUIT", `El ${tipo}`) } : {};
@@ -87,8 +96,10 @@ export const validarProveedor = (datos = {}) => {
     }
   }
 
-  if (!vacio(datos.correo) && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(datos.correo).trim())) {
-    errores.correo = "El correo no es válido.";
+  if (!vacio(datos.correo)) {
+    const correo = String(datos.correo).trim();
+    if (correo.length > CORREO_MAXIMO) errores.correo = `El correo no puede superar los ${CORREO_MAXIMO} caracteres.`;
+    else if (!CORREO_VALIDO.test(correo)) errores.correo = "El correo no es válido.";
   }
 
   if (!CATEGORIAS_PROVEEDOR.some((c) => c.valor === datos.categoria_impositiva)) {
@@ -116,16 +127,21 @@ export const armarPayloadProveedor = (datos) => ({
 
 const sinTildes = (texto) => String(texto ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-// Búsqueda por nombre, documento (con o sin guiones), teléfono, correo o descripción, sin distinguir
-// mayúsculas ni tildes.
+// Un texto "numérico" son solo números con separadores de documento o teléfono ("30-71234567-1", "(011) 4444 5555").
+const ES_BUSQUEDA_NUMERICA = /^[\d\s.\-()+]+$/;
+
+// Búsqueda por nombre, documento, teléfono, correo o descripción, sin distinguir mayúsculas ni tildes.
+// Si lo escrito son solo números y separadores, el documento y el teléfono se comparan solo por sus números
+// (con o sin guiones y espacios). Si lleva letras, se busca como texto: "zzz1" no coincide con un CUIT que tenga un 1.
 export const buscarProveedores = (proveedores, texto) => {
   const buscado = sinTildes(texto).trim();
   if (!buscado) return proveedores;
-  const buscadoDigitos = soloDigitos(buscado);
+  const buscadoDigitos = ES_BUSQUEDA_NUMERICA.test(buscado) ? soloDigitos(buscado) : "";
   return proveedores.filter(
     (p) =>
       [p.nombre, p.telefono, p.correo, p.descripcion_compra].some((campo) => sinTildes(campo).includes(buscado)) ||
-      (buscadoDigitos.length > 0 && soloDigitos(p.numero_documento).includes(buscadoDigitos)),
+      (buscadoDigitos.length > 0 &&
+        [p.numero_documento, p.telefono].some((campo) => soloDigitos(campo).includes(buscadoDigitos))),
   );
 };
 

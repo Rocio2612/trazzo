@@ -8,6 +8,7 @@ import { abrirFormularioModal, avisar, bannerAmbar, boton, botonIcono, confirmar
 import {
   armarPayloadPersona,
   buscarPersonal,
+  CORREO_MAXIMO,
   ETIQUETA_ROL,
   MOTIVO_ULTIMO_ADMIN,
   puedeDeshabilitarPersona,
@@ -31,10 +32,11 @@ const COLUMNAS = [
   { titulo: "Acciones", clase: "acciones-columna" },
 ];
 
-const CAMPOS = (esNuevo) => [
+// `esPropietario`: se está editando al Propietario. Su rol se muestra (no se puede cambiar) para que el formulario se pueda guardar.
+const CAMPOS = (esNuevo, esPropietario = false) => [
   { nombre: "nombre", etiqueta: "Nombre", obligatorio: true, maxlength: 50 },
   { nombre: "apellido", etiqueta: "Apellido", obligatorio: true, maxlength: 50 },
-  { nombre: "correo", etiqueta: "Correo", tipo: "email", obligatorio: true, autocomplete: "off", ayuda: "Se usa para recuperar la contraseña." },
+  { nombre: "correo", etiqueta: "Correo", tipo: "email", obligatorio: true, maxlength: CORREO_MAXIMO, autocomplete: "off", ayuda: "Se usa para recuperar la contraseña." },
   { nombre: "dni", etiqueta: "DNI (opcional)", maxlength: 8, placeholder: "Sin puntos" },
   { nombre: "usuario", etiqueta: "Usuario", obligatorio: true, maxlength: 20, ayuda: "4 a 20 caracteres: minúsculas y números." },
   {
@@ -52,10 +54,14 @@ const CAMPOS = (esNuevo) => [
     nombre: "rol",
     etiqueta: "Rol",
     obligatorio: true,
-    opciones: [
-      { valor: ROLES.CAJERO, texto: ETIQUETA_ROL.CAJERO },
-      { valor: ROLES.ADMIN, texto: ETIQUETA_ROL.ADMIN },
-    ],
+    opciones: esPropietario
+      ? [{ valor: ROLES.PROPIETARIO, texto: ETIQUETA_ROL.PROPIETARIO }]
+      : [
+          { valor: ROLES.CAJERO, texto: ETIQUETA_ROL.CAJERO },
+          { valor: ROLES.ADMIN, texto: ETIQUETA_ROL.ADMIN },
+        ],
+    solo_lectura: esPropietario,
+    ayuda: esPropietario ? "El rol del Propietario no se puede cambiar." : undefined,
   },
 ];
 
@@ -74,7 +80,7 @@ export const crearPanelPersonal = () => {
     const esNuevo = !persona;
     abrirFormularioModal({
       titulo: esNuevo ? "Nuevo usuario" : "Editar usuario",
-      campos: CAMPOS(esNuevo),
+      campos: CAMPOS(esNuevo, persona?.rol === ROLES.PROPIETARIO),
       valores: persona ? { ...persona, dni: persona.dni ?? "", password: "" } : { rol: ROLES.CAJERO },
       validar: (datos) => validarPersona(datos, { esNuevo }),
       alGuardar: async (datos) => {

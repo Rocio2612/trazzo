@@ -88,35 +88,69 @@ const iniciarPantalla = async () => {
   [nombre, rubro, rubroOtro, categoria].forEach(({ control, mostrarError }) =>
     control.addEventListener(control.tagName === "SELECT" ? "change" : "input", () => {
       mostrarError("");
+      // Al cambiar de rubro, un error viejo del campo "Escribí tu rubro" no debe quedar esperando.
+      if (control === rubro.control) rubroOtro.mostrarError("");
       actualizarVista();
+    }),
+  );
+
+  // Enter en un campo de texto guarda, igual que el botón (los desplegables lo usan para abrirse).
+  [nombre, rubroOtro].forEach(({ control }) =>
+    control.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.isComposing) return;
+      e.preventDefault();
+      guardarBtn.click();
     }),
   );
 
   // --- Guardar ---
   let enviando = false;
+
+  // Muestra los errores junto a cada campo y lleva el foco al primero. Devuelve true si no hay ninguno.
+  const validarFormulario = () => {
+    const errores = validarNegocio(leer());
+    const esOtro = rubro.control.value === OTRO;
+    // "Otro (escribirlo)" sin escribir nada no es un rubro: se pide completarlo o elegir uno de la lista.
+    const errorRubro = errores.rubro || (esOtro && rubroOtro.control.value.trim() === "" ? "Escribí el rubro o elegí uno de la lista." : "");
+    nombre.mostrarError(errores.nombre);
+    rubro.mostrarError(esOtro ? "" : errorRubro);
+    rubroOtro.mostrarError(esOtro ? errorRubro : "");
+    categoria.mostrarError(errores.categoria_impositiva);
+    const primero = [
+      [errores.nombre, nombre],
+      [errorRubro, esOtro ? rubroOtro : rubro],
+      [errores.categoria_impositiva, categoria],
+    ].find(([mensaje]) => mensaje);
+    primero?.[1].control.focus();
+    return !primero;
+  };
+
+  // Errores que devuelve el Backend: cada uno junto a su campo; los de campos que no están en pantalla, como aviso.
+  const mostrarErroresDelServidor = (errores) => {
+    nombre.mostrarError(errores.nombre);
+    (rubro.control.value === OTRO ? rubroOtro : rubro).mostrarError(errores.rubro);
+    categoria.mostrarError(errores.categoria_impositiva);
+    const camposEnPantalla = ["nombre", "rubro", "categoria_impositiva"];
+    const otros = Object.entries(errores).filter(([campo, mensaje]) => mensaje && !camposEnPantalla.includes(campo));
+    if (otros.length > 0) avisar(otros[0][1]);
+  };
+
   const guardar = async () => {
     if (enviando) return;
     const datos = leer();
-    const errores = validarNegocio(datos);
-    nombre.mostrarError(errores.nombre);
-    rubro.mostrarError(rubro.control.value === OTRO ? "" : errores.rubro);
-    rubroOtro.mostrarError(rubro.control.value === OTRO ? errores.rubro : "");
-    categoria.mostrarError(errores.categoria_impositiva);
-    if (Object.keys(errores).length > 0) return;
 
     enviando = true;
     guardarBtn.disabled = true;
     guardarBtn.textContent = "Guardando…";
     try {
       guardado = await servicioNegocio.guardar(armarPayloadNegocio(datos));
+      // Los campos muestran lo que realmente quedó guardado (sin los espacios de los costados).
+      nombre.control.value = guardado.nombre;
+      if (rubro.control.value === OTRO) rubroOtro.control.value = guardado.rubro ?? "";
       avisar("Datos del negocio actualizados");
     } catch (error) {
-      if (error.errores) {
-        nombre.mostrarError(error.errores.nombre);
-        categoria.mostrarError(error.errores.categoria_impositiva);
-      } else {
-        avisar(error.message || "No se pudo guardar. Intentá de nuevo.");
-      }
+      if (error.errores) mostrarErroresDelServidor(error.errores);
+      else avisar(error.message || "No se pudo guardar. Intentá de nuevo.");
     } finally {
       enviando = false;
       guardarBtn.disabled = false;
@@ -126,6 +160,9 @@ const iniciarPantalla = async () => {
   };
 
   guardarBtn.addEventListener("click", () => {
+    if (enviando) return;
+    // Primero se valida: no tiene sentido pedir confirmación de un cambio que no se puede guardar.
+    if (!validarFormulario()) return;
     if (!cambioCategoria()) return guardar();
     // Cambiar la categoría impositiva es una decisión importante: se pide confirmación.
     confirmar({

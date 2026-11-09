@@ -15,6 +15,9 @@ export const AGRUPACIONES = ["dia", "mes", "anio"];
 // Dinero en NUMERIC(12,2): hasta 10 dígitos enteros y 2 decimales.
 const MONTO_MAXIMO = 9999999999.99;
 
+// Largo máximo del concepto (provisorio: confirmar con Back el tamaño de la columna).
+export const CONCEPTO_MAXIMO = 100;
+
 const FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 // La fecha del formulario puede venir como dd-mm-aaaa (texto) o aaaa-mm-dd (<input type="date">).
@@ -34,7 +37,10 @@ export const validarGasto = (datos = {}) => {
   const errorFecha = iso ? "" : validarObligatorio(datos.fecha, "La fecha") || "La fecha no es una fecha válida.";
   if (errorFecha) errores.fecha = errorFecha;
 
-  const errorConcepto = validarObligatorio(datos.concepto, "El concepto");
+  let errorConcepto = validarObligatorio(datos.concepto, "El concepto");
+  if (!errorConcepto && String(datos.concepto).trim().length > CONCEPTO_MAXIMO) {
+    errorConcepto = `El concepto admite hasta ${CONCEPTO_MAXIMO} caracteres.`;
+  }
   if (errorConcepto) errores.concepto = errorConcepto;
 
   let errorMonto = validarNumeroPositivo(datos.monto, "El monto");
@@ -58,13 +64,18 @@ export const armarPayloadGasto = (datos) => ({
   medio_pago_id: datos.medio_pago_id === "" || datos.medio_pago_id === undefined ? null : datos.medio_pago_id,
 });
 
-// Búsqueda (?q=): sin distinguir mayúsculas, por concepto o por medio de pago.
+// Para comparar textos sin distinguir mayúsculas ni tildes ("Reparación" = "reparacion").
+const sinTildes = (texto) =>
+  String(texto ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+
+// Búsqueda (?q=): sin distinguir mayúsculas ni tildes, por concepto o por medio de pago.
 export const buscarGastos = (gastos, texto) => {
-  const buscado = String(texto ?? "").trim().toLowerCase();
+  const buscado = sinTildes(texto).trim();
   if (!buscado) return gastos;
-  return gastos.filter((g) =>
-    [g.concepto, g.medio_pago_nombre].some((campo) => String(campo ?? "").toLowerCase().includes(buscado)),
-  );
+  return gastos.filter((g) => [g.concepto, g.medio_pago_nombre].some((campo) => sinTildes(campo).includes(buscado)));
 };
 
 // Filtro de la lista: rango de fechas (aaaa-mm-dd, inclusivo).

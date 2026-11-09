@@ -18,6 +18,7 @@ import {
 import {
   armarPayloadProveedor,
   CATEGORIAS_PROVEEDOR,
+  CORREO_MAXIMO,
   ETIQUETA_CATEGORIA_CORTA,
   formatearDocumento,
   puedeEliminarProveedor,
@@ -54,7 +55,7 @@ const CAMPOS = [
     ayuda: "Define cómo se registra el IVA de las compras a este proveedor.",
   },
   { nombre: "telefono", etiqueta: "Teléfono (opcional)", grupo: "contacto", maxlength: 25, tipo: "tel" },
-  { nombre: "correo", etiqueta: "Correo (opcional)", grupo: "contacto", tipo: "email" },
+  { nombre: "correo", etiqueta: "Correo (opcional)", grupo: "contacto", tipo: "email", maxlength: CORREO_MAXIMO },
   {
     nombre: "descripcion_compra",
     etiqueta: "Descripción de compra",

@@ -6,7 +6,7 @@
 // Todo se arma con textContent (nada de innerHTML con datos del usuario).
 
 import { fechaIsoDeHoy, fechaParaMostrar, formatearDinero } from "./formatos.js";
-import { armarPayloadGasto, resumirGastos, validarGasto } from "./gastos.js";
+import { armarPayloadGasto, CONCEPTO_MAXIMO, resumirGastos, validarGasto } from "./gastos.js";
 import { GASTOS_EJEMPLO, listarGastosSimulado } from "./mocks/gastos.js";
 import { cargarMediosPago } from "./servicios/medios-pago.js";
 
@@ -171,7 +171,7 @@ const confirmar = ({ titulo, cuerpo, textoOk, claseOk = "btn-primario", textoCan
 // Formulario de gasto en un modal. Los errores salen junto a cada campo, con los nombres de campo del contrato.
 const CAMPOS_GASTO = [
   { nombre: "fecha", etiqueta: "Fecha", obligatorio: true, placeholder: "dd-mm-aaaa" },
-  { nombre: "concepto", etiqueta: "Concepto", obligatorio: true, placeholder: "Ej.: alquiler, luz, internet, flete" },
+  { nombre: "concepto", etiqueta: "Concepto", obligatorio: true, placeholder: "Ej.: alquiler, luz, internet, flete", maxlength: CONCEPTO_MAXIMO },
   { nombre: "monto", etiqueta: "Monto", tipo: "number", obligatorio: true },
   { nombre: "medio_pago_id", etiqueta: "Medio de pago (opcional)", esMedioDePago: true },
 ];
@@ -186,7 +186,7 @@ const abrirFormulario = ({ titulo, valores = {}, avisos, alGuardar }) => {
       : null;
     const control = opciones
       ? h("select", { id: spec.nombre, name: spec.nombre, class: "gastos-entrada", disabled: sinMedios }, opciones.map((o) => h("option", { value: o.valor, text: o.texto })))
-      : h("input", { id: spec.nombre, name: spec.nombre, type: spec.tipo || "text", step: spec.tipo === "number" ? "any" : null, placeholder: spec.placeholder, class: "gastos-entrada", autocomplete: "off" });
+      : h("input", { id: spec.nombre, name: spec.nombre, type: spec.tipo || "text", step: spec.tipo === "number" ? "any" : null, placeholder: spec.placeholder, maxlength: spec.maxlength, class: "gastos-entrada", autocomplete: "off" });
     control.value = valores[spec.nombre] ?? "";
     const error = h("p", { class: "gastos-error", id: `error-${spec.nombre}`, hidden: true });
     controles[spec.nombre] = { control, error };
@@ -229,6 +229,17 @@ const abrirFormulario = ({ titulo, valores = {}, avisos, alGuardar }) => {
       error.hidden = true;
       control.classList.remove("con-error");
       actualizarAvisos();
+    });
+  });
+
+  // Enter en cualquier campo de texto guarda, igual que el botón (el desplegable lo usa para abrirse).
+  CAMPOS_GASTO.forEach(({ nombre }) => {
+    const { control } = controles[nombre];
+    if (control.tagName === "SELECT") return;
+    control.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.isComposing) return;
+      e.preventDefault();
+      guardar.click();
     });
   });
 

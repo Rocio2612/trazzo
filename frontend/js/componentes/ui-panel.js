@@ -121,7 +121,7 @@ export const confirmar = ({ titulo, cuerpo, textoOk, claseOk = "btn-primario", t
 export const crearCampo = (spec, valor = "") => {
   const id = spec.id || spec.nombre;
   const control = spec.opciones
-    ? h("select", { id, name: spec.nombre, class: "gastos-entrada" }, spec.opciones.map((o) => h("option", { value: o.valor, text: o.texto })))
+    ? h("select", { id, name: spec.nombre, class: "gastos-entrada", disabled: spec.solo_lectura }, spec.opciones.map((o) => h("option", { value: o.valor, text: o.texto })))
     : spec.tipo === "textarea"
       ? h("textarea", { id, name: spec.nombre, rows: spec.filas || 3, placeholder: spec.placeholder, class: "gastos-entrada gastos-textarea", maxlength: spec.maxlength })
       : h("input", {
@@ -190,6 +190,18 @@ export const abrirFormularioModal = ({ titulo, campos, valores = {}, avisos, val
     control.addEventListener(control.tagName === "SELECT" ? "change" : "input", () => {
       mostrarError("");
       actualizarAvisos();
+    });
+  });
+
+  // Enter en un campo de texto guarda, igual que el botón. En el texto largo (Enter = salto de línea)
+  // y en los desplegables (Enter los abre) no se usa.
+  campos.forEach(({ nombre }) => {
+    const { control } = partes[nombre];
+    if (control.tagName !== "INPUT" || control.readOnly) return;
+    control.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.isComposing) return;
+      e.preventDefault();
+      guardar.click();
     });
   });
 

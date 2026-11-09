@@ -13,6 +13,8 @@ export const TEXTOS_LISTA = {
   categorias: {
     singular: "categoría",
     articulo: "una categoría",
+    creado: "Categoría creada",
+    etiquetaEntrada: "Nombre de la categoría",
     placeholder: "Ej.: remeras, pantalones",
     aviso: "Estas categorías aparecen como opción (opcional) al crear un producto.",
     eliminar: "Si la categoría tiene productos asociados, sigue apareciendo en lo histórico pero ya no se ofrece para productos nuevos.",
@@ -20,6 +22,8 @@ export const TEXTOS_LISTA = {
   medios_pago: {
     singular: "medio de pago",
     articulo: "un medio de pago",
+    creado: "Medio de pago creado",
+    etiquetaEntrada: "Nombre del medio de pago",
     placeholder: "Ej.: transferencia, tarjeta de débito",
     aviso: "Estos medios de pago se pueden elegir (opcional) al registrar ventas, pagos y gastos operativos.",
     eliminar: "Si el medio de pago ya se usó en ventas, pagos o gastos, sigue apareciendo en lo histórico pero ya no se ofrece para registros nuevos.",
@@ -40,7 +44,7 @@ export const crearPanelLista = (tipo) => {
   const nombresExcepto = (id) => ctx.elementos.filter((e) => e.id !== id).map((e) => e.nombre);
 
   // --- Agregar (campo en línea) ---
-  const entrada = h("input", { type: "text", class: "gastos-entrada cfg-entrada-agregar", placeholder: textos.placeholder, maxlength: 50, "aria-label": `Nombre del ${textos.singular}`, "data-testid": `${tipo}-nombre` });
+  const entrada = h("input", { type: "text", class: "gastos-entrada cfg-entrada-agregar", placeholder: textos.placeholder, maxlength: 50, "aria-label": textos.etiquetaEntrada, "data-testid": `${tipo}-nombre` });
   const errorAgregar = h("p", { class: "gastos-error", hidden: true, "data-testid": `${tipo}-error` });
   const botonAgregar = boton("", "btn-primario gastos-btn-con-icono", { "data-testid": `${tipo}-agregar`, "data-modulo": tipo, "data-accion": "crear" });
   botonAgregar.append(crearSvg(ICONOS.mas), h("span", { text: "Agregar" }));
@@ -63,7 +67,7 @@ export const crearPanelLista = (tipo) => {
       await servicio.crear(entrada.value.trim());
       entrada.value = "";
       await cargar();
-      avisar(`${textos.singular.charAt(0).toUpperCase()}${textos.singular.slice(1)} creado`);
+      avisar(textos.creado);
     } catch (e) {
       mostrarErrorAgregar(e.errores?.nombre || e.message);
     } finally {
