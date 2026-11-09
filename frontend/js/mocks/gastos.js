@@ -1,16 +1,15 @@
 // --- DATOS SIMULADOS DE GASTOS (hasta que Back publique /api/gastos) ---
 // Mismo formato que va a devolver la API: dinero como texto con 2 decimales, fechas en aaaa-mm-dd
-// y listas como { items, total, pagina }. Los nombres de campo son provisorios hasta cerrar el contrato.
+// y listas como { items, total, pagina }. Los nombres de campo son los de la tabla finanzas.gastos_operativos:
+// creado_por y modificado_por son el nombre del usuario (texto), y modificado_* queda vacío hasta que se edita.
 
 import { buscarGastos, filtrarGastos } from "../gastos.js";
 
 const auditoria = (usuario, en) => ({
-  creado_por: 1,
-  creado_por_nombre: usuario,
+  creado_por: usuario,
   creado_en: en,
-  modificado_por: 1,
-  modificado_por_nombre: usuario,
-  modificado_en: en,
+  modificado_por: null,
+  modificado_en: null,
 });
 
 export const GASTOS_EJEMPLO = [

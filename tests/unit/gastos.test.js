@@ -43,8 +43,8 @@ describe("validarGasto", () => {
     expect(validarGasto({ ...valido, fecha: "5/3/2026" }, hoy).fecha).toBe("La fecha no es una fecha válida.");
   });
 
-  it("acepta una fecha futura (la elige el usuario)", () => {
-    expect(validarGasto({ ...valido, fecha: "16-06-2026" }, hoy)).toEqual({});
+  it("rechaza una fecha futura (la base exige fecha <= hoy)", () => {
+    expect(validarGasto({ ...valido, fecha: "16-06-2026" }, hoy)).toEqual({ fecha: "La fecha no puede ser futura." });
   });
 
   it("acepta la fecha de hoy", () => {
@@ -252,8 +252,47 @@ describe("validarGasto: fecha", () => {
     expect(validarGasto({ ...valido, fecha }, hoy).fecha).toBe("La fecha no es una fecha válida.");
   });
 
-  it.each([["29-02-2024"], ["31-12-1999"], ["01-01-2099"], ["2024-02-29"]])("acepta la fecha %s", (fecha) => {
+  it.each([["29-02-2024"], ["31-12-1999"], ["2024-02-29"], ["15-06-2026"], ["2026-06-15"]])("acepta la fecha %s (hoy o anterior)", (fecha) => {
     expect(validarGasto({ ...valido, fecha }, hoy)).toEqual({});
+  });
+
+  it.each([["16-06-2026"], ["2026-06-16"], ["01-07-2026"], ["01-01-2027"], ["01-01-2099"], ["29-02-2028"]])(
+    "rechaza la fecha futura %s",
+    (fecha) => {
+      expect(validarGasto({ ...valido, fecha }, hoy).fecha).toBe("La fecha no puede ser futura.");
+    },
+  );
+
+  it("el límite es el día de hoy: ayer y hoy sí, mañana no", () => {
+    expect(validarGasto({ ...valido, fecha: "14-06-2026" }, hoy)).toEqual({});
+    expect(validarGasto({ ...valido, fecha: "15-06-2026" }, hoy)).toEqual({});
+    expect(validarGasto({ ...valido, fecha: "16-06-2026" }, hoy).fecha).toBeDefined();
+  });
+
+  it("el día de hoy vale aunque sea a última hora, y el siguiente no, aunque sea a primera hora", () => {
+    const tarde = new Date(2026, 5, 15, 23, 59, 59);
+    const temprano = new Date(2026, 5, 16, 0, 0, 1);
+    expect(validarGasto({ ...valido, fecha: "15-06-2026" }, tarde)).toEqual({});
+    expect(validarGasto({ ...valido, fecha: "16-06-2026" }, tarde).fecha).toBeDefined();
+    expect(validarGasto({ ...valido, fecha: "16-06-2026" }, temprano)).toEqual({});
+  });
+
+  it("una fecha inválida sigue avisando que no es una fecha válida, no que es futura", () => {
+    expect(validarGasto({ ...valido, fecha: "31-02-2099" }, hoy).fecha).toBe("La fecha no es una fecha válida.");
+    expect(validarGasto({ ...valido, fecha: "" }, hoy).fecha).toBe("Completá la fecha.");
+  });
+
+  it("una fecha futura no oculta los errores de los otros campos", () => {
+    const errores = validarGasto({ fecha: "01-01-2099", concepto: "", monto: "0" }, hoy);
+    expect(Object.keys(errores).sort()).toEqual(["concepto", "fecha", "monto"]);
+  });
+
+  it("sin pasar «hoy» usa la fecha real: una fecha lejana en el futuro se rechaza y la de hoy se acepta", () => {
+    const ahora = new Date();
+    const dd = String(ahora.getDate()).padStart(2, "0");
+    const mm = String(ahora.getMonth() + 1).padStart(2, "0");
+    expect(validarGasto({ ...valido, fecha: `${dd}-${mm}-${ahora.getFullYear()}` })).toEqual({});
+    expect(validarGasto({ ...valido, fecha: "01-01-2099" }).fecha).toBe("La fecha no puede ser futura.");
   });
 });
 
@@ -344,8 +383,21 @@ describe("armarPayloadGasto: casos límite", () => {
     expect(armarPayloadGasto({ ...valido, medio_pago_id: null }).medio_pago_id).toBeNull();
   });
 
-  it("el medio de pago elegido viaja tal cual", () => {
-    expect(armarPayloadGasto({ ...valido, medio_pago_id: "3" }).medio_pago_id).toBe("3");
+  it("el medio de pago elegido viaja como número entero (la base lo guarda como INT)", () => {
+    expect(armarPayloadGasto({ ...valido, medio_pago_id: "3" }).medio_pago_id).toBe(3);
+    expect(armarPayloadGasto({ ...valido, medio_pago_id: 3 }).medio_pago_id).toBe(3);
+    expect(armarPayloadGasto({ ...valido, medio_pago_id: " 12 " }).medio_pago_id).toBe(12);
+  });
+
+  it.each([[""], ["  "], [null], [undefined], ["abc"], ["0"], ["-1"], ["2.5"], [0], [NaN]])(
+    "un medio de pago vacío o que no es un id válido (%j) viaja como null",
+    (medio_pago_id) => {
+      expect(armarPayloadGasto({ ...valido, medio_pago_id }).medio_pago_id).toBeNull();
+    },
+  );
+
+  it("el medio de pago nunca viaja como texto", () => {
+    for (const id of ["1", "2", "15", 7]) expect(typeof armarPayloadGasto({ ...valido, medio_pago_id: id }).medio_pago_id).toBe("number");
   });
 
   it("recorta el concepto y no toca su contenido", () => {
@@ -491,5 +543,36 @@ describe("listarGastosSimulado: casos límite", () => {
 
   it("una página que no es número se toma como la primera", () => {
     expect(listarGastosSimulado(GASTOS_EJEMPLO, { pagina: "abc" }).pagina).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Nombres de campo de la base: creado_por / modificado_por (texto) en gastos.
+// ---------------------------------------------------------------------------
+
+describe("datos simulados con los nombres de la base", () => {
+  it("creado_por es el nombre del usuario (texto) y no hay creado_por_nombre ni ids sueltos", () => {
+    GASTOS_EJEMPLO.forEach((g) => {
+      expect(typeof g.creado_por).toBe("string");
+      expect(g.creado_por.length).toBeGreaterThan(0);
+      expect(g).not.toHaveProperty("creado_por_nombre");
+      expect(g).not.toHaveProperty("modificado_por_nombre");
+    });
+  });
+
+  it("un gasto sin editar tiene modificado_por y modificado_en vacíos", () => {
+    GASTOS_EJEMPLO.forEach((g) => {
+      expect(g.modificado_por).toBeNull();
+      expect(g.modificado_en).toBeNull();
+      expect(g.creado_en).toBeTruthy();
+    });
+  });
+
+  it("los campos de auditoría que usa la pantalla existen en todos los gastos", () => {
+    GASTOS_EJEMPLO.forEach((g) => {
+      for (const campo of ["id", "fecha", "concepto", "monto", "medio_pago_id", "creado_por", "creado_en", "modificado_por", "modificado_en"]) {
+        expect(g, campo).toHaveProperty(campo);
+      }
+    });
   });
 });

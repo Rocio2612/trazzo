@@ -443,13 +443,37 @@ describe("servicio simulado de las listas", () => {
     expect((await servicioLista("categorias").listar()).map((c) => c.nombre)).toEqual(["Remeras", "Pantalones"]);
     const medios = await servicioLista("medios_pago").listar();
     expect(medios.map((m) => m.nombre)).toEqual(["Efectivo", "Transferencia"]);
-    expect(medios.find((m) => m.nombre === "Efectivo").por_defecto).toBe(true);
+    expect(medios.find((m) => m.nombre === "Efectivo").es_predeterminado).toBe(true);
+    expect(medios.find((m) => m.nombre === "Transferencia").es_predeterminado).toBe(false);
   });
 
-  it("crear agrega al final, con un id nuevo, sin ser por defecto, y queda guardado", async () => {
+  it("solo los medios de pago tienen «es_predeterminado»; las categorías no (como en la base)", async () => {
+    simularAlmacenamiento();
+    (await servicioLista("categorias").listar()).forEach((c) => expect(c).not.toHaveProperty("es_predeterminado"));
+    const categoria = await servicioLista("categorias").crear("Camperas");
+    expect(categoria).not.toHaveProperty("es_predeterminado");
+    expect(categoria).not.toHaveProperty("por_defecto");
+    expect(await servicioLista("medios_pago").crear("Débito")).toMatchObject({ es_predeterminado: false });
+  });
+
+  it("las listas guardadas con el nombre viejo («por_defecto») se siguen entendiendo", async () => {
+    simularAlmacenamiento({
+      [CLAVE]: JSON.stringify({
+        categorias: [{ id: 1, nombre: "Remeras", por_defecto: false }],
+        medios_pago: [{ id: 1, nombre: "Efectivo", por_defecto: true }, { id: 2, nombre: "Transferencia", por_defecto: false }],
+      }),
+    });
+    const medios = await servicioLista("medios_pago").listar();
+    expect(medios.map((m) => m.es_predeterminado)).toEqual([true, false]);
+    medios.forEach((m) => expect(m).not.toHaveProperty("por_defecto"));
+    (await servicioLista("categorias").listar()).forEach((c) => expect(c).not.toHaveProperty("por_defecto"));
+    await expect(servicioLista("medios_pago").eliminar(1)).rejects.toThrow(/por defecto/);
+  });
+
+  it("crear agrega al final, con un id nuevo, y queda guardado", async () => {
     const datos = simularAlmacenamiento();
     const creado = await servicioLista("categorias").crear("Camperas");
-    expect(creado).toMatchObject({ nombre: "Camperas", por_defecto: false });
+    expect(creado).toMatchObject({ nombre: "Camperas" });
     expect(creado.id).toBeGreaterThanOrEqual(10);
     expect((await servicioLista("categorias").listar()).map((c) => c.nombre)).toEqual(["Remeras", "Pantalones", "Camperas"]);
     expect(JSON.parse(datos.get(CLAVE)).categorias).toHaveLength(3);
@@ -505,7 +529,7 @@ describe("servicio simulado de las listas", () => {
   });
 
   it("respeta lo guardado aunque una lista esté vacía", async () => {
-    simularAlmacenamiento({ [CLAVE]: JSON.stringify({ categorias: [], medios_pago: [{ id: 1, nombre: "Efectivo", por_defecto: true }] }) });
+    simularAlmacenamiento({ [CLAVE]: JSON.stringify({ categorias: [], medios_pago: [{ id: 1, nombre: "Efectivo", es_predeterminado: true }] }) });
     expect(await servicioLista("categorias").listar()).toEqual([]);
   });
 
@@ -633,12 +657,29 @@ describe("correo del personal: reglas más estrictas y largo máximo", () => {
     },
   );
 
-  it.each([["a.b@c.com"], ["a.b.c@d.e.com"], ["a-b_c@x-y.com"], ["nombre.apellido+tag@mail.empresa.com.ar"], ["ñandu@correo.com"]])(
+  it.each([["a.b@c.com"], ["a.b.c@d.e.com"], ["a-b_c@x-y.com"], ["nombre.apellido+tag@mail.empresa.com.ar"], ["A.B%C@MAIL.COM"], ["a@b2.com"], ["1@2.co"]])(
     "acepta el correo %j",
     (correo) => {
       expect(validarCorreo(correo)).toBeNull();
     },
   );
+
+  // La base (chk_usuario_correo_formato) solo admite ASCII y un final de dominio de solo letras.
+  it.each([["ñandu@correo.com"], ["josé@correo.com"], ["ana@exámple.com"], ["ana@correo.cöm"], ["ana@correo.c0m"], ["a@b.c1"], ["a@b.123"], ["ana@correo.com1"], ["ana!@correo.com"], ["ana#x@correo.com"], ["ana@cor_reo.com"], ["ana@correo.c"]])(
+    "rechaza el correo %j porque la base no lo acepta",
+    (correo) => {
+      expect(validarCorreo(correo)).toBe("El correo no es válido.");
+    },
+  );
+
+  it("todo lo que acepta la pantalla lo acepta la regla de la base", () => {
+    // Misma expresión que chk_usuario_correo_formato (con mayúsculas y minúsculas indistintas).
+    const regladeLaBase = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/i;
+    const candidatos = ["a@b.co", "a.b@c.com", "a-b_c@x-y.com", "x+y@mail.empresa.com.ar", "A.B%C@MAIL.COM", "a@b2.com", "1@2.co", "a@b..com", "a..b@c.com", ".a@b.com", "a@b.com.", "ñ@b.com", "a@b.c1"];
+    for (const correo of candidatos) {
+      if (validarCorreo(correo) === null) expect(regladeLaBase.test(correo), correo).toBe(true);
+    }
+  });
 
   it("el largo máximo es 120", () => {
     expect(CORREO_MAXIMO).toBe(120);

@@ -32,8 +32,8 @@ const iniciarPantalla = async () => {
   identificador.control.classList.add("cfg-solo-lectura");
 
   const nombre = crearCampo(
-    { nombre: "nombre", etiqueta: "Nombre o razón social", obligatorio: true, maxlength: 100 },
-    guardado.nombre,
+    { nombre: "nombre_comercial", etiqueta: "Nombre o razón social", obligatorio: true, maxlength: 100 },
+    guardado.nombre_comercial,
   );
 
   const rubro = crearCampo(
@@ -67,7 +67,7 @@ const iniciarPantalla = async () => {
   const guardarBtn = boton("Guardar cambios", "btn-primario", { "data-testid": "negocio-guardar" });
 
   const leer = () => ({
-    nombre: nombre.control.value,
+    nombre_comercial: nombre.control.value,
     rubro: rubro.control.value === OTRO ? rubroOtro.control.value : rubro.control.value,
     categoria_impositiva: categoria.control.value,
   });
@@ -112,12 +112,12 @@ const iniciarPantalla = async () => {
     const esOtro = rubro.control.value === OTRO;
     // "Otro (escribirlo)" sin escribir nada no es un rubro: se pide completarlo o elegir uno de la lista.
     const errorRubro = errores.rubro || (esOtro && rubroOtro.control.value.trim() === "" ? "Escribí el rubro o elegí uno de la lista." : "");
-    nombre.mostrarError(errores.nombre);
+    nombre.mostrarError(errores.nombre_comercial);
     rubro.mostrarError(esOtro ? "" : errorRubro);
     rubroOtro.mostrarError(esOtro ? errorRubro : "");
     categoria.mostrarError(errores.categoria_impositiva);
     const primero = [
-      [errores.nombre, nombre],
+      [errores.nombre_comercial, nombre],
       [errorRubro, esOtro ? rubroOtro : rubro],
       [errores.categoria_impositiva, categoria],
     ].find(([mensaje]) => mensaje);
@@ -127,10 +127,10 @@ const iniciarPantalla = async () => {
 
   // Errores que devuelve el Backend: cada uno junto a su campo; los de campos que no están en pantalla, como aviso.
   const mostrarErroresDelServidor = (errores) => {
-    nombre.mostrarError(errores.nombre);
+    nombre.mostrarError(errores.nombre_comercial);
     (rubro.control.value === OTRO ? rubroOtro : rubro).mostrarError(errores.rubro);
     categoria.mostrarError(errores.categoria_impositiva);
-    const camposEnPantalla = ["nombre", "rubro", "categoria_impositiva"];
+    const camposEnPantalla = ["nombre_comercial", "rubro", "categoria_impositiva"];
     const otros = Object.entries(errores).filter(([campo, mensaje]) => mensaje && !camposEnPantalla.includes(campo));
     if (otros.length > 0) avisar(otros[0][1]);
   };
@@ -145,7 +145,7 @@ const iniciarPantalla = async () => {
     try {
       guardado = await servicioNegocio.guardar(armarPayloadNegocio(datos));
       // Los campos muestran lo que realmente quedó guardado (sin los espacios de los costados).
-      nombre.control.value = guardado.nombre;
+      nombre.control.value = guardado.nombre_comercial;
       if (rubro.control.value === OTRO) rubroOtro.control.value = guardado.rubro ?? "";
       avisar("Datos del negocio actualizados");
     } catch (error) {

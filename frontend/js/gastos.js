@@ -1,6 +1,7 @@
 // --- LÓGICA DEL MÓDULO DE GASTOS OPERATIVOS (módulo ES, sin pantalla) ---
 // Reglas tomadas del Módulo 8 y del Sprint 2:
-// - Obligatorios: fecha (la elige el usuario, puede ser futura), concepto (texto libre) y monto > 0. Opcional: medio de pago.
+// - Obligatorios: fecha (la elige el usuario; puede ser de hoy o anterior, nunca futura: la base lo exige con
+//   chk_gasto_fecha_no_futura), concepto (texto libre) y monto > 0. Opcional: medio de pago.
 // - No modifican el inventario.
 // - Los totales NUNCA se guardan: se calculan siempre sumando la lista, así que editar la fecha
 //   o el monto de un gasto se refleja solo en la sumatoria.
@@ -8,7 +9,7 @@
 // Los nombres de campo (medio_pago_id, …) son provisorios hasta cerrar el contrato con Back.
 
 import { aNumero, fechaParaEnviar, fechaParaMostrar } from "./formatos.js";
-import { validarNumeroPositivo, validarObligatorio } from "./validadores.js";
+import { validarFechaNoFutura, validarNumeroPositivo, validarObligatorio } from "./validadores.js";
 
 export const AGRUPACIONES = ["dia", "mes", "anio"];
 
@@ -30,11 +31,14 @@ const fechaAIso = (valor) => {
 
 // Devuelve { campo: mensaje } con los errores del formulario; vacío si todo está bien.
 // Los mismos nombres de campo que usa el Backend en { errores: { campo: mensaje } }.
-export const validarGasto = (datos = {}) => {
+// `ahora` es "hoy" para decidir si la fecha es futura (se puede pasar uno fijo en las pruebas).
+export const validarGasto = (datos = {}, ahora = new Date()) => {
   const errores = {};
 
   const iso = fechaAIso(datos.fecha);
-  const errorFecha = iso ? "" : validarObligatorio(datos.fecha, "La fecha") || "La fecha no es una fecha válida.";
+  const errorFecha = iso
+    ? validarFechaNoFutura(iso, "La fecha", ahora) || ""
+    : validarObligatorio(datos.fecha, "La fecha") || "La fecha no es una fecha válida.";
   if (errorFecha) errores.fecha = errorFecha;
 
   let errorConcepto = validarObligatorio(datos.concepto, "El concepto");
@@ -55,13 +59,21 @@ export const validarGasto = (datos = {}) => {
   return errores;
 };
 
+// El desplegable entrega el medio de pago como texto ("2"); la base lo guarda como número entero (INT).
+// Sin medio de pago (vacío o algo que no es un id válido) viaja null.
+const aIdEntero = (valor) => {
+  if (valor === null || valor === undefined || String(valor).trim() === "") return null;
+  const numero = Number(valor);
+  return Number.isInteger(numero) && numero > 0 ? numero : null;
+};
+
 // Datos que se envían al Backend al crear o editar un gasto. Se arma solo con los campos
 // del formulario: el Backend saca quién lo hizo del token y calcula todo lo demás.
 export const armarPayloadGasto = (datos) => ({
   fecha: fechaAIso(datos.fecha),
   concepto: String(datos.concepto ?? "").trim(),
   monto: aNumero(datos.monto),
-  medio_pago_id: datos.medio_pago_id === "" || datos.medio_pago_id === undefined ? null : datos.medio_pago_id,
+  medio_pago_id: aIdEntero(datos.medio_pago_id),
 });
 
 // Para comparar textos sin distinguir mayúsculas ni tildes ("Reparación" = "reparacion").

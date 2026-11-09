@@ -576,3 +576,147 @@ test.describe("Configuración > Categorías y Medios de pago: acceso", () => {
     expect(errores).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// El índice único de nombres de la base incluye los elementos desactivados: puede haber un nombre repetido
+// que la lista no muestra. Cuando el servidor lo rechaza, la pantalla muestra su mensaje junto al campo.
+// ---------------------------------------------------------------------------
+
+const ACTUALIZAR_LISTA = "  actualizar: async (id, nombre) => {";
+const ELIMINAR_LISTA = "listas[tipo].splice(listas[tipo].indexOf(elemento), 1);";
+const falla = (desde, hasta) => [desde, hasta];
+const ERROR_NOMBRE = (mensaje) => `throw Object.assign(new Error(${JSON.stringify(mensaje)}), { errores: { nombre: ${JSON.stringify(mensaje)} } });`;
+
+for (const l of LISTAS) {
+  test.describe(`Configuración > ${l.singular}: el servidor rechaza un nombre`, () => {
+    const ruta = `/configuracion.html${l.hash}`;
+    const rechazo = `Ya existe ${l.tipo === "categorias" ? "una categoría" : "un medio de pago"} con ese nombre.`;
+
+    test("al agregar, el mensaje del servidor sale junto al campo y no se pierde lo escrito", async ({ page }) => {
+      await abrir(page, ruta, { reemplazos: [falla(CREAR_LISTA, `${CREAR_LISTA} ${ERROR_NOMBRE(rechazo)}`)] });
+      await page.getByTestId(`${l.tipo}-nombre`).fill("Nombre eliminado antes");
+      await page.getByTestId(`${l.tipo}-agregar`).click();
+      await expect(page.getByTestId(`${l.tipo}-error`)).toHaveText(rechazo);
+      await expect(page.getByTestId(`${l.tipo}-nombre`)).toHaveClass(/con-error/);
+      await expect(page.getByTestId(`${l.tipo}-nombre`)).toHaveValue("Nombre eliminado antes");
+      await expect(items(page, l.tipo)).toHaveCount(2);
+      await expect(toast(page)).toHaveCount(0);
+      await expect(page.getByTestId(`${l.tipo}-agregar`)).toBeEnabled();
+    });
+
+    test("el error del servidor desaparece al escribir otro nombre", async ({ page }) => {
+      await abrir(page, ruta, { reemplazos: [falla(CREAR_LISTA, `${CREAR_LISTA} ${ERROR_NOMBRE(rechazo)}`)] });
+      await page.getByTestId(`${l.tipo}-nombre`).fill("Repetido");
+      await page.getByTestId(`${l.tipo}-agregar`).click();
+      await expect(page.getByTestId(`${l.tipo}-error`)).toBeVisible();
+      await page.getByTestId(`${l.tipo}-nombre`).fill("Repetido 2");
+      await expect(page.getByTestId(`${l.tipo}-error`)).toBeHidden();
+    });
+
+    test("un error sin detalle de campo también se muestra junto al campo", async ({ page }) => {
+      await abrir(page, ruta, { reemplazos: [falla(CREAR_LISTA, `${CREAR_LISTA} throw new Error("El servidor no responde.");`)] });
+      await page.getByTestId(`${l.tipo}-nombre`).fill("Algo");
+      await page.getByTestId(`${l.tipo}-agregar`).click();
+      await expect(page.getByTestId(`${l.tipo}-error`)).toHaveText("El servidor no responde.");
+      await expect(page.getByTestId(`${l.tipo}-agregar`)).toBeEnabled();
+    });
+
+    test("al editar, el mensaje del servidor sale en el formulario, que sigue abierto", async ({ page }) => {
+      await abrir(page, ruta, { reemplazos: [falla(ACTUALIZAR_LISTA, `${ACTUALIZAR_LISTA} ${ERROR_NOMBRE(rechazo)}`)] });
+      await item(page, l.tipo, l.eliminable).getByRole("button", { name: "Editar" }).click();
+      await page.locator("#nombre").fill("Nombre eliminado antes");
+      await guardar(page).click();
+      await expect(page.locator("#error-nombre")).toHaveText(rechazo);
+      await expect(modal(page)).toHaveCount(1);
+      await expect(guardar(page)).toBeEnabled();
+      await expect(guardar(page)).toHaveText("Guardar");
+      await page.getByTestId("modal-cancelar").click();
+      await expect(item(page, l.tipo, l.eliminable)).toHaveCount(1);
+    });
+
+    test("al editar, un error general se avisa y la lista no cambia", async ({ page }) => {
+      await abrir(page, ruta, { reemplazos: [falla(ACTUALIZAR_LISTA, `${ACTUALIZAR_LISTA} throw new Error("No se pudo guardar.");`)] });
+      await item(page, l.tipo, l.eliminable).getByRole("button", { name: "Editar" }).click();
+      await page.locator("#nombre").fill("Otro nombre");
+      await guardar(page).click();
+      await expect(toast(page)).toHaveText("No se pudo guardar.");
+      await page.getByTestId("modal-cancelar").click();
+      await expect(item(page, l.tipo, l.eliminable)).toHaveCount(1);
+    });
+
+    test("si el servidor no puede eliminar, lo avisa y el elemento sigue en la lista", async ({ page }) => {
+      await abrir(page, ruta, { reemplazos: [falla(ELIMINAR_LISTA, 'throw new Error("No se pudo eliminar.");')] });
+      await item(page, l.tipo, l.eliminable).getByRole("button", { name: "Eliminar" }).click();
+      await page.getByTestId("modal-confirmar").click();
+      await expect(toast(page)).toHaveText("No se pudo eliminar.");
+      await expect(item(page, l.tipo, l.eliminable)).toHaveCount(1);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Las listas guardadas en el navegador con el nombre viejo («por_defecto») se siguen entendiendo, y el campo
+// de la base («es_predeterminado») es el que marca el medio de pago por defecto.
+// ---------------------------------------------------------------------------
+
+test.describe("Configuración > Medios de pago: «es_predeterminado»", () => {
+  const sembrar = (page, listas) => page.addInitScript((l) => localStorage.setItem("trazzo_mock_listas", JSON.stringify(l)), listas);
+
+  test("una lista guardada con el nombre viejo («por_defecto») sigue mostrando el medio por defecto", async ({ page }) => {
+    await sembrar(page, {
+      categorias: [{ id: 1, nombre: "Remeras", por_defecto: false }],
+      medios_pago: [
+        { id: 1, nombre: "Efectivo", por_defecto: true },
+        { id: 2, nombre: "Transferencia", por_defecto: false },
+      ],
+    });
+    await abrir(page, "/configuracion.html#medios-pago");
+    const efectivo = item(page, "medios_pago", "Efectivo");
+    await expect(efectivo.locator(".cfg-insignia")).toHaveText("Por defecto");
+    await expect(efectivo.getByRole("button", { name: "Eliminar" })).toHaveCount(0);
+    await expect(item(page, "medios_pago", "Transferencia").getByRole("button", { name: "Eliminar" })).toBeVisible();
+  });
+
+  test("con el nombre de la base («es_predeterminado») funciona igual", async ({ page }) => {
+    await sembrar(page, {
+      categorias: [{ id: 1, nombre: "Remeras" }],
+      medios_pago: [
+        { id: 1, nombre: "Caja", es_predeterminado: true },
+        { id: 2, nombre: "Débito", es_predeterminado: false },
+      ],
+    });
+    await abrir(page, "/configuracion.html#medios-pago");
+    await expect(item(page, "medios_pago", "Caja").locator(".cfg-insignia")).toHaveText("Por defecto");
+    await expect(item(page, "medios_pago", "Caja").getByRole("button", { name: "Eliminar" })).toHaveCount(0);
+    await expect(item(page, "medios_pago", "Débito").locator(".cfg-insignia")).toHaveCount(0);
+  });
+
+  test("las categorías nunca muestran «Por defecto», aunque una lista vieja lo trajera", async ({ page }) => {
+    await sembrar(page, {
+      categorias: [{ id: 1, nombre: "Remeras", por_defecto: true }],
+      medios_pago: [{ id: 1, nombre: "Efectivo", es_predeterminado: true }],
+    });
+    await abrir(page, "/configuracion.html#categorias");
+    await expect(item(page, "categorias", "Remeras").locator(".cfg-insignia")).toHaveCount(0);
+    await expect(item(page, "categorias", "Remeras").getByRole("button", { name: "Eliminar" })).toBeVisible();
+  });
+
+  test("un medio de pago nuevo no es el predeterminado y se guarda así al recargar", async ({ page }) => {
+    await abrir(page, "/configuracion.html#medios-pago");
+    await page.getByTestId("medios_pago-nombre").fill("Débito");
+    await page.getByTestId("medios_pago-agregar").click();
+    await page.reload();
+    await expect(item(page, "medios_pago", "Débito").locator(".cfg-insignia")).toHaveCount(0);
+    await expect(item(page, "medios_pago", "Débito").getByRole("button", { name: "Eliminar" })).toBeVisible();
+    await expect(item(page, "medios_pago", "Efectivo").locator(".cfg-insignia")).toHaveText("Por defecto");
+  });
+
+  test("lo guardado ya no usa el nombre viejo", async ({ page }) => {
+    await abrir(page, "/configuracion.html#medios-pago");
+    await page.getByTestId("medios_pago-nombre").fill("Débito");
+    await page.getByTestId("medios_pago-agregar").click();
+    const guardado = await page.evaluate(() => localStorage.getItem("trazzo_mock_listas"));
+    expect(guardado).toContain("es_predeterminado");
+    expect(guardado).not.toContain("por_defecto");
+  });
+});

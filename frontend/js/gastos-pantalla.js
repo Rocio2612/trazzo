@@ -56,12 +56,15 @@ const servicio = {
       monto: datos.monto.toFixed(2),
       medio_pago_id: datos.medio_pago_id,
       medio_pago_nombre: datos.medio_pago_id === null ? null : nombreDeMedio(datos.medio_pago_id),
-          creado_por_nombre: usuarioActual(),
+      creado_por: usuarioActual(),
+      creado_en: new Date().toISOString(),
+      modificado_por: null,
+      modificado_en: null,
     };
     gastos.push(gasto);
     return gasto;
   },
-  actualizar: (gasto, datos) => Object.assign(gasto, { fecha: datos.fecha, concepto: datos.concepto, monto: datos.monto.toFixed(2), medio_pago_id: datos.medio_pago_id, medio_pago_nombre: datos.medio_pago_id === null ? null : nombreDeMedio(datos.medio_pago_id) }),
+  actualizar: (gasto, datos) => Object.assign(gasto, { fecha: datos.fecha, concepto: datos.concepto, monto: datos.monto.toFixed(2), medio_pago_id: datos.medio_pago_id, medio_pago_nombre: datos.medio_pago_id === null ? null : nombreDeMedio(datos.medio_pago_id), modificado_por: usuarioActual(), modificado_en: new Date().toISOString() }),
   eliminar: (gasto) => gastos.splice(gastos.indexOf(gasto), 1),
 };
 
@@ -329,7 +332,7 @@ const iniciarPantalla = () => {
   const COLUMNAS = [{ titulo: "Fecha" }, { titulo: "Concepto" }, { titulo: "Monto", clase: "num" }, { titulo: "Medio de pago" }, { titulo: "Creado por" }, { titulo: "Acciones", clase: "acciones-columna" }];
 
   const filaDeGasto = (gasto) => {
-    const celdas = [fechaParaMostrar(gasto.fecha), gasto.concepto, formatearDinero(gasto.monto), gasto.medio_pago_nombre || sinDato(), gasto.creado_por_nombre, botonesFila(gasto)];
+    const celdas = [fechaParaMostrar(gasto.fecha), gasto.concepto, formatearDinero(gasto.monto), gasto.medio_pago_nombre || sinDato(), gasto.creado_por, botonesFila(gasto)];
     return h("tr", {}, celdas.map((celda, i) => h("td", { class: COLUMNAS[i].clase }, celda)));
   };
 

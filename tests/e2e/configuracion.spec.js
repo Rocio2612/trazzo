@@ -207,16 +207,16 @@ test.describe("Mi negocio", () => {
     await abrir(page, "/perfil-negocio.html");
     await expect(page.locator("#identificador")).toHaveValue("kioscochicha");
     await expect(page.locator("#identificador")).toHaveAttribute("readonly", "");
-    await expect(page.locator("#nombre")).toHaveValue("Kiosco Chicha");
+    await expect(page.locator("#nombre_comercial")).toHaveValue("Kiosco Chicha");
     await expect(page.locator("#categoria_impositiva")).toHaveValue("MONOTRIBUTISTA");
     await expect(page.getByTestId("negocio-aviso-categoria")).toContainText("solo afecta las operaciones futuras");
   });
 
   test("el nombre es obligatorio", async ({ page }) => {
     await abrir(page, "/perfil-negocio.html");
-    await page.locator("#nombre").fill("");
+    await page.locator("#nombre_comercial").fill("");
     await page.getByTestId("negocio-guardar").click();
-    await expect(page.locator("#error-nombre")).toHaveText("Rellene el nombre o razón social.");
+    await expect(page.locator("#error-nombre_comercial")).toHaveText("Rellene el nombre o razón social.");
   });
 
   test("cambiar la categoría impositiva pide confirmar y avisa que solo afecta lo futuro", async ({ page }) => {

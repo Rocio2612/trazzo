@@ -1,6 +1,6 @@
 // --- HELPER DE PROVEEDORES PARA OTRAS PANTALLAS (módulo ES) ---
 // Lo usan los selects de "Reposición de stock" (Productos e Insumos) para elegir el proveedor.
-// Devuelve solo los proveedores visibles (los ocultos no se ofrecen para registros nuevos).
+// Devuelve solo los proveedores visibles, es decir con `activo` (los ocultos no se ofrecen para registros nuevos).
 // Funciona también con el rol Empleado: el Backend deja leer la lista (GET /proveedores) en modo lectura.
 //
 // Uso:
@@ -17,7 +17,7 @@ export const cargarProveedores = async () => {
     const data = await fetchAPI("/proveedores");
     const lista = Array.isArray(data) ? data : data?.items || [];
     return lista
-      .filter((p) => !p.oculto)
+      .filter((p) => p.activo !== false)
       .map((p) => ({ id: p.id, nombre: p.nombre, categoria_impositiva: p.categoria_impositiva }))
       .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
   } catch {

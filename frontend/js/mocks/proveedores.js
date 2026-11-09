@@ -4,18 +4,18 @@
 //   GET/POST /proveedores · PUT /proveedores/{id} · PATCH /proveedores/{id}/ocultar | /mostrar · DELETE /proveedores/{id}
 // `tiene_movimientos` lo calcula el Backend: es verdadero si el proveedor tiene reposiciones o insumos.
 // Los nombres de campo son provisorios hasta cerrar el contrato con Back.
+// La tabla productos.proveedores no guarda quién creó al proveedor, así que la pantalla no muestra "Creado por".
 
-import { obtenerSesion } from "../sesion.js";
 import { buscarProveedores, filtrarProveedores, formatearDocumento, MOTIVO_CON_MOVIMIENTOS, soloDigitos } from "../proveedores.js";
 
 const errorDeCampo = (campo, mensaje) => Object.assign(new Error(mensaje), { errores: { [campo]: mensaje } });
 
 export const PROVEEDORES_EJEMPLO = [
-  { id: 1, creado_por_nombre: "admin1", nombre: "Envases del Sur S.A.", tipo_documento: "CUIT", numero_documento: "30712345671", telefono: "11 4444-5555", correo: "ventas@envasesdelsur.com", categoria_impositiva: "RESPONSABLE_INSCRIPTO", descripcion_compra: "Distribuidor de envases y cajas de cartón", oculto: false, tiene_movimientos: true },
-  { id: 2, creado_por_nombre: "admin1", nombre: "Bebidas Don Raúl", tipo_documento: "CUIT", numero_documento: "30500001735", telefono: "11 5555-6666", correo: null, categoria_impositiva: "RESPONSABLE_INSCRIPTO", descripcion_compra: "Proveedor de bebidas línea blanca", oculto: false, tiene_movimientos: true },
-  { id: 3, creado_por_nombre: "admin2", nombre: "Marta Giménez", tipo_documento: "CUIL", numero_documento: "20123456786", telefono: null, correo: "marta@correo.com", categoria_impositiva: "MONOTRIBUTISTA", descripcion_compra: "Verduras y frutas de estación", oculto: false, tiene_movimientos: false },
-  { id: 4, creado_por_nombre: "admin1", nombre: "Cooperativa La Esperanza", tipo_documento: "CUIT", numero_documento: "33712345670", telefono: "11 6666-7777", correo: null, categoria_impositiva: "EXENTO", descripcion_compra: null, oculto: true, tiene_movimientos: false },
-  { id: 5, creado_por_nombre: "admin2", nombre: "Librería Central", tipo_documento: "CUIT", numero_documento: "30700000016", telefono: null, correo: null, categoria_impositiva: "RESPONSABLE_INSCRIPTO", descripcion_compra: "Papelería y útiles", oculto: true, tiene_movimientos: true },
+  { id: 1, nombre: "Envases del Sur S.A.", tipo_documento: "CUIT", numero_documento: "30712345671", telefono: "11 4444-5555", correo: "ventas@envasesdelsur.com", categoria_impositiva: "RESPONSABLE_INSCRIPTO", descripcion_compra: "Distribuidor de envases y cajas de cartón", activo: true, tiene_movimientos: true },
+  { id: 2, nombre: "Bebidas Don Raúl", tipo_documento: "CUIT", numero_documento: "30500001735", telefono: "11 5555-6666", correo: null, categoria_impositiva: "RESPONSABLE_INSCRIPTO", descripcion_compra: "Proveedor de bebidas línea blanca", activo: true, tiene_movimientos: true },
+  { id: 3, nombre: "Marta Giménez", tipo_documento: "CUIL", numero_documento: "20123456786", telefono: null, correo: "marta@correo.com", categoria_impositiva: "MONOTRIBUTISTA", descripcion_compra: "Verduras y frutas de estación", activo: true, tiene_movimientos: false },
+  { id: 4, nombre: "Cooperativa La Esperanza", tipo_documento: "CUIT", numero_documento: "33712345670", telefono: "11 6666-7777", correo: null, categoria_impositiva: "EXENTO", descripcion_compra: null, activo: false, tiene_movimientos: false },
+  { id: 5, nombre: "Librería Central", tipo_documento: "CUIT", numero_documento: "30700000016", telefono: null, correo: null, categoria_impositiva: "RESPONSABLE_INSCRIPTO", descripcion_compra: "Papelería y útiles", activo: false, tiene_movimientos: true },
 ];
 
 const proveedores = PROVEEDORES_EJEMPLO.map((p) => ({ ...p }));
@@ -39,8 +39,7 @@ export const servicioProveedores = {
     buscarProveedores(filtrarProveedores(proveedores, { ocultos }), q).map((p) => ({ ...p })),
   crear: async (datos) => {
     verificarDocumentoUnico(datos);
-    // El Backend toma quién lo creó del token; acá se simula con el usuario de la sesión.
-    const proveedor = { id: siguienteId++, creado_por_nombre: obtenerSesion().usuario, ...datos, oculto: false, tiene_movimientos: false };
+    const proveedor = { id: siguienteId++, ...datos, activo: true, tiene_movimientos: false };
     proveedores.push(proveedor);
     return { ...proveedor };
   },
@@ -48,7 +47,7 @@ export const servicioProveedores = {
     verificarDocumentoUnico(datos, id);
     return { ...Object.assign(buscar(id), datos) };
   },
-  cambiarOculto: async (id, oculto) => ({ ...Object.assign(buscar(id), { oculto }) }),
+  cambiarOculto: async (id, oculto) => ({ ...Object.assign(buscar(id), { activo: !oculto }) }),
   eliminar: async (id) => {
     const proveedor = buscar(id);
     if (proveedor.tiene_movimientos) throw new Error(MOTIVO_CON_MOVIMIENTOS);

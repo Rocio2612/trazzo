@@ -71,14 +71,16 @@ test.describe("Gastos operativos", () => {
     await expect(page.getByTestId("gastos-total")).toHaveText(/956\.800,75/);
   });
 
-  test("acepta una fecha futura", async ({ page }) => {
+  test("no acepta una fecha futura (la base exige fecha de hoy o anterior)", async ({ page }) => {
     await abrirGastos(page);
     await page.getByTestId("gastos-nuevo").click();
     await page.locator("#fecha").fill("01-01-2099");
     await page.locator("#concepto").fill("Seguro anual");
     await page.locator("#monto").fill("1000");
     await page.getByTestId("modal-guardar").click();
-    await expect(page.getByTestId("gastos-total-detalle")).toHaveText("8 gastos", { timeout: 5000 });
+    await expect(page.locator("#error-fecha")).toHaveText("La fecha no puede ser futura.");
+    await expect(page.getByTestId("modal")).toHaveCount(1);
+    await expect(page.getByTestId("gastos-total-detalle")).toHaveText("7 gastos");
   });
 
   test("sin medios de pago el mensaje va dentro del desplegable", async ({ page }) => {
@@ -294,11 +296,11 @@ test.describe("Gastos: alta", () => {
   test("registra el gasto y lo muestra con todos sus datos", async ({ page }) => {
     await fijarHoy(page, "2026-04-10");
     await abrirGastos(page);
-    await crearGasto(page, { fecha: "11-04-2026", concepto: "  Limpieza  ", monto: "1234.5" });
+    await crearGasto(page, { fecha: "09-04-2026", concepto: "  Limpieza  ", monto: "1234.5" });
 
     await expect(filas(page)).toHaveCount(8);
     const fila = page.getByRole("row", { name: /Limpieza/ });
-    await expect(fila.locator("td").nth(0)).toHaveText("11-04-2026");
+    await expect(fila.locator("td").nth(0)).toHaveText("09-04-2026");
     await expect(fila.locator("td").nth(1)).toHaveText("Limpieza"); // sin los espacios
     await expect(fila.locator("td").nth(2)).toContainText("1.234,50");
     await expect(fila.locator("td").nth(3)).toHaveText("—");
@@ -379,14 +381,19 @@ test.describe("Gastos: alta", () => {
     await expect(page.getByTestId("gastos-total-detalle")).toHaveText("8 gastos");
   });
 
-  test("un gasto cargado para el año que viene no suma en 'Este año'", async ({ page }) => {
+  test("no se puede cargar un gasto para el año que viene: el total no cambia", async ({ page }) => {
     await fijarHoy(page, "2026-04-10");
     await abrirGastos(page);
-    await crearGasto(page, { fecha: "01-01-2027", concepto: "Del año próximo", monto: "5000" });
+    await page.getByTestId("gastos-nuevo").click();
+    await completar(page, { fecha: "01-01-2027", concepto: "Del año próximo", monto: "5000" });
+    await guardar(page).click();
+    await expect(errorDe(page, "fecha")).toHaveText("La fecha no puede ser futura.");
+    await page.getByTestId("modal-cancelar").click();
     await page.getByTestId("gastos-filtro-fecha").selectOption("anio");
     await expect(page.getByTestId("gastos-total-detalle")).toHaveText("7 gastos");
     await page.getByTestId("gastos-filtro-fecha").selectOption("todas");
-    await expect(page.getByTestId("gastos-total-detalle")).toHaveText("8 gastos");
+    await expect(page.getByTestId("gastos-total-detalle")).toHaveText("7 gastos");
+    await expect(page.getByTestId("gastos-total")).toHaveText(TOTAL_INICIAL);
   });
 
   test("después de guardar, abrir otro gasto nuevo vuelve a empezar vacío", async ({ page }) => {
@@ -849,5 +856,204 @@ test.describe("Gastos: acceso y teclado", () => {
     await page.getByTestId("gastos-buscador").fill("luz");
     await page.getByTestId("gastos-filtro-fecha").selectOption("anio");
     expect(errores).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// La base no acepta gastos con fecha futura (chk_gasto_fecha_no_futura): la pantalla tampoco.
+// ---------------------------------------------------------------------------
+
+test.describe("Gastos: fecha futura", () => {
+  test("mañana se rechaza, con el mensaje junto al campo y el foco en la fecha", async ({ page }) => {
+    await fijarHoy(page, "2026-04-10");
+    await abrirGastos(page);
+    await page.getByTestId("gastos-nuevo").click();
+    await completar(page, { fecha: "11-04-2026", concepto: "De mañana", monto: "100" });
+    await guardar(page).click();
+    await expect(errorDe(page, "fecha")).toHaveText("La fecha no puede ser futura.");
+    await expect(page.locator("#fecha")).toBeFocused();
+    await expect(page.locator("#fecha")).toHaveClass(/con-error/);
+    await expect(page.getByTestId("modal")).toHaveCount(1);
+    await expect(filas(page)).toHaveCount(7);
+    await expect(aviso(page)).toHaveCount(0);
+  });
+
+  test("hoy y ayer se aceptan", async ({ page }) => {
+    await fijarHoy(page, "2026-04-10");
+    await abrirGastos(page);
+    await crearGasto(page, { fecha: "10-04-2026", concepto: "De hoy", monto: "100" });
+    await crearGasto(page, { fecha: "09-04-2026", concepto: "De ayer", monto: "100" });
+    await expect(filas(page)).toHaveCount(9);
+  });
+
+  test("la fecha que viene por defecto al abrir el formulario (hoy) es válida", async ({ page }) => {
+    await fijarHoy(page, "2026-04-10");
+    await abrirGastos(page);
+    await page.getByTestId("gastos-nuevo").click();
+    await completar(page, { concepto: "Con la fecha de hoy", monto: "100" });
+    await guardar(page).click();
+    await expect(page.getByTestId("modal")).toHaveCount(0);
+    await expect(filas(page)).toHaveCount(8);
+  });
+
+  test("también se rechaza escrita como aaaa-mm-dd", async ({ page }) => {
+    await fijarHoy(page, "2026-04-10");
+    await abrirGastos(page);
+    await page.getByTestId("gastos-nuevo").click();
+    await completar(page, { fecha: "2026-04-11", concepto: "De mañana", monto: "100" });
+    await guardar(page).click();
+    await expect(errorDe(page, "fecha")).toHaveText("La fecha no puede ser futura.");
+  });
+
+  test("el error desaparece al corregir la fecha y entonces se puede guardar", async ({ page }) => {
+    await fijarHoy(page, "2026-04-10");
+    await abrirGastos(page);
+    await page.getByTestId("gastos-nuevo").click();
+    await completar(page, { fecha: "01-01-2099", concepto: "Corregido", monto: "100" });
+    await guardar(page).click();
+    await expect(errorDe(page, "fecha")).toBeVisible();
+    await page.locator("#fecha").fill("10-04-2026");
+    await expect(errorDe(page, "fecha")).toBeHidden();
+    await guardar(page).click();
+    await expect(page.getByTestId("modal")).toHaveCount(0);
+    await expect(page.getByRole("row", { name: /Corregido/ })).toHaveCount(1);
+  });
+
+  test("una fecha futura no oculta los errores de los otros campos", async ({ page }) => {
+    await fijarHoy(page, "2026-04-10");
+    await abrirGastos(page);
+    await page.getByTestId("gastos-nuevo").click();
+    await page.locator("#fecha").fill("01-01-2099");
+    await guardar(page).click();
+    await expect(errorDe(page, "fecha")).toHaveText("La fecha no puede ser futura.");
+    await expect(errorDe(page, "concepto")).toHaveText("Completá el concepto.");
+    await expect(errorDe(page, "monto")).toHaveText("Completá el monto.");
+  });
+
+  test("al editar, pasar un gasto a una fecha futura se rechaza y el gasto no cambia", async ({ page }) => {
+    await fijarHoy(page, "2026-04-10");
+    await abrirGastos(page);
+    await page.getByTestId("gastos-editar-2").click();
+    await completar(page, { fecha: "11-04-2026" });
+    await guardar(page).click();
+    await expect(errorDe(page, "fecha")).toHaveText("La fecha no puede ser futura.");
+    await page.getByTestId("modal-cancelar").click();
+    await expect(filas(page).nth(1).locator("td").nth(0)).toHaveText("05-03-2026");
+    await expect(page.getByTestId("gastos-total")).toHaveText(TOTAL_INICIAL);
+  });
+
+  test("al editar, mover un gasto a hoy o a una fecha anterior sigue funcionando", async ({ page }) => {
+    await fijarHoy(page, "2026-04-10");
+    await abrirGastos(page);
+    await page.getByTestId("gastos-editar-2").click();
+    await completar(page, { fecha: "10-04-2026" });
+    await guardar(page).click();
+    await expect(aviso(page)).toHaveText("Gasto actualizado");
+    await expect(filas(page).nth(1).locator("td").nth(0)).toHaveText("10-04-2026");
+  });
+
+  test("los gastos de ejemplo, todos anteriores a hoy, se pueden editar sin tocar la fecha", async ({ page }) => {
+    await fijarHoy(page, "2026-04-10");
+    await abrirGastos(page);
+    for (const id of [1, 4, 7]) {
+      await page.getByTestId(`gastos-editar-${id}`).click();
+      await guardar(page).click();
+      await expect(page.getByTestId("modal")).toHaveCount(0);
+    }
+  });
+
+  test("Enter con una fecha futura muestra el error y no guarda", async ({ page }) => {
+    await fijarHoy(page, "2026-04-10");
+    await abrirGastos(page);
+    await page.getByTestId("gastos-nuevo").click();
+    await completar(page, { fecha: "11-04-2026", concepto: "De mañana", monto: "100" });
+    await page.locator("#concepto").press("Enter");
+    await expect(errorDe(page, "fecha")).toHaveText("La fecha no puede ser futura.");
+    await expect(filas(page)).toHaveCount(7);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Nombres y tipos de la base: el medio de pago viaja como número entero (INT) y "Creado por" sale de creado_por.
+// Para ver lo que la pantalla envía al guardar se entrega al navegador una copia de gastos-pantalla.js con un
+// registro de lo enviado; el archivo real no se toca. Si ese archivo cambia y el reemplazo no encaja, el test avisa.
+// ---------------------------------------------------------------------------
+
+const PANTALLA = "**/js/gastos-pantalla.js";
+const registrarEnvios = async (page) => {
+  await page.route(PANTALLA, async (route) => {
+    const original = await route.fetch();
+    let cuerpo = await original.text();
+    const reemplazos = [
+      ["  crear: (datos) => {", "  crear: (datos) => { (window.__crear ||= []).push(structuredClone(datos));"],
+      ["else servicio.actualizar(gasto, datos);", "else { (window.__actualizar ||= []).push(structuredClone(datos)); servicio.actualizar(gasto, datos); }"],
+    ];
+    for (const [desde, hasta] of reemplazos) {
+      if (!cuerpo.includes(desde)) throw new Error(`gastos-pantalla.js cambió: no se encontró «${desde}»`);
+      cuerpo = cuerpo.replace(desde, hasta);
+    }
+    await route.fulfill({ body: cuerpo, contentType: "application/javascript" });
+  });
+};
+const enviados = (page, clave) => page.evaluate((c) => window[c] || [], clave);
+
+test.describe("Gastos: lo que se envía y lo que se muestra, con los nombres de la base", () => {
+  test("el medio de pago elegido viaja como número entero, no como texto", async ({ page }) => {
+    await registrarEnvios(page);
+    await abrirGastos(page, "ADMIN", { medios: MEDIOS });
+    await page.getByTestId("gastos-nuevo").click();
+    await completar(page, { concepto: "Con medio", monto: "100" });
+    await page.locator("#medio_pago_id").selectOption("2");
+    await guardar(page).click();
+    await expect(page.getByRole("row", { name: /Con medio/ })).toContainText("Transferencia");
+    const [envio] = await enviados(page, "__crear");
+    expect(envio.medio_pago_id).toBe(2);
+    expect(typeof envio.medio_pago_id).toBe("number");
+  });
+
+  test("sin medio de pago viaja null", async ({ page }) => {
+    await registrarEnvios(page);
+    await abrirGastos(page, "ADMIN", { medios: MEDIOS });
+    await crearGasto(page, { concepto: "Sin medio", monto: "100" });
+    expect((await enviados(page, "__crear"))[0].medio_pago_id).toBeNull();
+  });
+
+  test("al editar, el medio de pago también viaja como número, y quitarlo manda null", async ({ page }) => {
+    await registrarEnvios(page);
+    await abrirGastos(page, "ADMIN", { medios: MEDIOS });
+    await page.getByTestId("gastos-editar-2").click();
+    await page.locator("#medio_pago_id").selectOption("1");
+    await guardar(page).click();
+    await expect(aviso(page)).toHaveText("Gasto actualizado");
+    await page.getByTestId("gastos-editar-2").click();
+    await expect(page.locator("#medio_pago_id")).toHaveValue("1");
+    await page.locator("#medio_pago_id").selectOption("");
+    await guardar(page).click();
+    await expect(modal(page)).toHaveCount(0);
+    const envios = await enviados(page, "__actualizar");
+    expect(envios.map((e) => e.medio_pago_id)).toEqual([1, null]);
+  });
+
+  test("el envío lleva solo fecha, concepto, monto y medio de pago", async ({ page }) => {
+    await registrarEnvios(page);
+    await abrirGastos(page);
+    await crearGasto(page, { fecha: "09-04-2026", concepto: "  Con espacios  ", monto: "1234.5" });
+    const [envio] = await enviados(page, "__crear");
+    expect(envio).toEqual({ fecha: "2026-04-09", concepto: "Con espacios", monto: 1234.5, medio_pago_id: null });
+  });
+
+  test("«Creado por» muestra quién creó cada gasto: el usuario de ejemplo y el de la sesión para los nuevos", async ({ page }) => {
+    await abrirGastos(page);
+    await expect(filas(page).first().locator("td").nth(4)).toHaveText("admin1");
+    await crearGasto(page, { concepto: "Nuevo", monto: "10" });
+    await expect(filas(page).last().locator("td").nth(4)).toHaveText("usuario1");
+  });
+
+  test("al editar un gasto, «Creado por» no cambia", async ({ page }) => {
+    await abrirGastos(page);
+    await page.getByTestId("gastos-editar-2").click();
+    await completar(page, { concepto: "Luz editada" });
+    await guardar(page).click();
+    await expect(page.getByRole("row", { name: /Luz editada/ }).locator("td").nth(4)).toHaveText("admin1");
   });
 });

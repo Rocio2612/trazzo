@@ -204,7 +204,7 @@ describe("reglas de habilitar, deshabilitar y eliminar", () => {
 });
 
 describe("validarNegocio", () => {
-  const valido = { nombre: "Kiosco Chicha", rubro: "Kiosco", categoria_impositiva: "MONOTRIBUTISTA" };
+  const valido = { nombre_comercial: "Kiosco Chicha", rubro: "Kiosco", categoria_impositiva: "MONOTRIBUTISTA" };
 
   it("acepta los datos completos; el rubro es opcional", () => {
     expect(validarNegocio(valido)).toEqual({});
@@ -213,7 +213,7 @@ describe("validarNegocio", () => {
 
   it("pide nombre y categoría impositiva", () => {
     expect(validarNegocio({})).toEqual({
-      nombre: "Rellene el nombre o razón social.",
+      nombre_comercial: "Rellene el nombre o razón social.",
       categoria_impositiva: "Elija la categoría impositiva.",
     });
   });
@@ -223,8 +223,8 @@ describe("validarNegocio", () => {
   });
 
   it("el payload limpia espacios y manda el rubro vacío como null", () => {
-    expect(armarPayloadNegocio({ ...valido, nombre: "  Kiosco  ", rubro: " " })).toEqual({
-      nombre: "Kiosco",
+    expect(armarPayloadNegocio({ ...valido, nombre_comercial: "  Kiosco  ", rubro: " " })).toEqual({
+      nombre_comercial: "Kiosco",
       rubro: null,
       categoria_impositiva: "MONOTRIBUTISTA",
     });

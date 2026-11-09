@@ -166,15 +166,15 @@ describe("buscar y filtrar", () => {
 
 describe("puedeEliminarProveedor", () => {
   it("no se elimina si no está oculto", () => {
-    expect(puedeEliminarProveedor({ oculto: false, tiene_movimientos: false })).toEqual({ permitido: false, motivo: "Primero hay que ocultarlo." });
+    expect(puedeEliminarProveedor({ activo: true, tiene_movimientos: false })).toEqual({ permitido: false, motivo: "Primero hay que ocultarlo." });
   });
 
   it("oculto pero con reposiciones o insumos: solo se puede ocultar", () => {
-    expect(puedeEliminarProveedor({ oculto: true, tiene_movimientos: true })).toEqual({ permitido: false, motivo: MOTIVO_CON_MOVIMIENTOS });
+    expect(puedeEliminarProveedor({ activo: false, tiene_movimientos: true })).toEqual({ permitido: false, motivo: MOTIVO_CON_MOVIMIENTOS });
   });
 
   it("oculto y sin movimientos: se puede eliminar", () => {
-    expect(puedeEliminarProveedor({ oculto: true, tiene_movimientos: false }).permitido).toBe(true);
+    expect(puedeEliminarProveedor({ activo: false, tiene_movimientos: false }).permitido).toBe(true);
   });
 });
 
@@ -442,8 +442,8 @@ describe("validarProveedor: categoría impositiva, descripción y combinaciones"
 });
 
 describe("armarPayloadProveedor: casos límite", () => {
-  it("envía exactamente los campos de la ficha y nada más (ni id, ni oculto, ni quién lo creó)", () => {
-    const payload = armarPayloadProveedor({ ...valido, id: 9, oculto: true, tiene_movimientos: true, creado_por_nombre: "x" });
+  it("envía exactamente los campos de la ficha y nada más (ni id, ni activo, ni quién lo creó)", () => {
+    const payload = armarPayloadProveedor({ ...valido, id: 9, activo: false, tiene_movimientos: true, creado_por_nombre: "x" });
     expect(Object.keys(payload).sort()).toEqual([
       "categoria_impositiva",
       "correo",
@@ -547,7 +547,7 @@ describe("buscarProveedores: casos límite", () => {
 });
 
 describe("filtrarProveedores: casos límite", () => {
-  it("un proveedor sin el campo oculto cuenta como visible", () => {
+  it("un proveedor sin el campo activo cuenta como visible", () => {
     expect(filtrarProveedores([{ id: 1 }])).toHaveLength(1);
     expect(filtrarProveedores([{ id: 1 }], { ocultos: true })).toHaveLength(0);
   });
@@ -567,7 +567,7 @@ describe("filtrarProveedores: casos límite", () => {
 
 describe("puedeEliminarProveedor: casos límite", () => {
   it("si no está oculto, primero hay que ocultarlo (aunque tenga movimientos)", () => {
-    expect(puedeEliminarProveedor({ oculto: false, tiene_movimientos: true })).toEqual({ permitido: false, motivo: "Primero hay que ocultarlo." });
+    expect(puedeEliminarProveedor({ activo: true, tiene_movimientos: true })).toEqual({ permitido: false, motivo: "Primero hay que ocultarlo." });
   });
 
   it("el motivo con movimientos es el texto compartido", () => {
@@ -621,10 +621,10 @@ describe("servicio simulado de proveedores", () => {
     expect((await servicio.listar())[0].nombre).toBe("Envases del Sur S.A.");
   });
 
-  it("crear asigna el id siguiente, toma el usuario de la sesión y arranca visible y sin movimientos", async () => {
-    const servicio = await cargarServicio("cajera.ana");
+  it("crear asigna el id siguiente y arranca visible y sin movimientos", async () => {
+    const servicio = await cargarServicio();
     const creado = await servicio.crear(nuevo);
-    expect(creado).toMatchObject({ id: 6, creado_por_nombre: "cajera.ana", oculto: false, tiene_movimientos: false });
+    expect(creado).toMatchObject({ id: 6, activo: true, tiene_movimientos: false });
     expect((await servicio.listar()).map((p) => p.id)).toEqual([1, 2, 3, 6]);
     expect((await servicio.crear({ ...nuevo, numero_documento: "27201234560" })).id).toBe(7);
   });
@@ -653,10 +653,23 @@ describe("servicio simulado de proveedores", () => {
     expect(await servicio.listar()).toHaveLength(3);
   });
 
-  it("actualizar cambia los campos y conserva oculto, movimientos y quién lo creó", async () => {
+  it("actualizar cambia los campos y conserva si está activo y los movimientos", async () => {
     const servicio = await cargarServicio();
     const editado = await servicio.actualizar(1, { ...nuevo, numero_documento: "30712345671", nombre: "Envases Renovados" });
-    expect(editado).toMatchObject({ id: 1, nombre: "Envases Renovados", creado_por_nombre: "admin1", oculto: false, tiene_movimientos: true });
+    expect(editado).toMatchObject({ id: 1, nombre: "Envases Renovados", activo: true, tiene_movimientos: true });
+  });
+
+  it("no guarda quién creó al proveedor: la tabla de la base no tiene ese dato", async () => {
+    const servicio = await cargarServicio("cajera.ana");
+    const creado = await servicio.crear(nuevo);
+    expect(creado).not.toHaveProperty("creado_por_nombre");
+    expect(creado).not.toHaveProperty("creado_por");
+    (await servicio.listar({ ocultos: false })).forEach((p) => expect(p).not.toHaveProperty("creado_por_nombre"));
+    (await servicio.listar({ ocultos: true })).forEach((p) => expect(p).not.toHaveProperty("creado_por_nombre"));
+  });
+
+  it("los datos de ejemplo tampoco traen quién los creó", () => {
+    PROVEEDORES_EJEMPLO.forEach((p) => expect(Object.keys(p).some((k) => k.startsWith("creado"))).toBe(false));
   });
 
   it("al actualizar, el propio documento no cuenta como repetido, pero el de otro sí", async () => {
@@ -693,9 +706,9 @@ describe("servicio simulado de proveedores", () => {
 
 describe("cargarProveedores", () => {
   const respuesta = [
-    { id: 2, nombre: "Zeta SA", categoria_impositiva: "EXENTO", oculto: false, telefono: "1" },
-    { id: 1, nombre: "Álvarez Hnos", categoria_impositiva: "MONOTRIBUTISTA", oculto: false },
-    { id: 3, nombre: "Oculto SA", categoria_impositiva: "EXENTO", oculto: true },
+    { id: 2, nombre: "Zeta SA", categoria_impositiva: "EXENTO", activo: true, telefono: "1" },
+    { id: 1, nombre: "Álvarez Hnos", categoria_impositiva: "MONOTRIBUTISTA", activo: true },
+    { id: 3, nombre: "Oculto SA", categoria_impositiva: "EXENTO", activo: false },
     { id: 4, nombre: "Bebidas", categoria_impositiva: "RESPONSABLE_INSCRIPTO" },
   ];
 
@@ -900,5 +913,85 @@ describe("búsqueda: teléfono por sus números", () => {
     expect(ids("30-71234567-1")).toEqual([1]);
     expect(ids("30712345671")).toEqual([1]);
     expect(ids("71234567")).toEqual([1, 4]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Nombres de campo de la base: `activo` (en vez de `oculto`) en proveedores.
+// ---------------------------------------------------------------------------
+
+import { estaOculto } from "../../frontend/js/proveedores.js";
+
+describe("proveedores: «activo» en vez de «oculto» (como en la base)", () => {
+  it("un proveedor está oculto cuando activo es falso, y visible cuando es verdadero", () => {
+    expect(estaOculto({ activo: false })).toBe(true);
+    expect(estaOculto({ activo: true })).toBe(false);
+  });
+
+  it("si el dato no viene se toma como visible (el valor por defecto de la columna es verdadero)", () => {
+    expect(estaOculto({})).toBe(false);
+    expect(estaOculto({ activo: undefined })).toBe(false);
+    expect(estaOculto({ activo: null })).toBe(false);
+  });
+
+  it("el campo viejo «oculto» ya no cuenta para nada", () => {
+    expect(estaOculto({ oculto: true })).toBe(false);
+    expect(filtrarProveedores([{ id: 1, oculto: true }])).toHaveLength(1);
+  });
+
+  it("los datos de ejemplo usan «activo» y no «oculto»", () => {
+    PROVEEDORES_EJEMPLO.forEach((p) => {
+      expect(p).toHaveProperty("activo");
+      expect(p).not.toHaveProperty("oculto");
+    });
+    expect(PROVEEDORES_EJEMPLO.filter((p) => p.activo === false).map((p) => p.id)).toEqual([4, 5]);
+  });
+
+  it("la ficha que se envía no incluye «activo»: ocultar es una acción aparte", () => {
+    expect(armarPayloadProveedor({ ...valido, activo: false })).not.toHaveProperty("activo");
+  });
+
+  it("ocultar deja activo en falso y restaurar lo devuelve a verdadero", async () => {
+    const servicio = await cargarServicio();
+    expect((await servicio.cambiarOculto(3, true)).activo).toBe(false);
+    expect((await servicio.listar({ ocultos: true })).find((p) => p.id === 3).activo).toBe(false);
+    expect((await servicio.cambiarOculto(3, false)).activo).toBe(true);
+    expect((await servicio.listar()).find((p) => p.id === 3).activo).toBe(true);
+  });
+
+  it("un proveedor nuevo queda activo y no tiene el campo viejo", async () => {
+    const servicio = await cargarServicio();
+    const creado = await servicio.crear(nuevo);
+    expect(creado.activo).toBe(true);
+    expect(creado).not.toHaveProperty("oculto");
+  });
+
+  it("ocultar y restaurar no agrega campos raros a la ficha", async () => {
+    const servicio = await cargarServicio();
+    await servicio.cambiarOculto(1, true);
+    const ficha = (await servicio.listar({ ocultos: true })).find((p) => p.id === 1);
+    expect(ficha).not.toHaveProperty("oculto");
+    expect(Object.keys(ficha).sort()).toEqual(Object.keys(PROVEEDORES_EJEMPLO[0]).sort());
+  });
+
+  it("solo se elimina a quien tiene activo en falso y no tiene movimientos", () => {
+    expect(puedeEliminarProveedor({ activo: true, tiene_movimientos: false }).permitido).toBe(false);
+    expect(puedeEliminarProveedor({ activo: false, tiene_movimientos: true }).permitido).toBe(false);
+    expect(puedeEliminarProveedor({ activo: false, tiene_movimientos: false }).permitido).toBe(true);
+    expect(puedeEliminarProveedor({ tiene_movimientos: false }).motivo).toBe("Primero hay que ocultarlo.");
+  });
+});
+
+describe("cargarProveedores: respeta «activo»", () => {
+  it("descarta solo los que tienen activo en falso, y deja a los que no traen el dato", async () => {
+    vi.stubGlobal(
+      "fetchAPI",
+      vi.fn().mockResolvedValue([
+        { id: 1, nombre: "Activo", categoria_impositiva: "EXENTO", activo: true },
+        { id: 2, nombre: "Inactivo", categoria_impositiva: "EXENTO", activo: false },
+        { id: 3, nombre: "Sin dato", categoria_impositiva: "EXENTO" },
+      ]),
+    );
+    expect((await cargarProveedores()).map((p) => p.nombre)).toEqual(["Activo", "Sin dato"]);
   });
 });

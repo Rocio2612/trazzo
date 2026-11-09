@@ -19,6 +19,7 @@ import {
   armarPayloadProveedor,
   CATEGORIAS_PROVEEDOR,
   CORREO_MAXIMO,
+  estaOculto,
   ETIQUETA_CATEGORIA_CORTA,
   formatearDocumento,
   puedeEliminarProveedor,
@@ -39,7 +40,6 @@ const COLUMNAS = [
   { titulo: "Categoría impositiva" },
   { titulo: "Teléfono" },
   { titulo: "Descripción de compra" },
-  { titulo: "Creado por" },
   { titulo: "Acciones", clase: "acciones-columna" },
 ];
 
@@ -152,7 +152,7 @@ const iniciarPantalla = async () => {
   // --- Tabla ---
   const botonesFila = (p) => {
     const datos = (accion) => ({ "data-testid": `proveedores-${accion}-${p.id}`, "data-modulo": MODULO, "data-accion": accion, "data-id": p.id });
-    if (!p.oculto) {
+    if (!estaOculto(p)) {
       return h(
         "div",
         { class: "gastos-acciones-fila" },
@@ -181,7 +181,6 @@ const iniciarPantalla = async () => {
       h("span", { class: "cfg-insignia", text: ETIQUETA_CATEGORIA_CORTA[p.categoria_impositiva] || p.categoria_impositiva }),
       p.telefono || sinDato(),
       p.descripcion_compra ? h("span", { class: "prov-descripcion", title: p.descripcion_compra, text: p.descripcion_compra }) : sinDato(),
-      p.creado_por_nombre || sinDato(),
       botonesFila(p),
     ];
     return h("tr", { "data-testid": `proveedores-fila-${p.id}` }, celdas.map((celda, i) => h("td", { class: COLUMNAS[i].clase }, celda)));
@@ -216,7 +215,7 @@ const iniciarPantalla = async () => {
     if (!proveedor) return;
     const acciones = {
       editar: () => formulario(proveedor),
-      ocultar: () => (proveedor.oculto ? restaurar(proveedor) : pedirOcultar(proveedor)),
+      ocultar: () => (estaOculto(proveedor) ? restaurar(proveedor) : pedirOcultar(proveedor)),
       eliminar: () => pedirEliminar(proveedor),
     };
     acciones[b.dataset.accion]?.();

@@ -36,6 +36,12 @@ export const CORREO_MAXIMO = 120;
 // Sin espacios, con una sola @, sin puntos seguidos ni al principio o al final de cada parte, y un dominio con punto.
 export const CORREO_VALIDO = /^[^\s@.]+(\.[^\s@.]+)*@([^\s@.]+\.)+[^\s@.]{2,}$/;
 
+// Correo de una persona del personal (auth.usuarios). La base solo admite letras sin tilde, números y . _ % + -
+// antes de la @, y letras, números, puntos y guiones después, con un final de dominio de solo letras
+// (chk_usuario_correo_formato). Esta regla es la misma pero más estricta con los puntos, así que todo lo que
+// acepta la pantalla lo acepta la base.
+export const CORREO_PERSONAL_VALIDO = /^[A-Za-z0-9%+_-]+(\.[A-Za-z0-9%+_-]+)*@([A-Za-z0-9-]+\.)+[A-Za-z]{2,}$/;
+
 // --- Campos de una persona ---------------------------------------------------------
 
 export const validarUsuario = (valor) => {
@@ -62,7 +68,7 @@ export const validarCorreo = (valor) => {
   if (vacio(valor)) return "Rellene el correo.";
   const correo = String(valor).trim();
   if (correo.length > CORREO_MAXIMO) return `El correo no puede superar los ${CORREO_MAXIMO} caracteres.`;
-  return CORREO_VALIDO.test(correo) ? null : "El correo no es válido.";
+  return CORREO_PERSONAL_VALIDO.test(correo) ? null : "El correo no es válido.";
 };
 
 // DNI: opcional. Si se carga, 7 u 8 números (sin puntos).
@@ -172,8 +178,8 @@ export const puedeEliminarPersona = (actor, objetivo, personal) => {
 
 export const validarNegocio = (datos = {}) => {
   const errores = {};
-  if (vacio(datos.nombre)) errores.nombre = "Rellene el nombre o razón social.";
-  else if (String(datos.nombre).trim().length > 100) errores.nombre = "El nombre no puede superar los 100 caracteres.";
+  if (vacio(datos.nombre_comercial)) errores.nombre_comercial = "Rellene el nombre o razón social.";
+  else if (String(datos.nombre_comercial).trim().length > 100) errores.nombre_comercial = "El nombre no puede superar los 100 caracteres.";
   if (String(datos.rubro ?? "").trim().length > 50) errores.rubro = "El rubro no puede superar los 50 caracteres.";
   if (!CATEGORIAS_IMPOSITIVAS.some((c) => c.valor === datos.categoria_impositiva)) {
     errores.categoria_impositiva = "Elija la categoría impositiva.";
@@ -182,7 +188,7 @@ export const validarNegocio = (datos = {}) => {
 };
 
 export const armarPayloadNegocio = (datos) => ({
-  nombre: String(datos.nombre ?? "").trim(),
+  nombre_comercial: String(datos.nombre_comercial ?? "").trim(),
   rubro: vacio(datos.rubro) ? null : String(datos.rubro).trim(),
   categoria_impositiva: datos.categoria_impositiva,
 });

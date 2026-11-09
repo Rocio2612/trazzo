@@ -5,14 +5,15 @@
 //   personal:     GET/POST /personal · PUT /personal/{id} · PATCH /personal/{id}/habilitar | /deshabilitar · DELETE /personal/{id}
 //   categorías:   GET/POST /categorias · PUT/DELETE /categorias/{id}
 //   medios pago:  GET/POST /medios-pago · PUT/DELETE /medios-pago/{id}
-// Los nombres de campo son provisorios hasta cerrar el contrato con Back.
+// Los nombres de campo son los de las tablas de la base: auth.emprendimientos (nombre_comercial),
+// auth.usuarios y finanzas.medios_pago (es_predeterminado).
 
 const errorDeCampo = (campo, mensaje) => Object.assign(new Error(mensaje), { errores: { [campo]: mensaje } });
 
 // --- Negocio -----------------------------------------------------------------------
 const negocio = {
   identificador: "kioscochicha",
-  nombre: "Kiosco Chicha",
+  nombre_comercial: "Kiosco Chicha",
   rubro: "Kiosco",
   categoria_impositiva: "MONOTRIBUTISTA",
 };
@@ -76,15 +77,28 @@ const LISTAS_INICIALES = () => ({
     { id: 2, nombre: "Pantalones" },
   ],
   medios_pago: [
-    { id: 1, nombre: "Efectivo", por_defecto: true },
-    { id: 2, nombre: "Transferencia", por_defecto: false },
+    { id: 1, nombre: "Efectivo", es_predeterminado: true },
+    { id: 2, nombre: "Transferencia", es_predeterminado: false },
   ],
 });
+
+// Las listas guardadas antes de usar los nombres de la base traían `por_defecto`: se pasan a `es_predeterminado`
+// (solo los medios de pago lo tienen; las categorías no).
+const actualizarFormato = (listas) => {
+  listas.medios_pago.forEach((m) => {
+    if ("por_defecto" in m) {
+      m.es_predeterminado = Boolean(m.por_defecto);
+      delete m.por_defecto;
+    }
+  });
+  listas.categorias.forEach((c) => delete c.por_defecto);
+  return listas;
+};
 
 const leerListas = () => {
   try {
     const guardado = JSON.parse(localStorage.getItem(CLAVE_LISTAS));
-    if (guardado && Array.isArray(guardado.categorias) && Array.isArray(guardado.medios_pago)) return guardado;
+    if (guardado && Array.isArray(guardado.categorias) && Array.isArray(guardado.medios_pago)) return actualizarFormato(guardado);
   } catch {
     // Sin almacenamiento o con datos dañados: se parte de las listas iniciales.
   }
@@ -107,7 +121,8 @@ export const servicioLista = (tipo) => ({
   crear: async (nombre) => {
     const listas = leerListas();
     const todosLosIds = [...listas.categorias, ...listas.medios_pago].map((e) => e.id);
-    const elemento = { id: Math.max(9, ...todosLosIds) + 1, nombre, por_defecto: false };
+    // Solo los medios de pago tienen "es_predeterminado"; las categorías no.
+    const elemento = { id: Math.max(9, ...todosLosIds) + 1, nombre, ...(tipo === "medios_pago" ? { es_predeterminado: false } : {}) };
     listas[tipo].push(elemento);
     guardarListas(listas);
     return { ...elemento };
@@ -121,7 +136,7 @@ export const servicioLista = (tipo) => ({
   eliminar: async (id) => {
     const listas = leerListas();
     const elemento = listas[tipo].find((e) => e.id === id);
-    if (elemento.por_defecto) throw new Error("Efectivo es el medio de pago por defecto y no se puede eliminar.");
+    if (elemento.es_predeterminado) throw new Error("Efectivo es el medio de pago por defecto y no se puede eliminar.");
     listas[tipo].splice(listas[tipo].indexOf(elemento), 1);
     guardarListas(listas);
   },

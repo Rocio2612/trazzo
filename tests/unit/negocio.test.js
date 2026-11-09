@@ -8,7 +8,7 @@ import {
 
 // Pruebas de la pantalla "Mi negocio": reglas de validación, payload y servicio simulado.
 
-const valido = { nombre: "Kiosco Chicha", rubro: "Kiosco", categoria_impositiva: "MONOTRIBUTISTA" };
+const valido = { nombre_comercial: "Kiosco Chicha", rubro: "Kiosco", categoria_impositiva: "MONOTRIBUTISTA" };
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -32,22 +32,22 @@ describe("constantes de Mi negocio", () => {
 
 describe("validarNegocio: nombre o razón social", () => {
   it.each([[""], ["   "], ["\t\n"], [null], [undefined]])("un nombre vacío (%j) pide completarlo", (nombre) => {
-    expect(validarNegocio({ ...valido, nombre }).nombre).toBe("Rellene el nombre o razón social.");
+    expect(validarNegocio({ ...valido, nombre_comercial: nombre }).nombre_comercial).toBe("Rellene el nombre o razón social.");
   });
 
   it("acepta exactamente 100 caracteres y rechaza 101", () => {
-    expect(validarNegocio({ ...valido, nombre: "a".repeat(100) })).toEqual({});
-    expect(validarNegocio({ ...valido, nombre: "a".repeat(101) }).nombre).toBe("El nombre no puede superar los 100 caracteres.");
+    expect(validarNegocio({ ...valido, nombre_comercial: "a".repeat(100) })).toEqual({});
+    expect(validarNegocio({ ...valido, nombre_comercial: "a".repeat(101) }).nombre_comercial).toBe("El nombre no puede superar los 100 caracteres.");
   });
 
   it("los espacios de los costados no cuentan para el largo", () => {
-    expect(validarNegocio({ ...valido, nombre: `   ${"a".repeat(100)}   ` })).toEqual({});
+    expect(validarNegocio({ ...valido, nombre_comercial: `   ${"a".repeat(100)}   ` })).toEqual({});
   });
 
   it.each([["Peña & Hijos S.R.L."], ["Kiosco 24 hs"], ["Café del Ñandú"], ["A"], ["<b>Kiosco</b>"]])(
     "acepta el nombre %s",
     (nombre) => {
-      expect(validarNegocio({ ...valido, nombre })).toEqual({});
+      expect(validarNegocio({ ...valido, nombre_comercial: nombre })).toEqual({});
     },
   );
 });
@@ -82,22 +82,22 @@ describe("validarNegocio: categoría impositiva", () => {
 
 describe("validarNegocio: combinaciones", () => {
   it("solo informa el campo que está mal", () => {
-    expect(Object.keys(validarNegocio({ ...valido, nombre: "" }))).toEqual(["nombre"]);
+    expect(Object.keys(validarNegocio({ ...valido, nombre_comercial: "" }))).toEqual(["nombre_comercial"]);
     expect(Object.keys(validarNegocio({ ...valido, rubro: "a".repeat(51) }))).toEqual(["rubro"]);
     expect(Object.keys(validarNegocio({ ...valido, categoria_impositiva: "" }))).toEqual(["categoria_impositiva"]);
   });
 
   it("informa todos los campos mal a la vez", () => {
-    expect(Object.keys(validarNegocio({ nombre: "", rubro: "a".repeat(51), categoria_impositiva: "" })).sort()).toEqual([
+    expect(Object.keys(validarNegocio({ nombre_comercial: "", rubro: "a".repeat(51), categoria_impositiva: "" })).sort()).toEqual([
       "categoria_impositiva",
-      "nombre",
+      "nombre_comercial",
       "rubro",
     ]);
   });
 
   it("sin datos no revienta y pide lo obligatorio", () => {
     expect(() => validarNegocio()).not.toThrow();
-    expect(Object.keys(validarNegocio(undefined)).sort()).toEqual(["categoria_impositiva", "nombre"]);
+    expect(Object.keys(validarNegocio(undefined)).sort()).toEqual(["categoria_impositiva", "nombre_comercial"]);
   });
 
   it("el identificador no se valida porque no se puede cambiar", () => {
@@ -108,12 +108,12 @@ describe("validarNegocio: combinaciones", () => {
 describe("armarPayloadNegocio", () => {
   it("envía solo nombre, rubro y categoría: nunca el identificador", () => {
     const payload = armarPayloadNegocio({ ...valido, identificador: "kioscochicha", id: 7 });
-    expect(Object.keys(payload).sort()).toEqual(["categoria_impositiva", "nombre", "rubro"]);
+    expect(Object.keys(payload).sort()).toEqual(["categoria_impositiva", "nombre_comercial", "rubro"]);
   });
 
   it("recorta el nombre y el rubro", () => {
-    expect(armarPayloadNegocio({ ...valido, nombre: "  Kiosco  ", rubro: "  Pesquería  " })).toMatchObject({
-      nombre: "Kiosco",
+    expect(armarPayloadNegocio({ ...valido, nombre_comercial: "  Kiosco  ", rubro: "  Pesquería  " })).toMatchObject({
+      nombre_comercial: "Kiosco",
       rubro: "Pesquería",
     });
   });
@@ -124,13 +124,13 @@ describe("armarPayloadNegocio", () => {
 
   it("la categoría viaja tal cual y un nombre ausente queda vacío", () => {
     expect(armarPayloadNegocio({ ...valido, categoria_impositiva: "EXENTO" }).categoria_impositiva).toBe("EXENTO");
-    expect(armarPayloadNegocio({ categoria_impositiva: "EXENTO" }).nombre).toBe("");
+    expect(armarPayloadNegocio({ categoria_impositiva: "EXENTO" }).nombre_comercial).toBe("");
   });
 
   it("no modifica lo que recibe ni el contenido del nombre (HTML incluido)", () => {
-    const datos = { ...valido, nombre: " <b>Kiosco</b> " };
+    const datos = { ...valido, nombre_comercial: " <b>Kiosco</b> " };
     const copia = { ...datos };
-    expect(armarPayloadNegocio(datos).nombre).toBe("<b>Kiosco</b>");
+    expect(armarPayloadNegocio(datos).nombre_comercial).toBe("<b>Kiosco</b>");
     expect(datos).toEqual(copia);
   });
 });
@@ -148,7 +148,7 @@ describe("servicio simulado del negocio", () => {
     const servicio = await cargarServicio();
     expect(await servicio.obtener()).toEqual({
       identificador: "kioscochicha",
-      nombre: "Kiosco Chicha",
+      nombre_comercial: "Kiosco Chicha",
       rubro: "Kiosco",
       categoria_impositiva: "MONOTRIBUTISTA",
     });
@@ -156,28 +156,28 @@ describe("servicio simulado del negocio", () => {
 
   it("devuelve copias: modificar lo que devuelve no cambia lo guardado", async () => {
     const servicio = await cargarServicio();
-    (await servicio.obtener()).nombre = "ALTERADO";
-    expect((await servicio.obtener()).nombre).toBe("Kiosco Chicha");
+    (await servicio.obtener()).nombre_comercial = "ALTERADO";
+    expect((await servicio.obtener()).nombre_comercial).toBe("Kiosco Chicha");
   });
 
   it("guardar cambia los datos y obtener los devuelve actualizados", async () => {
     const servicio = await cargarServicio();
-    const guardado = await servicio.guardar({ nombre: "Otro Nombre", rubro: null, categoria_impositiva: "EXENTO" });
-    expect(guardado).toMatchObject({ nombre: "Otro Nombre", rubro: null, categoria_impositiva: "EXENTO" });
+    const guardado = await servicio.guardar({ nombre_comercial: "Otro Nombre", rubro: null, categoria_impositiva: "EXENTO" });
+    expect(guardado).toMatchObject({ nombre_comercial: "Otro Nombre", rubro: null, categoria_impositiva: "EXENTO" });
     expect(await servicio.obtener()).toEqual(guardado);
   });
 
   it("guardar no cambia el identificador", async () => {
     const servicio = await cargarServicio();
-    await servicio.guardar({ nombre: "X", rubro: "Y", categoria_impositiva: "EXENTO" });
+    await servicio.guardar({ nombre_comercial: "X", rubro: "Y", categoria_impositiva: "EXENTO" });
     expect((await servicio.obtener()).identificador).toBe("kioscochicha");
   });
 
   it("lo que devuelve guardar es una copia", async () => {
     const servicio = await cargarServicio();
-    const guardado = await servicio.guardar({ nombre: "X", rubro: "Y", categoria_impositiva: "EXENTO" });
-    guardado.nombre = "ALTERADO";
-    expect((await servicio.obtener()).nombre).toBe("X");
+    const guardado = await servicio.guardar({ nombre_comercial: "X", rubro: "Y", categoria_impositiva: "EXENTO" });
+    guardado.nombre_comercial = "ALTERADO";
+    expect((await servicio.obtener()).nombre_comercial).toBe("X");
   });
 
   it("los datos de ejemplo pasan la validación", async () => {

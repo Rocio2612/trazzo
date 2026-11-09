@@ -926,3 +926,47 @@ test.describe("Configuración > Personal: correo y contraseña más estrictos", 
     await expect(errorDe(page, "password")).toHaveText("La contraseña debe incluir al menos un símbolo especial.");
   });
 });
+
+// ---------------------------------------------------------------------------
+// El correo del personal sigue la regla de la base (chk_usuario_correo_formato): solo ASCII y un final de
+// dominio de solo letras.
+// ---------------------------------------------------------------------------
+
+test.describe("Configuración > Personal: el correo que acepta la base", () => {
+  // (Un dominio con tilde, como «exámple.com», no se prueba acá: el navegador lo convierte solo a su forma ASCII
+  // `xn--…` en el campo de correo, y esa forma sí la acepta la base. El texto crudo se prueba en los unitarios.)
+  for (const correo of ["ñandu@correo.com", "josé@correo.com", "ana@correo.c0m", "ana@correo.com1", "ana!@correo.com", "ana@cor_reo.com"]) {
+    test(`el correo «${correo}» se rechaza al crear`, async ({ page }) => {
+      await abrir(page);
+      await intentarCrear(page, { correo });
+      await expect(errorDe(page, "correo")).toHaveText("El correo no es válido.");
+      await expect(modal(page)).toHaveCount(1);
+      await expect(filas(page)).toHaveCount(4);
+    });
+  }
+
+  test("al editar, un correo con tilde también se rechaza y no modifica a la persona", async ({ page }) => {
+    await abrir(page);
+    await page.getByTestId("personal-editar-3").click();
+    await llenar(page, { correo: "sofía@kioscochicha.com" });
+    await guardar(page).click();
+    await expect(errorDe(page, "correo")).toHaveText("El correo no es válido.");
+    await page.getByTestId("modal-cancelar").click();
+    await expect(celda(page, 3, COL.correo)).toHaveText("sofia@kioscochicha.com");
+  });
+
+  test("correos con mayúsculas, números, guiones y símbolos permitidos se aceptan", async ({ page }) => {
+    await abrir(page);
+    await crearUsuario(page, { correo: "Julia.Mora-99+tienda%1@Mail-Empresa2.com.ar" });
+    await expect(filas(page)).toHaveCount(5);
+  });
+
+  test("Enter con un correo que la base no acepta muestra el error y no guarda", async ({ page }) => {
+    await abrir(page);
+    await page.getByTestId("personal-nuevo").click();
+    await llenar(page, { ...NUEVO, correo: "ñandu@correo.com" });
+    await page.locator("#correo").press("Enter");
+    await expect(errorDe(page, "correo")).toBeVisible();
+    await expect(filas(page)).toHaveCount(4);
+  });
+});

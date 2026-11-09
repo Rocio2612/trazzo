@@ -2,7 +2,7 @@ const { test, expect } = require("@playwright/test");
 const { simularApi, iniciarSesionComo } = require("./helpers");
 
 // Pantalla "Mi negocio" (perfil-negocio.html). Datos simulados (mocks/personalizacion.js):
-// identificador "kioscochicha", nombre "Kiosco Chicha", rubro "Kiosco", categoría Monotributista.
+// identificador "kioscochicha", nombre_comercial "Kiosco Chicha", rubro "Kiosco", categoría Monotributista.
 //
 // Para probar casos que el servicio simulado no permite (rubro propio ya guardado, errores del servidor,
 // ver qué se envía al guardar) se entrega al navegador una copia modificada de mocks/personalizacion.js
@@ -55,7 +55,7 @@ test.describe("Mi negocio: pantalla", () => {
     await abrir(page);
     await expect(page.getByRole("heading", { name: "Mi negocio", level: 1 })).toBeVisible();
     await expect(page.locator('label[for="identificador"]')).toContainText("Identificador del negocio");
-    await expect(page.locator('label[for="nombre"]')).toHaveText("Nombre o razón social *");
+    await expect(page.locator('label[for="nombre_comercial"]')).toHaveText("Nombre o razón social *");
     await expect(page.locator('label[for="rubro"]')).toHaveText("Rubro");
     await expect(page.locator('label[for="categoria_impositiva"]')).toHaveText("Categoría impositiva *");
     await expect(guardar(page)).toHaveText("Guardar cambios");
@@ -64,7 +64,7 @@ test.describe("Mi negocio: pantalla", () => {
   test("muestra los datos guardados", async ({ page }) => {
     await abrir(page);
     await expect(page.locator("#identificador")).toHaveValue("kioscochicha");
-    await expect(page.locator("#nombre")).toHaveValue("Kiosco Chicha");
+    await expect(page.locator("#nombre_comercial")).toHaveValue("Kiosco Chicha");
     await expect(page.locator("#rubro")).toHaveValue("Kiosco");
     await expect(page.locator("#categoria_impositiva")).toHaveValue("MONOTRIBUTISTA");
     await expect(page.locator("#rubro_otro")).toBeHidden();
@@ -106,7 +106,7 @@ test.describe("Mi negocio: pantalla", () => {
   test("el nombre admite 100 caracteres y el rubro propio 50: los campos no dejan escribir más", async ({ page }) => {
     await abrir(page);
     await page.locator("#rubro").selectOption("__otro");
-    for (const [id, max] of [["nombre", 100], ["rubro_otro", 50]]) {
+    for (const [id, max] of [["nombre_comercial", 100], ["rubro_otro", 50]]) {
       await expect(page.locator(`#${id}`)).toHaveAttribute("maxlength", String(max));
       await page.locator(`#${id}`).fill("");
       await page.locator(`#${id}`).click();
@@ -117,7 +117,7 @@ test.describe("Mi negocio: pantalla", () => {
 
   test("con el nombre más largo no aparece scroll horizontal", async ({ page }) => {
     await abrir(page);
-    await page.locator("#nombre").fill("N".repeat(100));
+    await page.locator("#nombre_comercial").fill("N".repeat(100));
     expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
   });
 });
@@ -194,10 +194,10 @@ test.describe("Mi negocio: rubro", () => {
 test.describe("Mi negocio: validaciones", () => {
   test("un nombre vacío se rechaza, no pide confirmación y no guarda", async ({ page }) => {
     await abrir(page, { reemplazos: [REGISTRAR_PAYLOADS] });
-    await page.locator("#nombre").fill("");
+    await page.locator("#nombre_comercial").fill("");
     await guardar(page).click();
-    await expect(errorDe(page, "nombre")).toHaveText("Rellene el nombre o razón social.");
-    await expect(page.locator("#nombre")).toHaveClass(/con-error/);
+    await expect(errorDe(page, "nombre_comercial")).toHaveText("Rellene el nombre o razón social.");
+    await expect(page.locator("#nombre_comercial")).toHaveClass(/con-error/);
     await expect(modal(page)).toHaveCount(0);
     await expect(toast(page)).toHaveCount(0);
     expect(await payloads(page)).toEqual([]);
@@ -205,19 +205,19 @@ test.describe("Mi negocio: validaciones", () => {
 
   test("un nombre de solo espacios se rechaza", async ({ page }) => {
     await abrir(page);
-    await page.locator("#nombre").fill("      ");
+    await page.locator("#nombre_comercial").fill("      ");
     await guardar(page).click();
-    await expect(errorDe(page, "nombre")).toHaveText("Rellene el nombre o razón social.");
+    await expect(errorDe(page, "nombre_comercial")).toHaveText("Rellene el nombre o razón social.");
   });
 
   test("el error del nombre desaparece al escribir y después se puede guardar", async ({ page }) => {
     await abrir(page);
-    await page.locator("#nombre").fill("");
+    await page.locator("#nombre_comercial").fill("");
     await guardar(page).click();
-    await expect(errorDe(page, "nombre")).toBeVisible();
-    await page.locator("#nombre").fill("K");
-    await expect(errorDe(page, "nombre")).toBeHidden();
-    await expect(page.locator("#nombre")).not.toHaveClass(/con-error/);
+    await expect(errorDe(page, "nombre_comercial")).toBeVisible();
+    await page.locator("#nombre_comercial").fill("K");
+    await expect(errorDe(page, "nombre_comercial")).toBeHidden();
+    await expect(page.locator("#nombre_comercial")).not.toHaveClass(/con-error/);
     await guardar(page).click();
     await expect(toast(page)).toHaveText("Datos del negocio actualizados");
   });
@@ -234,16 +234,16 @@ test.describe("Mi negocio: validaciones", () => {
 
   test("con el nombre vacío y la categoría cambiada, se avisa del error antes de pedir confirmación", async ({ page }) => {
     await abrir(page);
-    await page.locator("#nombre").fill("");
+    await page.locator("#nombre_comercial").fill("");
     await page.locator("#categoria_impositiva").selectOption("RESPONSABLE_INSCRIPTO");
     await guardar(page).click();
-    await expect(errorDe(page, "nombre")).toHaveText("Rellene el nombre o razón social.");
+    await expect(errorDe(page, "nombre_comercial")).toHaveText("Rellene el nombre o razón social.");
     await expect(modal(page)).toHaveCount(0); // no tiene sentido confirmar un cambio que no se puede guardar
   });
 
   test("un nombre de 100 caracteres se guarda", async ({ page }) => {
     await abrir(page);
-    await page.locator("#nombre").fill("a".repeat(100));
+    await page.locator("#nombre_comercial").fill("a".repeat(100));
     await guardar(page).click();
     await expect(toast(page)).toHaveText("Datos del negocio actualizados");
   });
@@ -255,29 +255,29 @@ test.describe("Mi negocio: guardar", () => {
     await guardar(page).click();
     await expect(toast(page)).toHaveText("Datos del negocio actualizados");
     await expect(modal(page)).toHaveCount(0);
-    expect(await payloads(page)).toEqual([{ nombre: "Kiosco Chicha", rubro: "Kiosco", categoria_impositiva: "MONOTRIBUTISTA" }]);
+    expect(await payloads(page)).toEqual([{ nombre_comercial: "Kiosco Chicha", rubro: "Kiosco", categoria_impositiva: "MONOTRIBUTISTA" }]);
   });
 
   test("solo se envían nombre, rubro y categoría (nunca el identificador) y el nombre va recortado", async ({ page }) => {
     await abrir(page, { reemplazos: [REGISTRAR_PAYLOADS] });
-    await page.locator("#nombre").fill("   Kiosco Nuevo   ");
+    await page.locator("#nombre_comercial").fill("   Kiosco Nuevo   ");
     await guardar(page).click();
     await expect(toast(page)).toHaveText("Datos del negocio actualizados");
     const [payload] = await payloads(page);
-    expect(Object.keys(payload).sort()).toEqual(["categoria_impositiva", "nombre", "rubro"]);
-    expect(payload.nombre).toBe("Kiosco Nuevo");
+    expect(Object.keys(payload).sort()).toEqual(["categoria_impositiva", "nombre_comercial", "rubro"]);
+    expect(payload.nombre_comercial).toBe("Kiosco Nuevo");
   });
 
   test("después de guardar los campos conservan lo escrito y se puede guardar de nuevo", async ({ page }) => {
     await abrir(page, { reemplazos: [REGISTRAR_PAYLOADS] });
-    await page.locator("#nombre").fill("Primero");
+    await page.locator("#nombre_comercial").fill("Primero");
     await guardar(page).click();
     await expect(toast(page)).toHaveText("Datos del negocio actualizados");
-    await expect(page.locator("#nombre")).toHaveValue("Primero");
-    await page.locator("#nombre").fill("Segundo");
+    await expect(page.locator("#nombre_comercial")).toHaveValue("Primero");
+    await page.locator("#nombre_comercial").fill("Segundo");
     await guardar(page).click();
     await expect.poll(async () => (await payloads(page)).length).toBe(2);
-    expect((await payloads(page)).map((p) => p.nombre)).toEqual(["Primero", "Segundo"]);
+    expect((await payloads(page)).map((p) => p.nombre_comercial)).toEqual(["Primero", "Segundo"]);
   });
 
   test("mientras guarda el botón dice 'Guardando…' y queda deshabilitado; después vuelve a la normalidad", async ({ page }) => {
@@ -305,10 +305,10 @@ test.describe("Mi negocio: guardar", () => {
   test("un nombre con HTML se guarda como texto y no se ejecuta", async ({ page }) => {
     await abrir(page, { reemplazos: [REGISTRAR_PAYLOADS] });
     const peligroso = '<img src=x onerror="window.__xss=1">';
-    await page.locator("#nombre").fill(peligroso);
+    await page.locator("#nombre_comercial").fill(peligroso);
     await guardar(page).click();
     await expect(toast(page)).toHaveText("Datos del negocio actualizados");
-    expect((await payloads(page))[0].nombre).toBe(peligroso);
+    expect((await payloads(page))[0].nombre_comercial).toBe(peligroso);
     await expect(page.locator("img")).toHaveCount(0);
     expect(await page.evaluate(() => window.__xss)).toBeUndefined();
   });
@@ -326,7 +326,7 @@ test.describe("Mi negocio: cambio de categoría impositiva", () => {
 
   test("cambiar otra cosa (nombre o rubro) no activa el aviso de cambio", async ({ page }) => {
     await abrir(page);
-    await page.locator("#nombre").fill("Otro");
+    await page.locator("#nombre_comercial").fill("Otro");
     await page.locator("#rubro").selectOption("Almacén");
     await expect(aviso(page)).toHaveText(AVISO_NEUTRO);
   });
@@ -344,14 +344,14 @@ test.describe("Mi negocio: cambio de categoría impositiva", () => {
 
   test("cancelar no guarda nada y conserva lo escrito y el aviso", async ({ page }) => {
     await abrir(page, { reemplazos: [REGISTRAR_PAYLOADS] });
-    await page.locator("#nombre").fill("Con cambios");
+    await page.locator("#nombre_comercial").fill("Con cambios");
     await page.locator("#categoria_impositiva").selectOption("EXENTO");
     await guardar(page).click();
     await page.getByTestId("modal-cancelar").click();
     await expect(modal(page)).toHaveCount(0);
     await expect(toast(page)).toHaveCount(0);
     expect(await payloads(page)).toEqual([]);
-    await expect(page.locator("#nombre")).toHaveValue("Con cambios");
+    await expect(page.locator("#nombre_comercial")).toHaveValue("Con cambios");
     await expect(page.locator("#categoria_impositiva")).toHaveValue("EXENTO");
     await expect(aviso(page)).toHaveText(AVISO_CAMBIO);
   });
@@ -370,12 +370,12 @@ test.describe("Mi negocio: cambio de categoría impositiva", () => {
 
   test("confirmar guarda todo junto, avisa y deja el aviso en neutro", async ({ page }) => {
     await abrir(page, { reemplazos: [REGISTRAR_PAYLOADS] });
-    await page.locator("#nombre").fill("Kiosco Exento");
+    await page.locator("#nombre_comercial").fill("Kiosco Exento");
     await page.locator("#categoria_impositiva").selectOption("EXENTO");
     await guardar(page).click();
     await page.getByTestId("modal-confirmar").click();
     await expect(toast(page)).toHaveText("Datos del negocio actualizados");
-    expect(await payloads(page)).toEqual([{ nombre: "Kiosco Exento", rubro: "Kiosco", categoria_impositiva: "EXENTO" }]);
+    expect(await payloads(page)).toEqual([{ nombre_comercial: "Kiosco Exento", rubro: "Kiosco", categoria_impositiva: "EXENTO" }]);
     await expect(aviso(page)).toHaveText(AVISO_NEUTRO);
   });
 
@@ -424,9 +424,9 @@ test.describe("Mi negocio: cambio de categoría impositiva", () => {
 
 test.describe("Mi negocio: errores del servidor", () => {
   test("un error del nombre se muestra junto al campo y el botón vuelve a estar disponible", async ({ page }) => {
-    await abrir(page, { reemplazos: [guardarQue(ERROR_DE_CAMPO("nombre", "Ese nombre ya está en uso."))] });
+    await abrir(page, { reemplazos: [guardarQue(ERROR_DE_CAMPO("nombre_comercial", "Ese nombre ya está en uso."))] });
     await guardar(page).click();
-    await expect(errorDe(page, "nombre")).toHaveText("Ese nombre ya está en uso.");
+    await expect(errorDe(page, "nombre_comercial")).toHaveText("Ese nombre ya está en uso.");
     await expect(toast(page)).toHaveCount(0);
     await expect(guardar(page)).toBeEnabled();
     await expect(guardar(page)).toHaveText("Guardar cambios");
@@ -453,12 +453,12 @@ test.describe("Mi negocio: errores del servidor", () => {
 
   test("después de un error se puede corregir y volver a guardar", async ({ page }) => {
     await abrir(page, {
-      reemplazos: [guardarQue(`if (window.__payloads.length === 1) { ${ERROR_DE_CAMPO("nombre", "Ese nombre ya está en uso.")} } ${OK}`)],
+      reemplazos: [guardarQue(`if (window.__payloads.length === 1) { ${ERROR_DE_CAMPO("nombre_comercial", "Ese nombre ya está en uso.")} } ${OK}`)],
     });
     await guardar(page).click();
-    await expect(errorDe(page, "nombre")).toBeVisible();
-    await page.locator("#nombre").fill("Un nombre distinto");
-    await expect(errorDe(page, "nombre")).toBeHidden();
+    await expect(errorDe(page, "nombre_comercial")).toBeVisible();
+    await page.locator("#nombre_comercial").fill("Un nombre distinto");
+    await expect(errorDe(page, "nombre_comercial")).toBeHidden();
     await guardar(page).click();
     await expect(toast(page)).toHaveText("Datos del negocio actualizados");
   });
@@ -485,7 +485,7 @@ test.describe("Mi negocio: acceso", () => {
     test(`el rol ${rol} entra a Mi negocio`, async ({ page }) => {
       await abrir(page, { rol });
       await expect(page).toHaveURL(/perfil-negocio\.html$/);
-      await expect(page.locator("#nombre")).toHaveValue("Kiosco Chicha");
+      await expect(page.locator("#nombre_comercial")).toHaveValue("Kiosco Chicha");
     });
   }
 
@@ -508,9 +508,9 @@ test.describe("Mi negocio: acceso", () => {
     const errores = [];
     page.on("pageerror", (e) => errores.push(e.message));
     await abrir(page);
-    await page.locator("#nombre").fill("");
+    await page.locator("#nombre_comercial").fill("");
     await guardar(page).click();
-    await page.locator("#nombre").fill("Kiosco");
+    await page.locator("#nombre_comercial").fill("Kiosco");
     await page.locator("#rubro").selectOption("__otro");
     await page.locator("#rubro_otro").fill("Pesquería");
     await page.locator("#categoria_impositiva").selectOption("EXENTO");
@@ -538,16 +538,16 @@ test.describe("Mi negocio: validar antes de confirmar", () => {
 
   test("corregido el error, recién ahí pide confirmar el cambio de categoría", async ({ page }) => {
     await abrir(page, { reemplazos: [REGISTRAR_PAYLOADS] });
-    await page.locator("#nombre").fill("");
+    await page.locator("#nombre_comercial").fill("");
     await page.locator("#categoria_impositiva").selectOption("EXENTO");
     await guardar(page).click();
     await expect(modal(page)).toHaveCount(0);
-    await page.locator("#nombre").fill("Kiosco corregido");
+    await page.locator("#nombre_comercial").fill("Kiosco corregido");
     await guardar(page).click();
     await expect(modal(page)).toContainText("Pasás de Monotributista a Exento.");
     await page.getByTestId("modal-confirmar").click();
     await expect(toast(page)).toHaveText("Datos del negocio actualizados");
-    expect((await payloads(page))[0]).toMatchObject({ nombre: "Kiosco corregido", categoria_impositiva: "EXENTO" });
+    expect((await payloads(page))[0]).toMatchObject({ nombre_comercial: "Kiosco corregido", categoria_impositiva: "EXENTO" });
   });
 });
 
@@ -610,9 +610,9 @@ test.describe("Mi negocio: rubro 'Otro' obligatorio", () => {
 test.describe("Mi negocio: foco en el primer error", () => {
   test("nombre vacío: el foco va al nombre", async ({ page }) => {
     await abrir(page);
-    await page.locator("#nombre").fill("");
+    await page.locator("#nombre_comercial").fill("");
     await guardar(page).click();
-    await expect(page.locator("#nombre")).toBeFocused();
+    await expect(page.locator("#nombre_comercial")).toBeFocused();
   });
 
   test("rubro 'Otro' vacío: el foco va a 'Escribí tu rubro'", async ({ page }) => {
@@ -635,19 +635,19 @@ test.describe("Mi negocio: foco en el primer error", () => {
     await expect(errorDe(page, "rubro_otro")).toBeVisible();
     await expect(errorDe(page, "categoria_impositiva")).toBeVisible();
     await expect(page.locator("#rubro_otro")).toBeFocused();
-    await page.locator("#nombre").fill("");
+    await page.locator("#nombre_comercial").fill("");
     await guardar(page).click();
-    await expect(page.locator("#nombre")).toBeFocused();
+    await expect(page.locator("#nombre_comercial")).toBeFocused();
   });
 });
 
 test.describe("Mi negocio: Enter guarda", () => {
   test("Enter en el nombre guarda", async ({ page }) => {
     await abrir(page, { reemplazos: [REGISTRAR_PAYLOADS] });
-    await page.locator("#nombre").fill("Con Enter");
-    await page.locator("#nombre").press("Enter");
+    await page.locator("#nombre_comercial").fill("Con Enter");
+    await page.locator("#nombre_comercial").press("Enter");
     await expect(toast(page)).toHaveText("Datos del negocio actualizados");
-    expect((await payloads(page))[0].nombre).toBe("Con Enter");
+    expect((await payloads(page))[0].nombre_comercial).toBe("Con Enter");
   });
 
   test("Enter en 'Escribí tu rubro' guarda", async ({ page }) => {
@@ -661,16 +661,16 @@ test.describe("Mi negocio: Enter guarda", () => {
 
   test("Enter con datos inválidos muestra el error y no guarda", async ({ page }) => {
     await abrir(page, { reemplazos: [REGISTRAR_PAYLOADS] });
-    await page.locator("#nombre").fill("");
-    await page.locator("#nombre").press("Enter");
-    await expect(errorDe(page, "nombre")).toHaveText("Rellene el nombre o razón social.");
+    await page.locator("#nombre_comercial").fill("");
+    await page.locator("#nombre_comercial").press("Enter");
+    await expect(errorDe(page, "nombre_comercial")).toHaveText("Rellene el nombre o razón social.");
     expect(await payloads(page)).toEqual([]);
   });
 
   test("Enter con la categoría cambiada pide la confirmación", async ({ page }) => {
     await abrir(page, { reemplazos: [REGISTRAR_PAYLOADS] });
     await page.locator("#categoria_impositiva").selectOption("EXENTO");
-    await page.locator("#nombre").press("Enter");
+    await page.locator("#nombre_comercial").press("Enter");
     await expect(modal(page)).toContainText("Pasás de Monotributista a Exento.");
     expect(await payloads(page)).toEqual([]);
   });
@@ -678,7 +678,7 @@ test.describe("Mi negocio: Enter guarda", () => {
   test("Enter repetido mientras guarda envía los datos una sola vez", async ({ page }) => {
     await abrir(page, { reemplazos: [guardarQue(CON_DEMORA)] });
     await page.evaluate(() => {
-      const campo = document.querySelector("#nombre");
+      const campo = document.querySelector("#nombre_comercial");
       for (let i = 0; i < 3; i++) campo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     });
     await expect(toast(page)).toHaveText("Datos del negocio actualizados");
@@ -690,10 +690,10 @@ test.describe("Mi negocio: Enter guarda", () => {
 test.describe("Mi negocio: los campos muestran lo que quedó guardado", () => {
   test("el nombre se muestra sin los espacios de los costados", async ({ page }) => {
     await abrir(page);
-    await page.locator("#nombre").fill("   Kiosco Nuevo   ");
+    await page.locator("#nombre_comercial").fill("   Kiosco Nuevo   ");
     await guardar(page).click();
     await expect(toast(page)).toHaveText("Datos del negocio actualizados");
-    await expect(page.locator("#nombre")).toHaveValue("Kiosco Nuevo");
+    await expect(page.locator("#nombre_comercial")).toHaveValue("Kiosco Nuevo");
   });
 
   test("el rubro propio se muestra sin los espacios de los costados", async ({ page }) => {
@@ -707,10 +707,10 @@ test.describe("Mi negocio: los campos muestran lo que quedó guardado", () => {
 
   test("si el servidor falla, los campos quedan como el usuario los escribió", async ({ page }) => {
     await abrir(page, { reemplazos: [guardarQue('throw new Error("No se pudo guardar.");')] });
-    await page.locator("#nombre").fill("  Sin guardar  ");
+    await page.locator("#nombre_comercial").fill("  Sin guardar  ");
     await guardar(page).click();
     await expect(toast(page)).toHaveText("No se pudo guardar.");
-    await expect(page.locator("#nombre")).toHaveValue("  Sin guardar  ");
+    await expect(page.locator("#nombre_comercial")).toHaveValue("  Sin guardar  ");
   });
 });
 
@@ -740,10 +740,10 @@ test.describe("Mi negocio: errores del servidor en cualquier campo", () => {
 
   test("varios errores a la vez se muestran cada uno en su campo", async ({ page }) => {
     await abrir(page, {
-      reemplazos: [guardarQue('throw Object.assign(new Error("varios"), { errores: { nombre: "Nombre repetido.", categoria_impositiva: "Categoría no permitida." } });')],
+      reemplazos: [guardarQue('throw Object.assign(new Error("varios"), { errores: { nombre_comercial: "Nombre repetido.", categoria_impositiva: "Categoría no permitida." } });')],
     });
     await guardar(page).click();
-    await expect(errorDe(page, "nombre")).toHaveText("Nombre repetido.");
+    await expect(errorDe(page, "nombre_comercial")).toHaveText("Nombre repetido.");
     await expect(errorDe(page, "categoria_impositiva")).toHaveText("Categoría no permitida.");
   });
 });

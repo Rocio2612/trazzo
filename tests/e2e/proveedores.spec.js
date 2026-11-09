@@ -20,7 +20,6 @@ test.describe("Proveedores", () => {
     await expect(page.getByTestId("proveedores-fila-1")).toContainText("Resp. Inscripto");
     await expect(page.getByTestId("proveedores-fila-3")).toContainText("CUIL 20-12345678-6");
     await expect(page.getByTestId("proveedores-fila-3")).toContainText("Monotributista");
-    await expect(page.getByTestId("proveedores-fila-1")).toContainText("admin1"); // Creado por
     await expect(page.getByTestId("proveedores-fila-4")).toHaveCount(0); // oculto
   });
 
@@ -69,7 +68,6 @@ test.describe("Proveedores", () => {
     const fila = page.getByRole("row", { name: /Distribuidora Norte/ });
     await expect(fila).toContainText("CUIT 20-11111111-2");
     await expect(fila).toContainText("Gaseosas y aguas saborizadas");
-    await expect(fila).toContainText("usuario1"); // quién lo creó, tomado de la sesión
     await expect(filas(page)).toHaveCount(4);
   });
 
@@ -167,7 +165,7 @@ const guardar = (page) => page.getByTestId("modal-guardar");
 const errorDe = (page, campo) => page.locator(`#error-${campo}`);
 const celda = (page, id, columna) => page.getByTestId(`proveedores-fila-${id}`).locator("td").nth(columna);
 // Columnas de la tabla
-const COL = { nombre: 0, documento: 1, categoria: 2, telefono: 3, descripcion: 4, creadoPor: 5, acciones: 6 };
+const COL = { nombre: 0, documento: 1, categoria: 2, telefono: 3, descripcion: 4, acciones: 5 };
 
 // Completa el formulario; lo que no se pasa queda como está.
 const llenar = async (page, { nombre, tipo, numero, categoria, telefono, correo, descripcion }) => {
@@ -206,7 +204,6 @@ test.describe("Proveedores: estructura de la pantalla", () => {
       "Categoría impositiva",
       "Teléfono",
       "Descripción de compra",
-      "Creado por",
       "Acciones",
     ]);
     await expect(page.getByTestId("proveedores-buscador")).toHaveAttribute("placeholder", /Buscar por nombre, documento, teléfono o descripción/);
@@ -428,7 +425,6 @@ test.describe("Proveedores: alta", () => {
     await expect(celda(page, 6, COL.categoria)).toHaveText("Exento");
     await expect(celda(page, 6, COL.telefono)).toHaveText("—");
     await expect(celda(page, 6, COL.descripcion)).toHaveText("—");
-    await expect(celda(page, 6, COL.creadoPor)).toHaveText("usuario1");
     await expect(toast(page)).toHaveText("Proveedor registrado");
   });
 
@@ -561,7 +557,6 @@ test.describe("Proveedores: edición", () => {
     await expect(toast(page)).toHaveText("Proveedor actualizado");
     await expect(filas(page)).toHaveCount(3);
     await expect(celda(page, 1, COL.documento)).toHaveText(/CUIT\s+30-71234567-1/);
-    await expect(celda(page, 1, COL.creadoPor)).toHaveText("admin1");
   });
 
   test("el aviso por cambiar la categoría aparece al cambiarla y desaparece al volver a la original", async ({ page }) => {
@@ -583,7 +578,7 @@ test.describe("Proveedores: edición", () => {
     await expect(modal(page).locator(".gastos-banner")).toHaveCount(0);
   });
 
-  test("editar nombre, categoría, teléfono y descripción actualiza la fila y conserva quién lo creó", async ({ page }) => {
+  test("editar nombre, categoría, teléfono y descripción actualiza la fila", async ({ page }) => {
     await abrir(page);
     await page.getByTestId("proveedores-editar-2").click();
     await llenar(page, { nombre: "Bebidas Don Raúl SRL", categoria: "MONOTRIBUTISTA", telefono: "11 9999-8888", descripcion: "Bebidas y gaseosas" });
@@ -592,7 +587,6 @@ test.describe("Proveedores: edición", () => {
     await expect(celda(page, 2, COL.categoria)).toHaveText("Monotributista");
     await expect(celda(page, 2, COL.telefono)).toHaveText("11 9999-8888");
     await expect(celda(page, 2, COL.descripcion)).toHaveText("Bebidas y gaseosas");
-    await expect(celda(page, 2, COL.creadoPor)).toHaveText("admin1");
     await expect(filas(page)).toHaveCount(3);
   });
 
@@ -733,7 +727,6 @@ test.describe("Proveedores: ocultar, restaurar y eliminar", () => {
     await page.getByTestId("proveedores-ver-ocultos").click();
     await expect(celda(page, 1, COL.nombre)).toHaveText("Envases del Sur S.A.");
     await expect(celda(page, 1, COL.documento)).toHaveText(/30-71234567-1/);
-    await expect(celda(page, 1, COL.creadoPor)).toHaveText("admin1");
   });
 
   test("si se ocultan todos, la lista dice que todavía no hay proveedores", async ({ page }) => {
@@ -1068,5 +1061,40 @@ test.describe("Proveedores: Enter guarda el formulario", () => {
     await page.locator("#nombre").press("Enter");
     await expect(errorDe(page, "numero_documento")).toContainText("Ya hay un proveedor con ese CUIT");
     await expect(modal(page)).toHaveCount(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// La tabla productos.proveedores no guarda quién creó al proveedor: la pantalla no lo muestra.
+// ---------------------------------------------------------------------------
+
+test.describe("Proveedores: sin «Creado por»", () => {
+  test("la tabla tiene seis columnas y ninguna dice «Creado por»", async ({ page }) => {
+    await abrir(page);
+    await expect(page.getByTestId("proveedores-tabla").locator("thead th")).toHaveCount(6);
+    await expect(page.getByTestId("proveedores-tabla").getByText("Creado por")).toHaveCount(0);
+    await expect(filas(page).first().locator("td")).toHaveCount(6);
+  });
+
+  test("tampoco aparece en 'Ver ocultos'", async ({ page }) => {
+    await abrir(page);
+    await page.getByTestId("proveedores-ver-ocultos").click();
+    await expect(page.getByTestId("proveedores-tabla").locator("thead th")).toHaveCount(6);
+    await expect(filas(page).first().locator("td")).toHaveCount(6);
+    await expect(page.getByTestId("proveedores-tabla")).not.toContainText(/admin1|admin2/);
+  });
+
+  test("un proveedor recién creado no muestra el usuario de la sesión ni en la fila", async ({ page }) => {
+    await abrir(page);
+    await crearProveedor(page);
+    await expect(filas(page).last().locator("td")).toHaveCount(6);
+    await expect(page.getByTestId("proveedores-fila-6")).not.toContainText("usuario1");
+  });
+
+  test("la última columna es la de Acciones, con sus botones", async ({ page }) => {
+    await abrir(page);
+    const ultima = page.getByTestId("proveedores-fila-1").locator("td").last();
+    await expect(ultima.getByRole("button", { name: "Editar" })).toBeVisible();
+    await expect(ultima.getByRole("button", { name: "Ocultar" })).toBeVisible();
   });
 });

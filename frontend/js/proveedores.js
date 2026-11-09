@@ -145,15 +145,19 @@ export const buscarProveedores = (proveedores, texto) => {
   );
 };
 
+// En la base el proveedor tiene `activo` (verdadero = visible). Está oculto cuando activo es falso;
+// si el dato no viene, se toma como visible (el valor por defecto de la columna es verdadero).
+export const estaOculto = (proveedor) => proveedor.activo === false;
+
 // Por defecto la lista muestra los visibles; con ocultos: true muestra solo los ocultos.
 export const filtrarProveedores = (proveedores, { ocultos = false } = {}) =>
-  proveedores.filter((p) => Boolean(p.oculto) === ocultos);
+  proveedores.filter((p) => estaOculto(p) === ocultos);
 
 export const MOTIVO_CON_MOVIMIENTOS = "Tiene reposiciones o insumos asociados: solo se puede ocultar.";
 
 // Se elimina únicamente si ya está oculto y no tiene reposiciones ni insumos asociados.
 export const puedeEliminarProveedor = (proveedor) => {
-  if (!proveedor.oculto) return { permitido: false, motivo: "Primero hay que ocultarlo." };
+  if (!estaOculto(proveedor)) return { permitido: false, motivo: "Primero hay que ocultarlo." };
   if (proveedor.tiene_movimientos) return { permitido: false, motivo: MOTIVO_CON_MOVIMIENTOS };
   return { permitido: true, motivo: "" };
 };
