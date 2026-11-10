@@ -21,24 +21,51 @@ CORS(app, resources={r"/api/*": {"origins": ORIGENES_PERMITIDOS}}, supports_cred
 SERVICES = {
     "auth": os.getenv("AUTH_URL", "http://127.0.0.1:5001"),
     "productos": os.getenv("PRODUCTOS_URL", "http://127.0.0.1:5002"),
+    "reposiciones": os.getenv("PRODUCTOS_URL", "http://127.0.0.1:5002"),
+    "categorias": os.getenv("PRODUCTOS_URL", "http://127.0.0.1:5002"),
+    "proveedores": os.getenv("PRODUCTOS_URL", "http://127.0.0.1:5002"),
+    "transacciones": os.getenv("TRANSACCIONES_URL", "http://127.0.0.1:5003"),
     "finanzas": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
-    "medios-pago": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"), # Permite llamar a /api/medios-pago (ALDI)
-    "gastos": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),      # Permite llamar a /api/gastos (ALDI)
+    "medios-pago": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
+    "gastos": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
+    "reportes": os.getenv("REPORTES_URL", "http://127.0.0.1:5005"),
     "notificaciones": os.getenv("NOTIFICACIONES_URL", "http://127.0.0.1:5006")
 }
-#Agregado PATCH Y OPTIONS
-@app.route('/api/<service>/<path:path>', methods=['GET', 'POST', 'PUT' , 'PATCH' , 'DELETE', 'OPTIONS'])
+
+# Cabeceras HTTP de transporte que no deben propagarse al cliente
+CABECERAS_EXCLUIDAS = {'content-encoding', 'content-length', 'transfer-encoding', 'connection'}
+
+# Enrutador universal: tolera llamadas con o sin barra sin emitir redirecciones 308
+@app.route('/api/<service>', defaults={'path': ''}, strict_slashes=False, methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'])
+@app.route('/api/<service>/<path:path>', strict_slashes=False, methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'])
 def proxy(service, path):
     if service not in SERVICES:
-        return jsonify({"error": "Servicio no encontrado"}), 404
-    target_url = f"{SERVICES[service]}/api/{service}/{path}"
-    try:
-        resp = requests.request(method=request.method, url=target_url, headers={k: v for k, v in request.headers if k != 'Host'}, data=request.get_data(), timeout=5)
-        return Response(resp.content, resp.status_code, resp.headers.items())
-    except requests.exceptions.ConnectionError:
-        return jsonify({"error": "Servicio apagado"}), 503
+        return jsonify({"status": "error", "mensaje": f"Microservicio '{service}' no registrado en el Gateway"}), 404
 
-# --- CONFIGURACIÓN DE RUTAS INTELIGENTE ---
+    # Construcción dinámica de la URL destino
+    target_url = f"{SERVICES[service]}/api/{service}/{path}" if path else f"{SERVICES[service]}/api/{service}"
+
+    try:
+        # Reenvío transparente de método, cabeceras, parámetros (?desde=&hasta=) y body
+        resp = requests.request(
+            method=request.method,
+            url=target_url,
+            headers={k: v for k, v in request.headers if k.lower() != 'host'},
+            data=request.get_data(),
+            params=request.args,
+            timeout=10
+        )
+
+        # Depuración de cabeceras de red para compatibilidad con navegadores
+        headers_limpias = [(k, v) for k, v in resp.headers.items() if k.lower() not in CABECERAS_EXCLUIDAS]
+        return Response(resp.content, resp.status_code, headers_limpias)
+
+    except requests.exceptions.ConnectionError:
+        return jsonify({"status": "error", "mensaje": f"El servicio '{service}' se encuentra temporalmente apagado o inaccesible"}), 503
+    except requests.exceptions.Timeout:
+        return jsonify({"status": "error", "mensaje": f"Tiempo de espera agotado al conectar con '{service}'"}), 504
+
+# --- CONFIGURACIÓN DE RUTAS INTELIGENTE (gestion de archivos estaticos frontend) ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 
@@ -68,6 +95,11 @@ def index():
 
 @app.route('/<path:path>')
 def serve_static(path):
+
+    # Blindaje: Si una ruta empieza con 'api/' y llegó acá, es un endpoint inexistente, no un archivo
+    if path.startswith('api/'):
+        return jsonify({"status": "error", "mensaje": "Ruta de API inexistente", "solicitado": path}), 404
+
     archivo = buscar_archivo(path)
     if archivo:
         # Si lo encuentra, lo devuelve
