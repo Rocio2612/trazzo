@@ -3,10 +3,23 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
+from flask_cors import CORS
 
 load_dotenv()
 app = Flask(__name__)
-
+CORS(app)
+def calcular_costo_real(monto_total, iva_porcentaje, cat_negocio, cat_proveedor):
+    """
+    Calcula el costo neto de una compra según la regla de IVA.
+    Si el negocio es RI y el proveedor es RI, separa el IVA. En el resto, lo deja adentro.
+    """
+    # Si el negocio NO es RI, o el proveedor NO es RI, el IVA se queda adentro.
+    if cat_negocio != 'RESPONSABLE_INSCRIPTO' or cat_proveedor != 'RESPONSABLE_INSCRIPTO':
+        return monto_total
+    
+    # Si ambos son RI, calculamos el neto.
+    costo_neto = monto_total / (1 + (iva_porcentaje / 100))
+    return round(costo_neto, 4)
 def get_db():
     return psycopg2.connect(
         host=os.getenv("DB_HOST"), database=os.getenv("DB_NAME"),
@@ -14,93 +27,63 @@ def get_db():
     )
 
 # ==========================================
-# RUTA 1: BUSCADOR Y LISTADO (TAREA DE ROCI C)
+# RUTA 1: LISTAR BIENES DE CAMBIO (TAREA DE ROCI)
 # ==========================================
 @app.route('/api/productos', methods=['GET'])
 def listar_productos():
-    # Simulamos el emprendimiento_id (en el futuro saldrá del token JWT)
-    emprendimiento_id = 1 
-
-    # Parámetros de la URL
-    q = request.args.get('q', '')
-    stock_bajo = request.args.get('stock_bajo', 'false').lower() == 'true'
-    pagina = int(request.args.get('pagina', 1))
-    limite = int(request.args.get('limite', 10))
-    offset = (pagina - 1) * limite
-
+    # Por ahora simulamos el negocio_id = 1 (luego vendrá del JWT)
+    emprendimiento_id = 1
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    # Armamos la consulta SQL (OJO: auth.productos)
-    query = """
-        SELECT id, nombre, precio_venta, stock_actual, stock_minimo, activo 
-        FROM auth.productos 
-        WHERE emprendimiento_id = %s AND activo = TRUE
-    """
-    params = [emprendimiento_id]
-
-    if q:
-        query += " AND nombre ILIKE %s"
-        params.append(f"%{q}%")
-
-    if stock_bajo:
-        query += " AND stock_actual <= stock_minimo"
-
-    query += " ORDER BY id DESC LIMIT %s OFFSET %s"
-    params.extend([limite, offset])
-
     try:
-        cur.execute(query, tuple(params))
-        productos = cur.fetchall()
+        # Solo traemos los que son BIEN_DE_CAMBIO
+        cur.execute("""
+            SELECT id, nombre, precio_compra, precio_venta, cantidad, stock_minimo, activo 
+            FROM productos.productos 
+            WHERE emprendimiento_id = %s AND tipo_producto = 'BIEN_DE_CAMBIO' AND activo = TRUE
+        """, (emprendimiento_id,))
         
-        return jsonify({
-            "status": "ok",
-            "pagina": pagina,
-            "items": productos
-        }), 200
+        productos = cur.fetchall()
+        return jsonify({"status": "ok", "items": productos}), 200
 
     except Exception as e:
         return jsonify({"status": "error", "mensaje": str(e)}), 500
     finally:
         cur.close()
         conn.close()
-# ==========================================
-# RUTA 2: CREAR PRODUCTO (TAREA DE ROCI C)
-# ==========================================
 @app.route('/api/productos', methods=['POST'])
 def crear_producto():
     datos = request.get_json()
-    
-    # 1. Validar que los datos obligatorios estén presentes
-    if not datos or not datos.get('nombre') or datos.get('precio_venta') is None:
-        return jsonify({"status": "error", "mensaje": "Faltan datos obligatorios (nombre, precio_venta)"}), 400
-
-    # 2. Validar que el precio no sea negativo ni el stock
-    if float(datos['precio_venta']) < 0:
-        return jsonify({"status": "error", "mensaje": "El precio de venta no puede ser negativo"}), 400
-
-    # Simulamos el emprendimiento y el usuario (luego vendrán del token)
+    # Simulamos el negocio y usuario (luego vendrán del JWT)
     emprendimiento_id = 1
-    usuario_id = 1 
+    usuario_id = "admin" 
+
+    # 1. Validar datos obligatorios
+    if not datos.get('nombre') or not datos.get('precio_compra') or not datos.get('proveedor_id'):
+        return jsonify({"status": "error", "mensaje": "Faltan datos obligatorios (nombre, precio_compra, proveedor_id)"}), 400
 
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
-        # 3. Insertar el producto en la base de datos
+        # 2. Insertar el producto en la base de datos
+        # Nota: Usamos RETURNING para que la base nos devuelva el ID generado
         cur.execute("""
-            INSERT INTO auth.productos 
-            (emprendimiento_id, nombre, descripcion, costo_unitario, precio_venta, stock_actual, stock_minimo, creado_por) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s) 
-            RETURNING id, nombre, precio_venta, stock_actual
+            INSERT INTO productos.productos 
+            (emprendimiento_id, proveedor_id, tipo_producto, nombre, precio_compra, iva_alicuota, rentabilidad, precio_venta, cantidad, stock_minimo, unidad_medida, creado_por) 
+            VALUES (%s, %s, 'BIEN_DE_CAMBIO', %s, %s, %s, %s, %s, %s, %s, 'unidades', %s) 
+            RETURNING id, nombre, precio_venta, cantidad
         """, (
             emprendimiento_id, 
-            datos['nombre'], 
-            datos.get('descripcion', ''), 
-            datos.get('costo_unitario', 0), 
-            datos['precio_venta'], 
-            datos.get('stock_actual', 0), 
-            datos.get('stock_minimo', 0), 
+            datos.get('proveedor_id'),
+            datos['nombre'],
+            datos.get('precio_compra', 0),
+            datos.get('iva_alicuota', 21.00),
+            datos.get('rentabilidad', 0.00),
+            datos.get('precio_venta', 0.00), # Este precio puede venir calculado o editado
+            datos.get('cantidad', 0),
+            datos.get('stock_minimo', 0),
             usuario_id
         ))
         
@@ -109,7 +92,7 @@ def crear_producto():
 
         return jsonify({
             "status": "ok",
-            "mensaje": "Producto creado exitosamente",
+            "mensaje": "Bien de cambio creado exitosamente",
             "producto": nuevo_producto
         }), 201
 
@@ -119,120 +102,247 @@ def crear_producto():
     finally:
         cur.close()
         conn.close()
-# ==========================================
-# RUTA 3: REPOSICIÓN ATOMICA (TAREA DE ALDI)
-# ==========================================
+def calcular_costo_real(monto, iva, cat_negocio, cat_proveedor):
+    if cat_negocio != 'RESPONSABLE_INSCRIPTO' or cat_proveedor != 'RESPONSABLE_INSCRIPTO':
+        return monto
+    return round(monto / (1 + (iva / 100)), 4)
+
 @app.route('/api/productos/<int:id>/reposicion', methods=['POST'])
 def reponer_stock(id):
-    # TODO: Aldi programa la lógica transaccional (sumar stock, actualizar costo).
-    return jsonify({"mensaje": "Acá Aldi programa la reposición"}), 200
-
-# ==========================================
-# RUTA 4: DESCUENTO DE STOCK (TAREA DE ALDI)
-# ==========================================
-@app.route('/api/productos/<int:id>/descontar', methods=['POST'])
-def descontar_stock(id):
-    # TODO: Aldi programa el UPDATE condicional.
-    return jsonify({"mensaje": "Acá Aldi programa el descuento"}), 200
-
-
-
-@app.route('/api/productos/<int:id>', methods=['PUT'])
-def editar_producto(id):
     datos = request.get_json()
-    if not datos:
-        return jsonify({"status": "error", "mensaje": "No se enviaron datos"}), 400
+    emprendimiento_id = 1
+    usuario = "admin"
 
-    usuario_id = 1 # Simulamos el usuario del token
-    
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    try:
-        # 1. Verificar que el producto existe y pertenece al emprendimiento (Aislamiento)
-        cur.execute("SELECT id FROM auth.productos WHERE id = %s AND emprendimiento_id = 1", (id,))
-        if not cur.fetchone():
-            return jsonify({"status": "error", "mensaje": "Producto no encontrado"}), 404
-
-        # 2. Validar que el stock no sea negativo
-        if datos.get('stock_actual') is not None and int(datos['stock_actual']) < 0:
-            return jsonify({"status": "error", "mensaje": "El stock no puede ser negativo"}), 400
-
-        # 3. Actualizar (usamos COALESCE para actualizar solo lo que envían)
-        cur.execute("""
-            UPDATE auth.productos SET 
-                nombre = COALESCE(%s, nombre),
-                descripcion = COALESCE(%s, descripcion),
-                costo_unitario = COALESCE(%s, costo_unitario),
-                precio_venta = COALESCE(%s, precio_venta),
-                stock_actual = COALESCE(%s, stock_actual),
-                stock_minimo = COALESCE(%s, stock_minimo),
-                modificado_por = %s,
-                fecha_modificacion = CURRENT_TIMESTAMP
-            WHERE id = %s AND emprendimiento_id = 1
-            RETURNING id, nombre, stock_actual
-        """, (
-            datos.get('nombre'), datos.get('descripcion'), datos.get('costo_unitario'),
-            datos.get('precio_venta'), datos.get('stock_actual'), datos.get('stock_minimo'),
-            usuario_id, id
-        ))
-        
-        producto_editado = cur.fetchone()
-        conn.commit()
-
-        return jsonify({"status": "ok", "mensaje": "Producto actualizado", "producto": producto_editado}), 200
-    except Exception as e:
-        conn.rollback()
-        return jsonify({"status": "error", "mensaje": str(e)}), 500
-    finally:
-        cur.close()
-        conn.close()
-
-@app.route('/api/productos/<int:id>/visibilidad', methods=['PATCH'])
-def cambiar_visibilidad(id):
-    datos = request.get_json()
-    if 'activo' not in datos:
-        return jsonify({"status": "error", "mensaje": "Falta el campo 'activo'"}), 400
+    # Validaciones básicas
+    if not datos.get('cantidad') or not datos.get('monto_total') or not datos.get('proveedor_id'):
+        return jsonify({"status": "error", "mensaje": "Faltan datos obligatorios"}), 400
 
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
-        # Aislamiento: solo actualiza si es de este emprendimiento
-        cur.execute(
-            "UPDATE auth.productos SET activo = %s, modificado_por = 1 WHERE id = %s AND emprendimiento_id = 1 RETURNING id, activo", 
-            (datos['activo'], id)
-        )
+        # 1. Buscamos el producto para saber su IVA y su stock actual
+        cur.execute("SELECT * FROM productos.productos WHERE id = %s AND emprendimiento_id = %s", (id, emprendimiento_id))
         producto = cur.fetchone()
         if not producto:
             return jsonify({"status": "error", "mensaje": "Producto no encontrado"}), 404
-            
+
+        # 2. Buscamos el proveedor para saber su categoría impositiva
+        cur.execute("SELECT categoria_impositiva FROM productos.proveedores WHERE id = %s AND emprendimiento_id = %s", (datos['proveedor_id'], emprendimiento_id))
+        proveedor = cur.fetchone()
+        if not proveedor:
+            return jsonify({"status": "error", "mensaje": "Proveedor no encontrado"}), 404
+
+        # 3. Buscamos la categoría impositiva del negocio (simulada como RI por ahora)
+        cat_negocio = 'RESPONSABLE_INSCRIPTO' 
+
+        # 4. Calculamos el costo real usando la función
+        costo_real = calcular_costo_real(float(datos['monto_total']), float(producto['iva_alicuota']), cat_negocio, proveedor['categoria_impositiva'])
+
+        # 5. Calculamos el nuevo stock
+        nuevo_stock = float(producto['cantidad']) + float(datos['cantidad'])
+        
+        # 6. Insertamos la reposición
+        cur.execute("""
+            INSERT INTO productos.reposiciones 
+            (emprendimiento_id, producto_id, proveedor_id, cantidad, monto_total, costo_unitario_real, fecha_adquisicion, creado_por) 
+            VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, %s) RETURNING id
+        """, (emprendimiento_id, id, datos['proveedor_id'], datos['cantidad'], datos['monto_total'], costo_real / float(datos['cantidad']), usuario))
+        
+        reposicion_id = cur.fetchone()['id']
+
+        # 7. Actualizamos el producto (stock y precio_compra)
+        cur.execute("""
+            UPDATE productos.productos 
+            SET cantidad = %s, precio_compra = %s, modificado_por = %s, modificado_en = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (nuevo_stock, costo_real / float(datos['cantidad']), usuario, id))
+
+        # 8. Registramos en el Kardex
+        cur.execute("""
+            INSERT INTO productos.movimientos_stock 
+            (emprendimiento_id, producto_id, reposicion_id, tipo, cantidad_movimiento, stock_resultante, usuario) 
+            VALUES (%s, %s, %s, 'REPOSICION', %s, %s, %s)
+        """, (emprendimiento_id, id, reposicion_id, datos['cantidad'], nuevo_stock, usuario))
+
+        # Si todo salió bien, confirmamos los cambios
         conn.commit()
-        estado = "visible" if producto['activo'] else "oculto"
-        return jsonify({"status": "ok", "mensaje": f"Producto ahora esta {estado}"}), 200
+
+        return jsonify({
+            "status": "ok",
+            "mensaje": "Reposición registrada con éxito",
+            "costo_real_compra": costo_real,
+            "nuevo_stock": nuevo_stock
+        }), 201
+
+    except Exception as e:
+        conn.rollback() # Si algo falla, volvemos todo atrás
+        return jsonify({"status": "error", "mensaje": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/api/reposiciones/<int:id>/anular', methods=['PATCH'])
+def anular_reposicion(id):
+    emprendimiento_id = 1
+    usuario = "admin"
+
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    try:
+        # 1. Buscamos la reposición y verificamos que esté ACTIVA
+        cur.execute("""
+            SELECT r.*, p.cantidad AS stock_actual 
+            FROM productos.reposiciones r
+            JOIN productos.productos p ON r.producto_id = p.id
+            WHERE r.id = %s AND r.emprendimiento_id = %s AND r.estado = 'ACTIVA'
+        """, (id, emprendimiento_id))
+        
+        reposicion = cur.fetchone()
+        if not reposicion:
+            return jsonify({"status": "error", "mensaje": "Reposición no encontrada o ya anulada"}), 404
+
+        # 2. Verificamos que el stock no quede negativo al restar
+        stock_actual = float(reposicion['stock_actual'])
+        cantidad_reposicion = float(reposicion['cantidad'])
+        
+        if stock_actual < cantidad_reposicion:
+            return jsonify({"status": "error", "mensaje": "No se puede anular: el stock quedaría negativo"}), 409
+
+        # 3. Calculamos el nuevo stock
+        nuevo_stock = stock_actual - cantidad_reposicion
+
+        # 4. Cambiamos el estado de la reposición a ANULADA
+        cur.execute("""
+            UPDATE productos.reposiciones 
+            SET estado = 'ANULADA', anulada_por = %s, anulada_en = CURRENT_TIMESTAMP 
+            WHERE id = %s
+        """, (usuario, id))
+
+        # 5. Restamos el stock del producto
+        cur.execute("UPDATE productos.productos SET cantidad = %s WHERE id = %s", (nuevo_stock, reposicion['producto_id']))
+
+        # 6. Registramos en el Kardex (movimiento negativo)
+        cur.execute("""
+            INSERT INTO productos.movimientos_stock 
+            (emprendimiento_id, producto_id, reposicion_id, tipo, cantidad_movimiento, stock_resultante, usuario, motivo) 
+            VALUES (%s, %s, %s, 'ANULACION_REPOSICION', %s, %s, %s, 'Anulación de reposición')
+        """, (emprendimiento_id, reposicion['producto_id'], id, -cantidad_reposicion, nuevo_stock, usuario))
+
+        conn.commit()
+        return jsonify({"status": "ok", "mensaje": "Reposición anulada", "nuevo_stock": nuevo_stock}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"status": "error", "mensaje": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close() 
+@app.route('/api/productos/<int:id>/baja', methods=['POST'])
+def registrar_baja(id):
+    datos = request.get_json()
+    emprendimiento_id = 1
+    usuario = "admin"
+
+    # Validaciones obligatorias
+    if not datos.get('cantidad') or not datos.get('motivo'):
+        return jsonify({"status": "error", "mensaje": "Faltan datos: cantidad y motivo son obligatorios"}), 400
+
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    try:
+        # 1. Buscamos el producto
+        cur.execute("SELECT cantidad FROM productos.productos WHERE id = %s AND emprendimiento_id = %s", (id, emprendimiento_id))
+        producto = cur.fetchone()
+        if not producto:
+            return jsonify({"status": "error", "mensaje": "Producto no encontrado"}), 404
+
+        cantidad_baja = float(datos['cantidad'])
+        stock_actual = float(producto['cantidad'])
+
+        # 2. Validamos que el stock no quede negativo
+        if stock_actual < cantidad_baja:
+            return jsonify({"status": "error", "mensaje": "No hay stock suficiente para dar de baja esa cantidad"}), 409
+
+        # 3. Calculamos nuevo stock
+        nuevo_stock = stock_actual - cantidad_baja
+
+        # 4. Restamos el stock del producto
+        cur.execute("UPDATE productos.productos SET cantidad = %s WHERE id = %s", (nuevo_stock, id))
+
+        # 5. Registramos en el Kardex con tipo 'BAJA'
+        cur.execute("""
+            INSERT INTO productos.movimientos_stock 
+            (emprendimiento_id, producto_id, tipo, cantidad_movimiento, stock_resultante, motivo, usuario) 
+            VALUES (%s, %s, 'BAJA', %s, %s, %s, %s)
+        """, (emprendimiento_id, id, -cantidad_baja, nuevo_stock, datos['motivo'], usuario))
+
+        conn.commit()
+        return jsonify({"status": "ok", "mensaje": "Baja registrada exitosamente", "nuevo_stock": nuevo_stock}), 201
+
     except Exception as e:
         conn.rollback()
         return jsonify({"status": "error", "mensaje": str(e)}), 500
     finally:
         cur.close()
         conn.close()
-@app.route('/api/productos/<int:id>', methods=['DELETE'])
-def eliminar_producto(id):
+@app.route('/api/productos/<int:id>/ocultar', methods=['PATCH'])
+def ocultar_producto(id):
+    emprendimiento_id = 1
+    usuario = "admin"
+
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
-        # 1. Buscamos si el producto existe (Aislamiento estricto)
-        cur.execute("SELECT id FROM auth.productos WHERE id = %s AND emprendimiento_id = 1", (id,))
+        # 1. Verificamos que el producto existe y pertenece al negocio
+        cur.execute("SELECT activo FROM productos.productos WHERE id = %s AND emprendimiento_id = %s", (id, emprendimiento_id))
+        producto = cur.fetchone()
+        
+        if not producto:
+            return jsonify({"status": "error", "mensaje": "Producto no encontrado"}), 404
+
+        # 2. Cambiamos su estado a inactivo (oculto)
+        cur.execute("""
+            UPDATE productos.productos 
+            SET activo = FALSE, modificado_por = %s, modificado_en = CURRENT_TIMESTAMP 
+            WHERE id = %s
+        """, (usuario, id))
+        
+        conn.commit()
+        return jsonify({"status": "ok", "mensaje": "Producto oculto correctamente"}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"status": "error", "mensaje": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/api/productos/<int:id>', methods=['DELETE'])
+def eliminar_producto(id):
+    emprendimiento_id = 1
+
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    try:
+        # 1. Verificamos que el producto existe
+        cur.execute("SELECT id FROM productos.productos WHERE id = %s AND emprendimiento_id = %s", (id, emprendimiento_id))
         if not cur.fetchone():
             return jsonify({"status": "error", "mensaje": "Producto no encontrado"}), 404
 
-        # (Acá en el futuro validaremos si tiene ventas o reposiciones. Por ahora simulamos que no tiene).
-        
-        # 2. Lo eliminamos de la base de datos
-        cur.execute("DELETE FROM auth.productos WHERE id = %s AND emprendimiento_id = 1", (id,))
-        conn.commit()
+        # 2. Verificamos si tiene movimientos (reposiciones, movimientos de stock)
+        cur.execute("SELECT id FROM productos.movimientos_stock WHERE producto_id = %s LIMIT 1", (id,))
+        if cur.fetchone():
+            return jsonify({"status": "error", "mensaje": "No se puede eliminar: el producto tiene movimientos. Se sugiere ocultarlo."}), 409
 
+        # 3. Si no tiene movimientos, lo borramos
+        cur.execute("DELETE FROM productos.productos WHERE id = %s", (id,))
+        
+        conn.commit()
         return jsonify({"status": "ok", "mensaje": "Producto eliminado definitivamente"}), 200
 
     except Exception as e:
