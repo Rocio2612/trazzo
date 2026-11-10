@@ -22,6 +22,8 @@ SERVICES = {
     "auth": os.getenv("AUTH_URL", "http://127.0.0.1:5001"),
     "productos": os.getenv("PRODUCTOS_URL", "http://127.0.0.1:5002"),
     "finanzas": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
+    "medios-pago": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"), # Permite llamar a /api/medios-pago (ALDI)
+    "gastos": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),      # Permite llamar a /api/gastos (ALDI)
     "notificaciones": os.getenv("NOTIFICACIONES_URL", "http://127.0.0.1:5006")
 }
 #Agregado PATCH Y OPTIONS
