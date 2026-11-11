@@ -28,6 +28,9 @@ SERVICES = {
     "finanzas": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
     "medios-pago": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
     "gastos": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
+    "bienes-uso": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"), 
+    "bienes-gasto": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
+    "insumos": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),      # Alias de compatibilidad frontend
     "reportes": os.getenv("REPORTES_URL", "http://127.0.0.1:5005"),
     "notificaciones": os.getenv("NOTIFICACIONES_URL", "http://127.0.0.1:5006")
 }
