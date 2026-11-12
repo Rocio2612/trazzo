@@ -108,13 +108,14 @@ export const validarPersona = (datos = {}, { esNuevo = true } = {}) => {
 // Datos que se envían al Backend. En una edición, sin contraseña no se manda el campo.
 export const armarPayloadPersona = (datos, { esNuevo = true } = {}) => {
   const payload = {
-    usuario: String(datos.usuario ?? "").trim(),
     correo: String(datos.correo ?? "").trim(),
     nombre: String(datos.nombre ?? "").trim(),
     apellido: String(datos.apellido ?? "").trim(),
     dni: vacio(datos.dni) ? null : String(datos.dni).trim(),
     rol: datos.rol,
   };
+  // El nombre de usuario solo se manda al crear: una vez creado no se puede cambiar.
+  if (esNuevo) payload.usuario = String(datos.usuario ?? "").trim();
   if (esNuevo || !vacio(datos.password)) payload.password = datos.password;
   return payload;
 };

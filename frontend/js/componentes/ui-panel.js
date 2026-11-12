@@ -4,6 +4,8 @@
 // así que la página que los use debe cargar css/gastos.css y css/configuracion.css.
 // Todo se arma con textContent: nunca se pone texto del usuario con innerHTML.
 
+import { mensajeDeError } from "../servicios/errores.js";
+
 // Íconos de trazo (24x24). Son textos fijos del código, nunca datos del usuario.
 export const ICONOS = {
   editar: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
@@ -225,9 +227,13 @@ export const abrirFormularioModal = ({ titulo, campos, valores = {}, avisos, val
       enviando = false;
       guardar.disabled = false;
       guardar.textContent = textoGuardar;
-      if (error.errores) mostrarErrores(error.errores);
-      else if (error.campo && partes[error.campo]) partes[error.campo].mostrarError(error.message);
-      else avisar(error.message || "No se pudo guardar. Intentá de nuevo.");
+      if (error.errores) {
+        mostrarErrores(error.errores);
+        // El cursor va al primer campo con error, igual que con los errores de validación.
+        const primero = campos.find((c) => error.errores[c.nombre]);
+        if (primero) partes[primero.nombre].control.focus();
+      } else if (error.campo && partes[error.campo]) partes[error.campo].mostrarError(error.message);
+      else avisar(mensajeDeError(error, "No se pudo guardar. Intentá de nuevo."));
     }
   });
 

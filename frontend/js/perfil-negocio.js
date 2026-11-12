@@ -1,12 +1,13 @@
 // --- PANTALLA "MI NEGOCIO" (módulo ES) ---
 // Muestra y permite editar el nombre o razón social, el rubro y la categoría impositiva del negocio.
 // El identificador se ve pero no se puede editar. La lógica (validación, payload) está en personalizacion.js
-// y los datos vienen de mocks/personalizacion.js hasta que Back publique PUT /negocio.
+// y los datos vienen del Backend (servicios/negocio.js: GET y PUT /auth/negocio).
 
 import { avisar, bannerAmbar, boton, confirmar, crearCampo, h, ICONOS, crearSvg } from "./componentes/ui-panel.js";
 import { fechaDeMarcaParaMostrar, fechaHoraParaMostrar } from "./formatos.js";
 import { armarPayloadNegocio, CATEGORIAS_IMPOSITIVAS, RUBROS, validarNegocio } from "./personalizacion.js";
-import { servicioNegocio } from "./mocks/personalizacion.js";
+import { mensajeDeError } from "./servicios/errores.js";
+import { servicioNegocio } from "./servicios/negocio.js";
 
 const MODULO = "negocio";
 const OTRO = "__otro";
@@ -21,7 +22,16 @@ const iniciarPantalla = async () => {
   }
 
   const pagina = document.getElementById("perfil-pagina");
-  let guardado = await servicioNegocio.obtener();
+  let guardado;
+  try {
+    guardado = await servicioNegocio.obtener();
+  } catch (error) {
+    pagina.replaceChildren(
+      h("div", { class: "gastos-encabezado" }, h("h1", { text: "Mi negocio" })),
+      h("div", { class: "gastos-tarjeta cfg-tarjeta cfg-centrado" }, h("p", { class: "gastos-error", "data-testid": "negocio-error-carga", text: mensajeDeError(error, "No se pudieron cargar los datos del negocio.") })),
+    );
+    return;
+  }
 
   const rubroEsLista = (rubro) => !rubro || RUBROS.includes(rubro);
 
@@ -153,14 +163,15 @@ const iniciarPantalla = async () => {
     guardarBtn.disabled = true;
     guardarBtn.textContent = "Guardando…";
     try {
-      guardado = await servicioNegocio.guardar(armarPayloadNegocio(datos));
+      // La respuesta del Backend no trae la fecha de registro: se conserva la que ya estaba.
+      guardado = { ...guardado, ...(await servicioNegocio.guardar(armarPayloadNegocio(datos))) };
       // Los campos muestran lo que realmente quedó guardado (sin los espacios de los costados).
       nombre.control.value = guardado.nombre_comercial;
       if (rubro.control.value === OTRO) rubroOtro.control.value = guardado.rubro ?? "";
       avisar("Datos del negocio actualizados");
     } catch (error) {
       if (error.errores) mostrarErroresDelServidor(error.errores);
-      else avisar(error.message || "No se pudo guardar. Intentá de nuevo.");
+      else avisar(mensajeDeError(error, "No se pudo guardar. Intentá de nuevo."));
     } finally {
       enviando = false;
       guardarBtn.disabled = false;

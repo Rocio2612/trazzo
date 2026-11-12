@@ -20,7 +20,8 @@ import {
   validarPersona,
 } from "./personalizacion.js";
 import { fechaDeMarcaParaMostrar, fechaHoraParaMostrar } from "./formatos.js";
-import { servicioPersonal } from "./mocks/personalizacion.js";
+import { mensajeDeError } from "./servicios/errores.js";
+import { servicioPersonal } from "./servicios/personal.js";
 import { obtenerSesion } from "./sesion.js";
 
 const MODULO = "personal";
@@ -41,7 +42,15 @@ const CAMPOS = (esNuevo, esPropietario = false) => [
   { nombre: "apellido", etiqueta: "Apellido", obligatorio: true, maxlength: 50 },
   { nombre: "correo", etiqueta: "Correo", tipo: "email", obligatorio: true, maxlength: CORREO_MAXIMO, autocomplete: "off", ayuda: "Se usa para recuperar la contraseña." },
   { nombre: "dni", etiqueta: "DNI (opcional)", maxlength: 8, placeholder: "Sin puntos" },
-  { nombre: "usuario", etiqueta: "Usuario", obligatorio: true, maxlength: 20, ayuda: "4 a 20 caracteres: minúsculas y números." },
+  // El nombre de usuario no se puede cambiar una vez creado (el Backend lo ignora al editar).
+  {
+    nombre: "usuario",
+    etiqueta: "Usuario",
+    obligatorio: true,
+    maxlength: 20,
+    solo_lectura: !esNuevo,
+    ayuda: esNuevo ? "4 a 20 caracteres: minúsculas y números." : "El usuario no se puede cambiar.",
+  },
   {
     nombre: "password",
     etiqueta: "Contraseña",
@@ -73,9 +82,27 @@ export const crearPanelPersonal = () => {
   const ctx = { q: "", personal: [] };
   const zonaTabla = h("div");
 
+  // Si el Backend no responde se avisa en la lista (y se conserva la que ya estaba).
   const cargar = async () => {
-    ctx.personal = await servicioPersonal.listar();
+    try {
+      ctx.personal = await servicioPersonal.listar();
+      ctx.error = "";
+    } catch (error) {
+      ctx.error = mensajeDeError(error, "No se pudo cargar el personal.");
+    }
     refrescar();
+  };
+
+  // Ejecuta una acción sobre el Backend: si falla, avisa el motivo y vuelve a pedir la lista (puede haber cambiado).
+  const intentar = async (accion, mensajeSiFalla) => {
+    try {
+      await accion();
+      return true;
+    } catch (error) {
+      avisar(mensajeDeError(error, mensajeSiFalla));
+      await cargar();
+      return false;
+    }
   };
 
   // --- Alta y edición ---
@@ -104,7 +131,7 @@ export const crearPanelPersonal = () => {
       cuerpo: [h("p", { text: `¿Habilitar a ${nombreCompleto(p)}? Podrá iniciar sesión con sus credenciales.` })],
       textoOk: "Habilitar",
       alAceptar: async () => {
-        await servicioPersonal.habilitar(p.id);
+        if (!(await intentar(() => servicioPersonal.habilitar(p.id), "No se pudo habilitar."))) return;
         await cargar();
         avisar(`${nombreCompleto(p)} fue habilitado`);
       },
@@ -119,7 +146,7 @@ export const crearPanelPersonal = () => {
       ],
       textoOk: "Deshabilitar",
       alAceptar: async () => {
-        await servicioPersonal.deshabilitar(p.id);
+        if (!(await intentar(() => servicioPersonal.deshabilitar(p.id), "No se pudo deshabilitar."))) return;
         await cargar();
         avisar(`${nombreCompleto(p)} fue deshabilitado`);
       },
@@ -136,7 +163,7 @@ export const crearPanelPersonal = () => {
       textoOk: "Eliminar",
       claseOk: "btn-peligro",
       alAceptar: async () => {
-        await servicioPersonal.eliminar(p.id);
+        if (!(await intentar(() => servicioPersonal.eliminar(p.id), "No se pudo eliminar."))) return;
         await cargar();
         avisar(`${nombreCompleto(p)} fue eliminado`);
       },
@@ -195,7 +222,9 @@ export const crearPanelPersonal = () => {
         "div",
         { class: "gastos-tarjeta" },
         items.length === 0
-          ? h("div", { class: "gastos-vacio", "data-testid": "personal-vacio", text: ctx.q.trim() ? "Sin resultados" : "Todavía no hay usuarios" })
+          ? ctx.error && ctx.personal.length === 0
+            ? h("div", { class: "gastos-vacio", "data-testid": "personal-error", text: ctx.error })
+            : h("div", { class: "gastos-vacio", "data-testid": "personal-vacio", text: ctx.q.trim() ? "Sin resultados" : "Todavía no hay usuarios" })
           : h(
               "div",
               { class: "gastos-tabla-contenedor cfg-tabla-contenedor" },

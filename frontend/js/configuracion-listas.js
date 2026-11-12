@@ -6,7 +6,9 @@
 import { abrirFormularioModal, avisar, bannerAmbar, boton, botonIcono, confirmar, crearSvg, h, ICONOS } from "./componentes/ui-panel.js";
 import { crearSinOpciones } from "./componentes/sin-opciones.js";
 import { validarNombreLista } from "./personalizacion.js";
-import { servicioLista } from "./mocks/personalizacion.js";
+import { servicioCategorias } from "./mocks/categorias.js";
+import { mensajeDeError } from "./servicios/errores.js";
+import { servicioMediosPago } from "./servicios/medios-pago.js";
 
 // tipo: "categorias" | "medios_pago". Es también el nombre del módulo en roles.js.
 export const TEXTOS_LISTA = {
@@ -34,12 +36,19 @@ export const TEXTOS_LISTA = {
 
 export const crearPanelLista = (tipo) => {
   const textos = TEXTOS_LISTA[tipo];
-  const servicio = servicioLista(tipo);
+  // Los medios de pago vienen del Backend (finanzas-service). Las categorías siguen simuladas hasta que haya API.
+  const servicio = tipo === "medios_pago" ? servicioMediosPago : servicioCategorias;
   const ctx = { elementos: [] };
   const zonaLista = h("div");
 
+  // Si el Backend no responde se avisa en la lista en vez de mostrarla vacía.
   const cargar = async () => {
-    ctx.elementos = await servicio.listar();
+    try {
+      ctx.elementos = await servicio.listar();
+      ctx.error = "";
+    } catch (error) {
+      ctx.error = mensajeDeError(error, `No se pudo cargar la lista de ${textos.singular}s.`);
+    }
     refrescar();
   };
 
@@ -71,7 +80,7 @@ export const crearPanelLista = (tipo) => {
       await cargar();
       avisar(textos.creado);
     } catch (e) {
-      mostrarErrorAgregar(e.errores?.nombre || e.message);
+      mostrarErrorAgregar(e.errores?.nombre || mensajeDeError(e, `No se pudo crear ${textos.articulo}.`));
     } finally {
       agregando = false;
       botonAgregar.disabled = false;
@@ -114,7 +123,7 @@ export const crearPanelLista = (tipo) => {
           await cargar();
           avisar(`"${elemento.nombre}" se eliminó`);
         } catch (e) {
-          avisar(e.message);
+          avisar(mensajeDeError(e, "No se pudo eliminar."));
         }
       },
     });
@@ -141,7 +150,9 @@ export const crearPanelLista = (tipo) => {
         "div",
         { class: "gastos-tarjeta" },
         ctx.elementos.length === 0
-          ? h("div", { class: "gastos-vacio" }, crearSinOpciones(tipo, { conEnlace: false }))
+          ? ctx.error
+            ? h("div", { class: "gastos-vacio", "data-testid": `${tipo}-error-carga`, text: ctx.error })
+            : h("div", { class: "gastos-vacio" }, crearSinOpciones(tipo, { conEnlace: false }))
           : h(
               "div",
               { class: "cfg-lista-scroll" },

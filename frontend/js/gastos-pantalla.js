@@ -1,13 +1,13 @@
 // --- PANTALLA DE GASTOS OPERATIVOS (módulo ES) ---
 // Dibuja la lista, el selector de período, el buscador, los modales de alta/edición y las
-// confirmación de eliminar. La lógica (validación, payload) está en gastos.js.
-// Mientras Back no publique /api/gastos, los datos viven en memoria (mocks/gastos.js) y se
-// pierden al recargar: solo hay que reemplazar el objeto `servicio` por llamadas a fetchAPI.
+// confirmación de eliminar. La lógica (validación, payload) está en gastos.js y los datos vienen del Backend
+// (servicios/gastos.js): la lista y el total del período salen de GET /gastos?desde=&hasta=.
 // Todo se arma con textContent (nada de innerHTML con datos del usuario).
 
 import { fechaIsoDeHoy, fechaParaMostrar, formatearDinero } from "./formatos.js";
-import { armarPayloadGasto, describirAuditoria, resumirGastos, validarGasto } from "./gastos.js";
-import { GASTOS_EJEMPLO, listarGastosSimulado } from "./mocks/gastos.js";
+import { armarPayloadGasto, buscarGastos, describirAuditoria, validarGasto } from "./gastos.js";
+import { mensajeDeError } from "./servicios/errores.js";
+import { servicioGastos } from "./servicios/gastos.js";
 import { cargarMediosPago } from "./servicios/medios-pago.js";
 
 const MODULO = "gastos";
@@ -29,13 +29,6 @@ const OPCIONES_PERIODO = [
   { valor: "anio", texto: "Este año" },
 ];
 
-// --- Datos (simulados) ---------------------------------------------------------
-const gastos = GASTOS_EJEMPLO.map((g) => ({ ...g }));
-let siguienteId = Math.max(0, ...gastos.map((g) => g.id)) + 1;
-
-// Usuario que hace la acción: siempre sale del token de la sesión.
-const usuarioActual = () => decodificarToken(localStorage.getItem("trazzo_access_token"))?.usuario || "";
-
 // --- Medios de pago ------------------------------------------------------------
 // Son los que el Admin creó en Configuración > Medios de pago (ver servicios/medios-pago.js). Si no hay
 // ninguno, el desplegable lo avisa con un mensaje.
@@ -44,37 +37,15 @@ let mediosDePago = [];
 const cargarMediosDePago = async () => {
   mediosDePago = await cargarMediosPago();
 };
-const nombreDeMedio = (id) => mediosDePago.find((m) => m.id === String(id))?.nombre ?? null;
-
-const servicio = {
-  listar: (filtros) => listarGastosSimulado(gastos, { ...filtros, porPagina: Number.MAX_SAFE_INTEGER }).items,
-  crear: (datos) => {
-    const gasto = {
-      id: siguienteId++,
-      fecha: datos.fecha,
-      concepto: datos.concepto,
-      monto: datos.monto.toFixed(2),
-      medio_pago_id: datos.medio_pago_id,
-      medio_pago_nombre: datos.medio_pago_id === null ? null : nombreDeMedio(datos.medio_pago_id),
-      activo: true,
-      creado_por: usuarioActual(),
-      creado_en: new Date().toISOString(),
-      modificado_por: null,
-      modificado_en: null,
-    };
-    gastos.push(gasto);
-    return gasto;
-  },
-  actualizar: (gasto, datos) => Object.assign(gasto, { fecha: datos.fecha, concepto: datos.concepto, monto: datos.monto.toFixed(2), medio_pago_id: datos.medio_pago_id, medio_pago_nombre: datos.medio_pago_id === null ? null : nombreDeMedio(datos.medio_pago_id), modificado_por: usuarioActual(), modificado_en: new Date().toISOString() }),
-  // La tabla tiene `activo`: eliminar un gasto lo deja inactivo (no se borra la fila) y deja de listarse y sumarse.
-  eliminar: (gasto) => Object.assign(gasto, { activo: false, modificado_por: usuarioActual(), modificado_en: new Date().toISOString() }),
-};
 
 // Rango aaaa-mm-dd (inclusivo) de cada período, con la fecha de hoy del usuario.
 const rangoDePeriodo = (periodo) => {
   const hoy = fechaIsoDeHoy();
   if (periodo === "hoy") return { desde: hoy, hasta: hoy };
-  if (periodo === "mes") return { desde: `${hoy.slice(0, 7)}-01`, hasta: `${hoy.slice(0, 7)}-31` };
+  if (periodo === "mes") {
+    const ultimoDia = new Date(Number(hoy.slice(0, 4)), Number(hoy.slice(5, 7)), 0).getDate();
+    return { desde: `${hoy.slice(0, 7)}-01`, hasta: `${hoy.slice(0, 7)}-${String(ultimoDia).padStart(2, "0")}` };
+  }
   if (periodo === "anio") return { desde: `${hoy.slice(0, 4)}-01-01`, hasta: `${hoy.slice(0, 4)}-12-31` };
   return {};
 };
@@ -258,13 +229,24 @@ const abrirFormulario = ({ titulo, valores = {}, avisos, alGuardar }) => {
       controles[primero.nombre].control.focus();
       return;
     }
-    // Se deshabilita el botón mientras "procesa", para que un doble clic no duplique el registro.
+    // Se deshabilita el botón mientras guarda, para que un doble clic no duplique el registro.
     enviando = true;
     guardar.disabled = true;
     guardar.textContent = "Guardando…";
-    await new Promise((resolver) => setTimeout(resolver, 450));
-    alGuardar(armarPayloadGasto(datos));
-    modal.cerrar();
+    try {
+      await alGuardar(armarPayloadGasto(datos));
+      modal.cerrar();
+    } catch (error) {
+      enviando = false;
+      guardar.disabled = false;
+      guardar.textContent = "Guardar";
+      // Con errores por campo se muestran junto a cada uno; lo que no tiene campo en el formulario, como aviso.
+      const porCampo = Object.fromEntries(Object.entries(error.errores ?? {}).filter(([campo]) => controles[campo]));
+      mostrarErrores(porCampo);
+      const primerCampo = CAMPOS_GASTO.find((c) => porCampo[c.nombre]);
+      if (primerCampo) controles[primerCampo.nombre].control.focus();
+      if (!primerCampo) avisar(mensajeDeError(error, "No se pudo guardar. Intentá de nuevo."));
+    }
   });
 
   actualizarAvisos();
@@ -279,19 +261,36 @@ const iniciarPantalla = () => {
     return;
   }
   const pagina = document.getElementById("gastos-pagina");
-  const ctx = { q: "", periodo: "todas" };
+  // gastos y resumen son los del período elegido, tal como los devuelve el Backend; el buscador filtra esa lista.
+  const ctx = { q: "", periodo: "todas", gastos: [], resumen: { total_gastos: 0, cantidad_operaciones: 0 }, cargando: true, error: "" };
   const zonaTabla = h("div");
   const valorTotal = h("p", { class: "gastos-total-valor", "data-testid": "gastos-total", text: formatearDinero(0) });
   const detalleTotal = h("span", { class: "gastos-total-chip", "data-testid": "gastos-total-detalle" });
   const tituloTotal = h("p", { class: "gastos-total-titulo", "data-testid": "gastos-total-titulo" });
   const zonaTotal = h("div", { class: "gastos-total" }, tituloTotal, h("div", { class: "gastos-total-fila" }, valorTotal, detalleTotal));
 
+  // Pide al Backend los gastos del período. Si se cambia de período mientras llega una respuesta, la vieja se descarta.
+  let ultimoPedido = 0;
+  const cargar = async () => {
+    const pedido = ++ultimoPedido;
+    try {
+      const { gastos, resumen } = await servicioGastos.listar(rangoDePeriodo(ctx.periodo));
+      if (pedido !== ultimoPedido) return;
+      Object.assign(ctx, { gastos, resumen, error: "" });
+    } catch (error) {
+      if (pedido !== ultimoPedido) return;
+      ctx.error = mensajeDeError(error, "No se pudieron cargar los gastos.");
+    }
+    ctx.cargando = false;
+    refrescar();
+  };
+
   const formularioGasto = async (gasto) => {
     const esNuevo = !gasto;
     await cargarMediosDePago();
     abrirFormulario({
       titulo: esNuevo ? "Nuevo gasto" : "Editar gasto",
-      valores: gasto ? { fecha: fechaParaMostrar(gasto.fecha), concepto: gasto.concepto, monto: gasto.monto, medio_pago_id: gasto.medio_pago_id ?? "" } : { fecha: fechaParaMostrar(fechaIsoDeHoy()) },
+      valores: gasto ? { fecha: fechaParaMostrar(gasto.fecha), concepto: gasto.concepto, monto: Number(gasto.monto).toFixed(2), medio_pago_id: gasto.medio_pago_id ?? "" } : { fecha: fechaParaMostrar(fechaIsoDeHoy()) },
       avisos: () =>
         esNuevo
           ? []
@@ -299,10 +298,11 @@ const iniciarPantalla = () => {
               bannerAmbar("Si cambiás la fecha o el monto, se recalcula el total del período."),
               describirAuditoria(gasto) && h("p", { class: "gastos-ayuda", "data-testid": "gasto-auditoria", text: describirAuditoria(gasto) }),
             ],
-      alGuardar: (datos) => {
-        if (esNuevo) servicio.crear(datos);
-        else servicio.actualizar(gasto, datos);
-        refrescar();
+      // Si el Backend rechaza el gasto, el error sale en el formulario (que sigue abierto).
+      alGuardar: async (datos) => {
+        if (esNuevo) await servicioGastos.crear(datos);
+        else await servicioGastos.actualizar(gasto.id, datos);
+        await cargar();
         avisar(esNuevo ? "Gasto registrado" : "Gasto actualizado");
       },
     });
@@ -318,9 +318,15 @@ const iniciarPantalla = () => {
       ],
       textoOk: "Eliminar",
       claseOk: "btn-peligro",
-      alAceptar: () => {
-        servicio.eliminar(gasto);
-        refrescar();
+      alAceptar: async () => {
+        try {
+          await servicioGastos.eliminar(gasto.id);
+        } catch (error) {
+          avisar(mensajeDeError(error, "No se pudo eliminar el gasto."));
+          await cargar(); // puede que ya no exista
+          return;
+        }
+        await cargar();
         avisar(`"${gasto.concepto}" se eliminó`);
       },
     });
@@ -340,47 +346,42 @@ const iniciarPantalla = () => {
   const COLUMNAS = [{ titulo: "Fecha" }, { titulo: "Concepto" }, { titulo: "Monto", clase: "num" }, { titulo: "Medio de pago" }, { titulo: "Creado por" }, { titulo: "Acciones", clase: "acciones-columna" }];
 
   const filaDeGasto = (gasto) => {
-    const celdas = [fechaParaMostrar(gasto.fecha), gasto.concepto, formatearDinero(gasto.monto), gasto.medio_pago_nombre || sinDato(), h("span", { title: describirAuditoria(gasto) || null, text: gasto.creado_por }), botonesFila(gasto)];
-    return h("tr", {}, celdas.map((celda, i) => h("td", { class: COLUMNAS[i].clase }, celda)));
+    const celdas = [fechaParaMostrar(gasto.fecha), gasto.concepto, formatearDinero(gasto.monto), gasto.medio_pago_nombre || sinDato(), gasto.creado_por ? h("span", { title: describirAuditoria(gasto) || null, text: gasto.creado_por }) : sinDato(), botonesFila(gasto)];
+    return h("tr", { "data-testid": `gastos-fila-${gasto.id}` }, celdas.map((celda, i) => h("td", { class: COLUMNAS[i].clase }, celda)));
   };
 
-  // El total sigue el período elegido (no el buscador) y se calcula siempre sumando la lista.
-  const actualizarTotal = () => {
-    const delPeriodo = servicio.listar(rangoDePeriodo(ctx.periodo));
-    const { total, cantidad } = resumirGastos(delPeriodo);
-    tituloTotal.textContent = TITULOS_TOTAL[ctx.periodo];
-    valorTotal.textContent = formatearDinero(total);
-    detalleTotal.textContent = cantidad === 1 ? "1 gasto" : `${cantidad} gastos`;
-  };
-
-  const refrescar = () => {
-    actualizarTotal();
-    const items = servicio.listar({ q: ctx.q, ...rangoDePeriodo(ctx.periodo) });
-    const hayFiltros = ctx.q.trim() || ctx.periodo !== "todas";
-    const textoVacio = hayFiltros ? "Sin resultados" : "Sin gastos";
-    zonaTabla.replaceChildren(
+  const contenidoDeLaTabla = () => {
+    if (ctx.cargando) return h("div", { class: "gastos-vacio", "data-testid": "gastos-cargando", text: "Cargando…" });
+    if (ctx.error && ctx.gastos.length === 0) return h("div", { class: "gastos-vacio", "data-testid": "gastos-error-carga", text: ctx.error });
+    const items = buscarGastos(ctx.gastos, ctx.q);
+    if (items.length === 0) {
+      const hayFiltros = ctx.q.trim() || ctx.periodo !== "todas";
+      return h("div", { class: "gastos-vacio", "data-testid": "gastos-tabla-vacio", text: hayFiltros ? "Sin resultados" : "Sin gastos" });
+    }
+    return h(
+      "div",
+      { class: "gastos-tabla-contenedor" },
       h(
-        "div",
-        { class: "gastos-tarjeta" },
-        items.length === 0
-          ? h("div", { class: "gastos-vacio", "data-testid": "gastos-tabla-vacio", text: textoVacio })
-          : h(
-              "div",
-              { class: "gastos-tabla-contenedor" },
-              h(
-                "table",
-                { class: "gastos-tabla", "data-testid": "gastos-tabla" },
-                h("thead", {}, h("tr", {}, COLUMNAS.map((c) => h("th", { class: c.clase, text: c.titulo })))),
-                h("tbody", {}, items.map(filaDeGasto)),
-              ),
-            ),
+        "table",
+        { class: "gastos-tabla", "data-testid": "gastos-tabla" },
+        h("thead", {}, h("tr", {}, COLUMNAS.map((c) => h("th", { class: c.clase, text: c.titulo })))),
+        h("tbody", {}, items.map(filaDeGasto)),
       ),
     );
   };
 
+  // El total y la cantidad son los del período (los calcula el Backend con los mismos filtros), no los del buscador.
+  const refrescar = () => {
+    const { total_gastos: total, cantidad_operaciones: cantidad } = ctx.resumen;
+    tituloTotal.textContent = TITULOS_TOTAL[ctx.periodo];
+    valorTotal.textContent = formatearDinero(total);
+    detalleTotal.textContent = cantidad === 1 ? "1 gasto" : `${cantidad} gastos`;
+    zonaTabla.replaceChildren(h("div", { class: "gastos-tarjeta" }, contenidoDeLaTabla()));
+  };
+
   zonaTabla.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-accion]");
-    const gasto = b && gastos.find((g) => g.id === Number(b.dataset.id));
+    const gasto = b && ctx.gastos.find((g) => g.id === Number(b.dataset.id));
     if (!gasto) return;
     const acciones = {
       editar: () => formularioGasto(gasto),
@@ -397,13 +398,15 @@ const iniciarPantalla = () => {
   );
   selectorPeriodo.addEventListener("change", () => {
     ctx.periodo = selectorPeriodo.value;
-    refrescar();
+    tituloTotal.textContent = TITULOS_TOTAL[ctx.periodo];
+    cargar();
   });
 
   const botonNuevo = boton("", "btn-primario gastos-btn-con-icono", { "data-testid": "gastos-nuevo", "data-modulo": MODULO, "data-accion": "crear" });
   botonNuevo.append(crearSvg(ICONO_MAS), h("span", { text: "Nuevo gasto" }));
   botonNuevo.addEventListener("click", () => formularioGasto(null));
 
+  // La búsqueda filtra la lista que ya se trajo: no hace falta pedir nada al Backend mientras se escribe.
   const buscador = h("input", { type: "search", class: "gastos-entrada gastos-buscador-entrada", placeholder: "Buscar por concepto…", "data-testid": "gastos-buscador", "aria-label": "Buscar" });
   buscador.addEventListener("input", () => {
     ctx.q = buscador.value;
@@ -417,6 +420,7 @@ const iniciarPantalla = () => {
     zonaTabla,
   );
   refrescar();
+  cargar();
 };
 
 iniciarPantalla();
