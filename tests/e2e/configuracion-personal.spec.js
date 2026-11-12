@@ -1,44 +1,34 @@
 const { test, expect } = require("@playwright/test");
-const { jwtFalso, simularApi, iniciarSesionComo } = require("./helpers");
+const { jwtFalso, iniciarSesionComo } = require("./helpers");
+const { simularBackend, respuestaDeError } = require("./backend-falso");
 
-// Configuración > pestaña Personal. Datos simulados (mocks/personalizacion.js):
+// Configuración > pestaña Personal. Backend falso (backend-falso.js), con los datos de ejemplo de siempre:
 // 1 Ana Pérez (propietario1, Propietario, habilitada) · 2 Luis Gómez (admin2, Administrador, habilitado)
 // 3 Sofía Díaz (cajero1, Empleado, habilitada, DNI 40222333) · 4 Marcos Ruiz (cajero2, Empleado, deshabilitado)
 //
-// Para ver lo que se envía al guardar, o armar casos que el servicio simulado no permite (último administrador,
-// lista vacía, un guardado lento), se entrega al navegador una copia modificada de mocks/personalizacion.js con
-// `page.route`; el archivo real no se toca. Si ese mock cambia y un reemplazo ya no encaja, el test avisa.
+// Cada test puede armar su caso con `reemplazos`: objetos { semilla(estado), preparar(backend) } que cambian los datos
+// de partida o hacen que el backend demore o responda otra cosa. El backend falso registra todo lo que la pantalla le envía:
+// `registros()` devuelve los cuerpos de los POST (alta) y de los PUT (edición).
 
-const MOCK = "**/js/mocks/personalizacion.js";
-const CREAR = "  crear: async (datos) => {";
-const ACTUALIZAR = "  actualizar: async (id, datos) => {";
-const REGISTRAR = [
-  [CREAR, `${CREAR} (window.__crear ||= []).push(structuredClone(datos));`],
-  [ACTUALIZAR, `${ACTUALIZAR} (window.__actualizar ||= []).push({ id, datos: structuredClone(datos) });`],
-];
-const CREAR_LENTO = [CREAR, `${CREAR} await new Promise((r) => setTimeout(r, 500));`];
-const PROPIETARIO_DESHABILITADO = ['rol: "PROPIETARIO", activo: true', 'rol: "PROPIETARIO", activo: false'];
-const LISTA_VACIA = ["  listar: async () => personal.map((p) => ({ ...p })),", "  listar: async () => [],"];
+const REGISTRAR = []; // el backend falso siempre registra lo enviado
+const CREAR_LENTO = { preparar: (b) => b.demorar("POST /auth/personal", 500) };
+const PROPIETARIO_DESHABILITADO = { semilla: (e) => (e.personal[0].activo = false) };
+const LISTA_VACIA = { semilla: (e) => (e.personal = []) };
 
-const abrir = async (page, { rol = "PROPIETARIO", usuarioId = null, reemplazos = [], ruta = "/configuracion.html" } = {}) => {
-  if (reemplazos.length) {
-    await page.route(MOCK, async (route) => {
-      const original = await route.fetch();
-      let cuerpo = await original.text();
-      for (const [desde, hasta] of reemplazos) {
-        if (!cuerpo.includes(desde)) throw new Error(`El mock cambió: no se encontró «${desde}»`);
-        cuerpo = cuerpo.replace(desde, hasta);
-      }
-      await route.fulfill({ body: cuerpo, contentType: "application/javascript" });
-    });
-  }
-  await simularApi(page, { "GET /auth/yo": { status: 200, body: {} } });
+let backend;
+const abrir = async (page, { rol = "PROPIETARIO", usuarioId = null, reemplazos = [], ruta = "/configuracion.html", ahora = null } = {}) => {
+  backend = await simularBackend(page, { rol, ahora, semilla: (estado) => reemplazos.forEach((r) => r.semilla?.(estado)) });
+  reemplazos.forEach((r) => r.preparar?.(backend));
   await iniciarSesionComo(page, rol);
   if (usuarioId) await page.evaluate((t) => localStorage.setItem("trazzo_access_token", t), jwtFalso(rol, { usuario_id: usuarioId }));
   await page.goto(ruta);
 };
 
-const registros = (page, clave) => page.evaluate((c) => window[c] || [], clave);
+// Lo que la pantalla envió: "__crear" son los cuerpos de POST /auth/personal y "__actualizar" los de PUT /auth/personal/<id>.
+const registros = async (_page, clave) =>
+  clave === "__crear"
+    ? backend.enviados("POST", "/auth/personal")
+    : backend.peticiones("PUT", "/auth/personal/:id").map((l) => ({ id: Number(l.ruta.split("/").pop()), datos: l.body }));
 const filas = (page) => page.getByTestId("personal-tabla").locator("tbody tr");
 const fila = (page, id) => page.getByTestId(`personal-fila-${id}`);
 const celda = (page, id, columna) => fila(page, id).locator("td").nth(columna);
@@ -336,7 +326,7 @@ test.describe("Configuración > Personal: alta", () => {
   test("un usuario repetido avisa junto al campo, no cierra el formulario y se puede corregir", async ({ page }) => {
     await abrir(page);
     await intentarCrear(page, { usuario: "cajero1" });
-    await expect(errorDe(page, "usuario")).toHaveText("Ese usuario ya existe en este negocio.");
+    await expect(errorDe(page, "usuario")).toHaveText("El nombre de usuario ya está registrado en este negocio.");
     await expect(modal(page)).toHaveCount(1);
     await expect(guardar(page)).toBeEnabled();
     await expect(guardar(page)).toHaveText("Guardar");
@@ -349,15 +339,16 @@ test.describe("Configuración > Personal: alta", () => {
   test("un correo repetido avisa junto al campo, sin distinguir mayúsculas", async ({ page }) => {
     await abrir(page);
     await intentarCrear(page, { correo: "SOFIA@kioscochicha.com" });
-    await expect(errorDe(page, "correo")).toHaveText("Ese correo ya está registrado en este negocio.");
+    await expect(errorDe(page, "correo")).toHaveText("El correo ya está registrado en este negocio.");
     await expect(filas(page)).toHaveCount(4);
   });
 
-  test("si se repiten usuario y correo, avisa primero el usuario", async ({ page }) => {
+  test("si se repiten usuario y correo, avisa los dos, cada uno junto a su campo", async ({ page }) => {
     await abrir(page);
     await intentarCrear(page, { usuario: "cajero1", correo: "sofia@kioscochicha.com" });
-    await expect(errorDe(page, "usuario")).toBeVisible();
-    await expect(errorDe(page, "correo")).toBeHidden();
+    await expect(errorDe(page, "usuario")).toHaveText("El nombre de usuario ya está registrado en este negocio.");
+    await expect(errorDe(page, "correo")).toHaveText("El correo ya está registrado en este negocio.");
+    await expect(page.locator("#correo")).toBeFocused(); // el primero del formulario con error
   });
 
   test("un doble clic rápido en Guardar no duplica al usuario", async ({ page }) => {
@@ -456,8 +447,9 @@ test.describe("Configuración > Personal: edición", () => {
     await expect(celda(page, 3, COL.nombre)).toHaveText("Sofía Díaz Luna");
     const [envio] = await registros(page, "__actualizar");
     expect(envio.id).toBe(3);
-    expect(envio.datos).toEqual({ usuario: "cajero1", correo: "sofia@kioscochicha.com", nombre: "Sofía", apellido: "Díaz Luna", dni: "40222333", rol: "CAJERO" });
+    expect(envio.datos).toEqual({ correo: "sofia@kioscochicha.com", nombre: "Sofía", apellido: "Díaz Luna", dni: "40222333", rol: "CAJERO" });
     expect(envio.datos).not.toHaveProperty("password");
+    expect(envio.datos).not.toHaveProperty("usuario"); // el nombre de usuario no se puede cambiar
   });
 
   test("una contraseña de solo espacios se ignora", async ({ page }) => {
@@ -506,15 +498,13 @@ test.describe("Configuración > Personal: edición", () => {
     await expect(page.getByTestId("personal-deshabilitar-3")).toBeVisible(); // el Propietario sí gestiona administradores
   });
 
-  test("cambiar el usuario o el correo por los de otra persona avisa y no modifica nada", async ({ page }) => {
+  test("cambiar el correo por el de otra persona avisa junto al campo y no modifica nada", async ({ page }) => {
     await abrir(page);
     await page.getByTestId("personal-editar-3").click();
-    await llenar(page, { usuario: "cajero2" });
+    await llenar(page, { correo: "luis@kioscochicha.com" });
     await guardar(page).click();
-    await expect(errorDe(page, "usuario")).toHaveText("Ese usuario ya existe en este negocio.");
-    await llenar(page, { usuario: "cajero1", correo: "luis@kioscochicha.com" });
-    await guardar(page).click();
-    await expect(errorDe(page, "correo")).toHaveText("Ese correo ya está registrado en este negocio.");
+    await expect(errorDe(page, "correo")).toHaveText("Este correo ya está en uso por otro empleado");
+    await expect(page.locator("#correo")).toBeFocused();
     await expect(guardar(page)).toBeEnabled();
     await page.getByTestId("modal-cancelar").click();
     await expect(celda(page, 3, COL.correo)).toHaveText("sofia@kioscochicha.com");
@@ -829,7 +819,8 @@ test.describe("Configuración > Personal: edición del Propietario", () => {
     await expect(toast(page)).toHaveText("Usuario actualizado");
     const [envio] = await registros(page, "__actualizar");
     expect(envio.id).toBe(1);
-    expect(envio.datos).toMatchObject({ rol: "PROPIETARIO", nombre: "Ana María", dni: null, usuario: "propietario1" });
+    expect(envio.datos).toMatchObject({ rol: "PROPIETARIO", nombre: "Ana María", dni: null });
+    expect(envio.datos).not.toHaveProperty("usuario");
     expect(envio.datos).not.toHaveProperty("password");
     await expect(celda(page, 1, COL.nombre)).toContainText("Ana María Pérez");
     await expect(celda(page, 1, COL.rol)).toHaveText("Propietario");
@@ -976,10 +967,11 @@ test.describe("Configuración > Personal: el correo que acepta la base", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Configuración > Personal: personas sin nombre ni apellido", () => {
-  const PROPIETARIO_SIN_NOMBRE = ['nombre: "Ana", apellido: "Pérez"', "nombre: null, apellido: null"];
-  const EMPLEADA_SIN_NOMBRE = ['nombre: "Sofía", apellido: "Díaz"', "nombre: null, apellido: null"];
-  const EMPLEADO_SIN_NOMBRE = ['nombre: "Marcos", apellido: "Ruiz"', "nombre: null, apellido: null"];
-  const SOLO_SIN_APELLIDO = ['nombre: "Luis", apellido: "Gómez"', 'nombre: "Luis", apellido: null'];
+  const sinNombre = (indice) => ({ semilla: (e) => Object.assign(e.personal[indice], { nombre: null, apellido: null }) });
+  const PROPIETARIO_SIN_NOMBRE = sinNombre(0);
+  const EMPLEADA_SIN_NOMBRE = sinNombre(2);
+  const EMPLEADO_SIN_NOMBRE = sinNombre(3);
+  const SOLO_SIN_APELLIDO = { semilla: (e) => (e.personal[1].apellido = null) };
 
   test("en la lista se muestra el usuario, y nunca «null»", async ({ page }) => {
     await abrir(page, { reemplazos: [PROPIETARIO_SIN_NOMBRE] });
@@ -1021,7 +1013,7 @@ test.describe("Configuración > Personal: personas sin nombre ni apellido", () =
   });
 
   test("al editar al Propietario sin nombre, el formulario abre con los campos vacíos y pide completarlos", async ({ page }) => {
-    await abrir(page, { reemplazos: [PROPIETARIO_SIN_NOMBRE, REGISTRAR[1]] });
+    await abrir(page, { reemplazos: [PROPIETARIO_SIN_NOMBRE] });
     await page.getByTestId("personal-editar-1").click();
     await expect(page.locator("#nombre")).toHaveValue("");
     await expect(page.locator("#apellido")).toHaveValue("");
@@ -1065,7 +1057,7 @@ test.describe("Configuración > Personal: fecha de alta", () => {
 
   test("una persona nueva queda con la fecha de hoy", async ({ page }) => {
     await page.clock.setFixedTime(new Date("2026-06-10T15:00:00Z"));
-    await abrir(page);
+    await abrir(page, { ahora: "2026-06-10T15:00:00Z" });
     await crearUsuario(page);
     await expect(celda(page, 5, COL.alta)).toHaveText("10-06-2026");
     await expect(celda(page, 5, COL.alta).locator("span")).toHaveAttribute("title", "Alta: 10-06-2026 12:00");
@@ -1085,7 +1077,7 @@ test.describe("Configuración > Personal: fecha de alta", () => {
   });
 
   test("si falta la fecha de alta se ve un guion y nunca «null» ni «Invalid Date»", async ({ page }) => {
-    await abrir(page, { reemplazos: [['fecha_creacion: "2026-02-03T10:30:00Z"', "fecha_creacion: null"]] });
+    await abrir(page, { reemplazos: [{ semilla: (e) => (e.personal[1].fecha_creacion = null) }] });
     await expect(celda(page, 2, COL.alta)).toHaveText("—");
     await expect(page.getByTestId("personal-tabla")).not.toContainText(/null|Invalid Date|undefined/);
   });
@@ -1102,5 +1094,157 @@ test.describe("Configuración > Personal: fecha de alta", () => {
     await guardar(page).click();
     await expect(toast(page)).toHaveText("Usuario actualizado");
     expect((await registros(page, "__actualizar"))[0].datos).not.toHaveProperty("fecha_creacion");
+  });
+});
+
+test.describe("Configuración > Personal: conexión con el Backend", () => {
+  test("al abrir pide la lista a GET /auth/personal con el token de la sesión", async ({ page }) => {
+    await abrir(page);
+    await expect(filas(page)).toHaveCount(4);
+    const [pedido] = backend.peticiones("GET", "/auth/personal");
+    expect(pedido.headers.authorization).toMatch(/^Bearer .+/);
+  });
+
+  test("las pestañas de Categorías y Medios de pago no piden el personal hasta que se abre esa pestaña", async ({ page }) => {
+    await abrir(page, { ruta: "/configuracion.html#categorias" });
+    await expect(page.getByTestId("categorias-lista")).toBeVisible();
+    expect(backend.peticiones("GET", "/auth/personal")).toHaveLength(0);
+    await page.getByTestId("pestania-personal").click();
+    await expect(filas(page)).toHaveCount(4);
+    expect(backend.peticiones("GET", "/auth/personal")).toHaveLength(1);
+  });
+
+  test("el alta va a POST /auth/personal y después se vuelve a pedir la lista", async ({ page }) => {
+    await abrir(page);
+    await crearUsuario(page, { dni: "30123999", rol: "ADMIN" });
+    expect(backend.enviados("POST", "/auth/personal")).toEqual([
+      { correo: "julia@kioscochicha.com", nombre: "Julia", apellido: "Mora", dni: "30123999", rol: "ADMIN", usuario: "julia123", password: "Clave#2026" },
+    ]);
+    expect(backend.peticiones("GET", "/auth/personal")).toHaveLength(2);
+    await expect(celda(page, 5, COL.rol)).toHaveText("Administrador");
+  });
+
+  test("la edición va a PUT /auth/personal/<id>", async ({ page }) => {
+    await abrir(page);
+    await page.getByTestId("personal-editar-3").click();
+    await llenar(page, { apellido: "Díaz Luna" });
+    await guardar(page).click();
+    await expect(celda(page, 3, COL.nombre)).toHaveText("Sofía Díaz Luna");
+    expect(backend.peticiones("PUT", "/auth/personal/:id").map((l) => l.ruta)).toEqual(["/auth/personal/3"]);
+  });
+
+  test("al editar, el nombre de usuario se ve pero no se puede cambiar, y no se envía", async ({ page }) => {
+    await abrir(page, { reemplazos: REGISTRAR });
+    await page.getByTestId("personal-editar-3").click();
+    await expect(page.locator("#usuario")).toHaveValue("cajero1");
+    await expect(page.locator("#usuario")).toHaveAttribute("readonly", "");
+    await expect(page.getByText("El usuario no se puede cambiar.")).toBeVisible();
+    await page.locator("#usuario").click();
+    await page.keyboard.type("otro");
+    await expect(page.locator("#usuario")).toHaveValue("cajero1");
+    await guardar(page).click();
+    await expect(toast(page)).toHaveText("Usuario actualizado");
+    expect((await registros(page, "__actualizar"))[0].datos).not.toHaveProperty("usuario");
+  });
+
+  test("al crear, el usuario sí se puede escribir", async ({ page }) => {
+    await abrir(page);
+    await page.getByTestId("personal-nuevo").click();
+    await expect(page.locator("#usuario")).not.toHaveAttribute("readonly", "");
+    await expect(page.getByText("4 a 20 caracteres: minúsculas y números.")).toBeVisible();
+  });
+
+  test("habilitar, deshabilitar y eliminar van a sus endpoints", async ({ page }) => {
+    await abrir(page);
+    await page.getByTestId("personal-habilitar-4").click();
+    await page.getByTestId("modal-confirmar").click();
+    await expect(celda(page, 4, COL.estado)).toHaveText("Habilitado");
+    await page.getByTestId("personal-deshabilitar-3").click();
+    await page.getByTestId("modal-confirmar").click();
+    await expect(celda(page, 3, COL.estado)).toHaveText("Deshabilitado");
+    await page.getByTestId("personal-eliminar-3").click();
+    await page.getByTestId("modal-confirmar").click();
+    await expect(fila(page, 3)).toHaveCount(0);
+    expect(backend.peticiones("PATCH", "/auth/personal/:id/habilitar").map((l) => l.ruta)).toEqual(["/auth/personal/4/habilitar"]);
+    expect(backend.peticiones("PATCH", "/auth/personal/:id/deshabilitar").map((l) => l.ruta)).toEqual(["/auth/personal/3/deshabilitar"]);
+    expect(backend.peticiones("DELETE", "/auth/personal/:id").map((l) => l.ruta)).toEqual(["/auth/personal/3"]);
+  });
+
+  test("si el Backend rechaza deshabilitar (409), muestra su mensaje y vuelve a pedir la lista", async ({ page }) => {
+    await abrir(page);
+    backend.fallar("PATCH /auth/personal/:id/deshabilitar", respuestaDeError(409, "Siempre debe quedar al menos un administrador activo"), { veces: 1 });
+    await page.getByTestId("personal-deshabilitar-3").click();
+    await page.getByTestId("modal-confirmar").click();
+    await expect(toast(page)).toHaveText("Siempre debe quedar al menos un administrador activo");
+    await expect(celda(page, 3, COL.estado)).toHaveText("Habilitado");
+    expect(backend.peticiones("GET", "/auth/personal")).toHaveLength(2);
+  });
+
+  test("si el Backend rechaza eliminar (400), muestra su mensaje", async ({ page }) => {
+    await abrir(page, { rol: "ADMIN", usuarioId: 2 });
+    backend.fallar("DELETE /auth/personal/:id", respuestaDeError(400, "No se puede eliminar al propietario del negocio"), { veces: 1 });
+    await page.getByTestId("personal-eliminar-3").click();
+    await page.getByTestId("modal-confirmar").click();
+    await expect(toast(page)).toHaveText("No se puede eliminar al propietario del negocio");
+    await expect(fila(page, 3)).toBeVisible();
+  });
+
+  test("habilitar una persona que ya no existe (404) se avisa", async ({ page }) => {
+    await abrir(page);
+    backend.fallar("PATCH /auth/personal/:id/habilitar", respuestaDeError(404, "Usuario no encontrado"), { veces: 1 });
+    await page.getByTestId("personal-habilitar-4").click();
+    await page.getByTestId("modal-confirmar").click();
+    await expect(toast(page)).toHaveText("Usuario no encontrado");
+  });
+
+  test("un 409 solo con mensaje (formato anterior, sin el campo) se avisa como cartel y el formulario sigue abierto", async ({ page }) => {
+    await abrir(page);
+    backend.fallar("POST /auth/personal", respuestaDeError(409, "El nombre de usuario o correo ya está en uso en este negocio"), { veces: 1 });
+    await intentarCrear(page);
+    await expect(toast(page)).toHaveText("El nombre de usuario o correo ya está en uso en este negocio");
+    await expect(modal(page)).toHaveCount(1);
+    await expect(guardar(page)).toBeEnabled();
+    await expect(guardar(page)).toHaveText("Guardar");
+  });
+
+  test("un 400 del alta con la contraseña débil se avisa en el campo y se puede reintentar", async ({ page }) => {
+    await abrir(page);
+    backend.fallar("POST /auth/personal", respuestaDeError(400, "La contraseña debe tener entre 8 y 64 caracteres", { password: "La contraseña debe tener entre 8 y 64 caracteres" }), { veces: 1 });
+    await intentarCrear(page);
+    await expect(errorDe(page, "password")).toHaveText("La contraseña debe tener entre 8 y 64 caracteres");
+    await expect(page.locator("#password")).toBeFocused();
+    await guardar(page).click();
+    await expect(modal(page)).toHaveCount(0);
+    await expect(filas(page)).toHaveCount(5);
+  });
+
+  test("sin conexión al crear, lo avisa en español y no cierra el formulario", async ({ page }) => {
+    await abrir(page);
+    backend.fallar("POST /auth/personal", { abortar: true }, { veces: 1 });
+    await intentarCrear(page);
+    await expect(toast(page)).toHaveText("No se pudo conectar con el servidor.");
+    await expect(modal(page)).toHaveCount(1);
+  });
+
+  test("si la lista no carga, la pestaña lo dice en vez de mostrar «Todavía no hay usuarios»", async ({ page }) => {
+    backend = await simularBackend(page, {});
+    backend.fallar("GET /auth/personal", respuestaDeError(500, "Error al listar el personal"));
+    await iniciarSesionComo(page, "PROPIETARIO");
+    await page.goto("/configuracion.html");
+    await expect(page.getByTestId("personal-error")).toHaveText("Error al listar el personal");
+    await expect(page.getByTestId("personal-vacio")).toHaveCount(0);
+  });
+
+  test("si la lista no carga por falta de conexión, lo avisa en español", async ({ page }) => {
+    backend = await simularBackend(page, {});
+    backend.fallar("GET /auth/personal", { abortar: true });
+    await iniciarSesionComo(page, "PROPIETARIO");
+    await page.goto("/configuracion.html");
+    await expect(page.getByTestId("personal-error")).toHaveText("No se pudo conectar con el servidor.");
+  });
+
+  test("el nombre y el apellido vacíos que devuelve el Backend se muestran con el usuario", async ({ page }) => {
+    await abrir(page, { reemplazos: [{ semilla: (e) => Object.assign(e.personal[0], { nombre: "", apellido: "" }) }] });
+    await expect(celda(page, 1, COL.nombre)).toContainText("propietario1");
   });
 });

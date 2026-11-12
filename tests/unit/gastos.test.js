@@ -7,7 +7,17 @@ import {
   resumirGastos,
   validarGasto,
 } from "../../frontend/js/gastos.js";
-import { GASTOS_EJEMPLO, listarGastosSimulado } from "../../frontend/js/mocks/gastos.js";
+// Gastos de ejemplo con el formato de la API (dinero como texto con 2 decimales, fechas aaaa-mm-dd).
+const auditoria = (en) => ({ activo: true, creado_por: "admin1", creado_en: en, modificado_por: null, modificado_en: null });
+const GASTOS_EJEMPLO = [
+  { id: 1, fecha: "2026-03-01", concepto: "Alquiler del local", monto: "450000.00", medio_pago_id: null, medio_pago_nombre: null, ...auditoria("2026-03-01T10:00:00Z") },
+  { id: 2, fecha: "2026-03-05", concepto: "Luz", monto: "38250.50", medio_pago_id: null, medio_pago_nombre: null, ...auditoria("2026-03-05T11:30:00Z") },
+  { id: 3, fecha: "2026-03-05", concepto: "Internet", monto: "21000.00", medio_pago_id: null, medio_pago_nombre: null, ...auditoria("2026-03-05T11:35:00Z") },
+  { id: 4, fecha: "2026-03-12", concepto: "Flete de mercadería", monto: "15500.75", medio_pago_id: null, medio_pago_nombre: null, ...auditoria("2026-03-12T16:00:00Z") },
+  { id: 5, fecha: "2026-04-01", concepto: "Alquiler del local", monto: "450000.00", medio_pago_id: null, medio_pago_nombre: null, ...auditoria("2026-04-01T10:00:00Z") },
+  { id: 6, fecha: "2026-04-02", concepto: "Viáticos", monto: "8300.00", medio_pago_id: null, medio_pago_nombre: null, ...auditoria("2026-04-02T09:15:00Z") },
+  { id: 7, fecha: "2026-04-10", concepto: "Reparación de heladera", monto: "12000.00", medio_pago_id: null, medio_pago_nombre: null, ...auditoria("2026-04-10T14:00:00Z") },
+];
 
 const hoy = new Date(2026, 5, 15, 10, 0);
 const valido = { fecha: "05-03-2026", concepto: "Luz", monto: "38250.50" };
@@ -205,27 +215,11 @@ describe("etiquetaPeriodo", () => {
   });
 });
 
-describe("datos simulados", () => {
+describe("datos de ejemplo", () => {
   it("todos los gastos de ejemplo cumplen las reglas del formulario", () => {
     GASTOS_EJEMPLO.forEach((g) => {
       expect(validarGasto({ fecha: g.fecha, concepto: g.concepto, monto: g.monto }, hoy)).toEqual({});
     });
-  });
-
-  it("la lista simulada tiene el formato { items, total, pagina }", () => {
-    const lista = listarGastosSimulado(GASTOS_EJEMPLO);
-    expect(Object.keys(lista).sort()).toEqual(["items", "pagina", "total"]);
-    expect(lista).toMatchObject({ total: 7, pagina: 1 });
-  });
-
-  it("pagina, busca y filtra", () => {
-    expect(listarGastosSimulado(GASTOS_EJEMPLO, { porPagina: 4, pagina: 2 }).items).toHaveLength(3);
-    expect(listarGastosSimulado(GASTOS_EJEMPLO, { q: "luz" }).total).toBe(1);
-    expect(listarGastosSimulado(GASTOS_EJEMPLO, { desde: "2026-04-01" }).total).toBe(3);
-  });
-
-  it("una página inválida se toma como la primera", () => {
-    expect(listarGastosSimulado(GASTOS_EJEMPLO, { pagina: -3 }).pagina).toBe(1);
   });
 });
 
@@ -534,27 +528,11 @@ describe("etiquetaPeriodo: casos límite", () => {
   });
 });
 
-describe("listarGastosSimulado: casos límite", () => {
-  it("una página más allá del final devuelve la lista vacía pero conserva el total", () => {
-    expect(listarGastosSimulado(GASTOS_EJEMPLO, { porPagina: 4, pagina: 5 })).toMatchObject({ items: [], total: 7, pagina: 5 });
-  });
-
-  it("combina búsqueda y rango de fechas", () => {
-    const lista = listarGastosSimulado(GASTOS_EJEMPLO, { q: "alquiler", desde: "2026-04-01" });
-    expect(lista.items.map((g) => g.id)).toEqual([5]);
-    expect(lista.total).toBe(1);
-  });
-
-  it("una página que no es número se toma como la primera", () => {
-    expect(listarGastosSimulado(GASTOS_EJEMPLO, { pagina: "abc" }).pagina).toBe(1);
-  });
-});
-
 // ---------------------------------------------------------------------------
 // Nombres de campo de la base: creado_por / modificado_por (texto) en gastos.
 // ---------------------------------------------------------------------------
 
-describe("datos simulados con los nombres de la base", () => {
+describe("datos de ejemplo con los nombres de la base", () => {
   it("creado_por es el nombre del usuario (texto) y no hay creado_por_nombre ni ids sueltos", () => {
     GASTOS_EJEMPLO.forEach((g) => {
       expect(typeof g.creado_por).toBe("string");
@@ -578,50 +556,6 @@ describe("datos simulados con los nombres de la base", () => {
         expect(g, campo).toHaveProperty(campo);
       }
     });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// «Eliminar» frente a `activo` (como en la base): un gasto eliminado queda inactivo y no se lista ni se suma.
-// ---------------------------------------------------------------------------
-
-describe("gastos: «activo» y los gastos eliminados", () => {
-  const conUnEliminado = GASTOS_EJEMPLO.map((g) => (g.id === 2 ? { ...g, activo: false } : { ...g }));
-
-  it("los gastos de ejemplo parten activos", () => {
-    GASTOS_EJEMPLO.forEach((g) => expect(g.activo).toBe(true));
-  });
-
-  it("la lista simulada no incluye los inactivos, ni en el total ni en las páginas", () => {
-    const lista = listarGastosSimulado(conUnEliminado);
-    expect(lista.total).toBe(6);
-    expect(lista.items.map((g) => g.id)).not.toContain(2);
-    expect(listarGastosSimulado(conUnEliminado, { porPagina: 4, pagina: 2 }).items).toHaveLength(2);
-  });
-
-  it("la búsqueda y el filtro de fechas tampoco los traen", () => {
-    expect(listarGastosSimulado(conUnEliminado, { q: "luz" }).total).toBe(0);
-    expect(listarGastosSimulado(conUnEliminado, { desde: "2026-03-05", hasta: "2026-03-05" }).items.map((g) => g.id)).toEqual([3]);
-  });
-
-  it("un gasto sin el dato «activo» se toma como activo", () => {
-    expect(listarGastosSimulado([{ id: 1, fecha: "2026-03-01", concepto: "Sin dato", monto: "1.00" }]).total).toBe(1);
-  });
-
-  it("el total del período no cuenta lo eliminado", () => {
-    const { items } = listarGastosSimulado(conUnEliminado);
-    expect(resumirGastos(items).total).toBe(resumirGastos(GASTOS_EJEMPLO).total - 38250.5);
-  });
-
-  it("si se eliminan todos, la lista queda vacía", () => {
-    const todosEliminados = GASTOS_EJEMPLO.map((g) => ({ ...g, activo: false }));
-    expect(listarGastosSimulado(todosEliminados)).toMatchObject({ items: [], total: 0 });
-  });
-
-  it("no modifica la lista que recibe", () => {
-    const copia = JSON.stringify(conUnEliminado);
-    listarGastosSimulado(conUnEliminado, { q: "a" });
-    expect(JSON.stringify(conUnEliminado)).toBe(copia);
   });
 });
 

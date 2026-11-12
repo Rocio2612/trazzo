@@ -1,11 +1,12 @@
 const { test, expect } = require("@playwright/test");
-const { jwtFalso, simularApi, iniciarSesionComo } = require("./helpers");
+const { jwtFalso, iniciarSesionComo } = require("./helpers");
+const { simularBackend } = require("./backend-falso");
 
-// Datos simulados (mocks/personalizacion.js): 4 personas (Propietario id 1, Admin id 2, Empleados 3 y 4),
-// 2 categorías (Remeras, Pantalones) y 2 medios de pago (Efectivo por defecto, Transferencia).
+// Backend falso (backend-falso.js): negocio, 4 personas (Propietario id 1, Admin id 2, Empleados 3 y 4) y 2 medios de pago
+// (Efectivo por defecto, Transferencia). Las 2 categorías (Remeras, Pantalones) siguen simuladas en el navegador.
 
 const abrir = async (page, ruta, rol = "PROPIETARIO", extraToken = null) => {
-  await simularApi(page, { "GET /auth/yo": { status: 200, body: {} } });
+  await simularBackend(page, { rol });
   await iniciarSesionComo(page, rol);
   if (extraToken) {
     await page.evaluate((t) => localStorage.setItem("trazzo_access_token", t), jwtFalso(rol, extraToken));
@@ -101,7 +102,7 @@ test.describe("Configuración: Personal", () => {
     await page.getByTestId("personal-nuevo").click();
     await completarUsuario(page, { ...NUEVO, usuario: "cajero1" });
     await page.getByTestId("modal-guardar").click();
-    await expect(page.locator("#error-usuario")).toHaveText("Ese usuario ya existe en este negocio.");
+    await expect(page.locator("#error-usuario")).toHaveText("El nombre de usuario ya está registrado en este negocio.");
   });
 
   test("editar deja la contraseña vacía sin cambiarla", async ({ page }) => {

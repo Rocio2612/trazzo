@@ -1,28 +1,21 @@
 const { test, expect } = require("@playwright/test");
-const { simularApi, iniciarSesionComo } = require("./helpers");
+const { iniciarSesionComo } = require("./helpers");
+const { simularBackend, respuestaDeError } = require("./backend-falso");
 
-// Datos simulados de la pantalla (mocks/gastos.js): 7 gastos, total $ 995.051,25.
+// Backend falso (backend-falso.js): 7 gastos, total $ 995.051,25, y los medios de pago Efectivo (1) y Transferencia (2).
 const TOTAL_INICIAL = /995\.051,25/;
 const MEDIOS = [
   { id: 1, nombre: "Efectivo" },
   { id: 2, nombre: "Transferencia" },
 ];
 
-// `medios`: lo que responde la API de medios de pago. `guardados`: los medios que la pantalla de Configuración
-// dejó guardados en el navegador (se usan mientras no exista la API). Sin ninguno de los dos, hay Efectivo y Transferencia.
-const abrirGastos = async (page, rol = "ADMIN", { medios = null, guardados = null } = {}) => {
-  if (guardados !== null) {
-    await page.addInitScript((lista) => {
-      localStorage.setItem("trazzo_mock_listas", JSON.stringify({ categorias: [], medios_pago: lista }));
-    }, guardados);
-  }
-  await simularApi(page, { "GET /auth/yo": { status: 200, body: {} } });
-  // Se intercepta por ruta (sin importar el host) para no depender de la IP que tenga config.js.
-  await page.route("**/api/medios-pago", (route) =>
-    medios
-      ? route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify(medios) })
-      : route.fulfill({ status: 404, headers: { "access-control-allow-origin": "*" }, body: "{}" }),
-  );
+// `semilla(estado)` cambia los datos de partida del Backend falso y `preparar(backend)` lo hace fallar, demorar o
+// responder otra cosa. `sinMedios` hace que la lista de medios de pago no se pueda cargar.
+let backend;
+const abrirGastos = async (page, rol = "ADMIN", { semilla, preparar, sinMedios = false, ahora = null } = {}) => {
+  backend = await simularBackend(page, { rol, semilla, ahora });
+  if (sinMedios) backend.fallar("GET /medios-pago", respuestaDeError(500, "Error al listar los medios de pago"));
+  preparar?.(backend);
   await iniciarSesionComo(page, rol);
   await page.goto("/gastos.html");
 };
@@ -84,14 +77,14 @@ test.describe("Gastos operativos", () => {
   });
 
   test("sin medios de pago el mensaje va dentro del desplegable", async ({ page }) => {
-    await abrirGastos(page, "ADMIN", { guardados: [] });
+    await abrirGastos(page, "ADMIN", { sinMedios: true });
     await page.getByTestId("gastos-nuevo").click();
     await expect(page.locator("#medio_pago_id")).toBeDisabled();
     await expect(page.locator("#medio_pago_id option")).toHaveText("Sin medios de pago. Creá uno en Configuración > Medios de pago");
   });
 
   test("con medios de pago el select se activa y se guarda el elegido", async ({ page }) => {
-    await abrirGastos(page, "ADMIN", { medios: MEDIOS });
+    await abrirGastos(page);
     await page.getByTestId("gastos-nuevo").click();
     await expect(page.locator("#medio_pago_id")).toBeEnabled();
     await expect(page.locator("#medio_pago_id option")).toHaveText(["Sin especificar", "Efectivo", "Transferencia"]);
@@ -117,7 +110,7 @@ test.describe("Gastos operativos", () => {
 
     await page.goto("/gastos.html");
     await page.getByTestId("gastos-nuevo").click();
-    await expect(page.locator("#medio_pago_id option")).toHaveText(["Sin especificar", "Efectivo", "Transferencia", "Débito"]);
+    await expect(page.locator("#medio_pago_id option")).toHaveText(["Sin especificar", "Efectivo", "Débito", "Transferencia"]);
     await page.locator("#fecha").fill("10-05-2026");
     await page.locator("#concepto").fill("Comisión bancaria");
     await page.locator("#monto").fill("900");
@@ -311,7 +304,7 @@ test.describe("Gastos: alta", () => {
   });
 
   test("el botón Guardar se deshabilita mientras procesa y el doble clic no duplica el gasto", async ({ page }) => {
-    await abrirGastos(page);
+    await abrirGastos(page, "ADMIN", { preparar: (b) => b.demorar("POST /gastos", 600) });
     await page.getByTestId("gastos-nuevo").click();
     await completar(page, { concepto: "Doble clic", monto: "100" });
     await guardar(page).dblclick();
@@ -348,8 +341,8 @@ test.describe("Gastos: alta", () => {
     await abrirGastos(page);
     const peligroso = '<img src=x onerror="window.__xss=1"><b>negrita</b>';
     await crearGasto(page, { concepto: peligroso, monto: "10" });
-    await expect(filas(page).last().locator("td").nth(1)).toHaveText(peligroso);
-    await expect(filas(page).last().locator("b")).toHaveCount(0);
+    await expect(filas(page).filter({ hasText: "negrita" }).locator("td").nth(1)).toHaveText(peligroso);
+    await expect(filas(page).filter({ hasText: "negrita" }).locator("b")).toHaveCount(0);
     expect(await page.evaluate(() => window.__xss)).toBeUndefined();
 
     // y también en el diálogo de eliminar
@@ -431,7 +424,7 @@ test.describe("Gastos: edición", () => {
     await expect(aviso(page)).toHaveText("Gasto actualizado");
     await expect(page.getByTestId("gastos-total")).toHaveText(TOTAL_INICIAL);
     await expect(filas(page)).toHaveCount(7);
-    const fila = filas(page).nth(1);
+    const fila = page.getByTestId("gastos-fila-2");
     await expect(fila.locator("td").nth(0)).toHaveText("05-03-2026");
     await expect(fila.locator("td").nth(1)).toHaveText("Luz");
     await expect(fila.locator("td").nth(2)).toContainText("38.250,50");
@@ -457,7 +450,7 @@ test.describe("Gastos: edición", () => {
     await expect(errorDe(page, "concepto")).toHaveText("Completá el concepto.");
     await expect(errorDe(page, "monto")).toHaveText("El monto debe ser mayor a 0.");
     await page.getByTestId("modal-cancelar").click();
-    await expect(filas(page).nth(1).locator("td").nth(1)).toHaveText("Luz");
+    await expect(page.getByTestId("gastos-fila-2").locator("td").nth(1)).toHaveText("Luz");
     await expect(page.getByTestId("gastos-total")).toHaveText(TOTAL_INICIAL);
   });
 
@@ -499,7 +492,7 @@ test.describe("Gastos: edición", () => {
   });
 
   test("el medio de pago llega preseleccionado y se puede quitar", async ({ page }) => {
-    await abrirGastos(page, "ADMIN", { medios: MEDIOS });
+    await abrirGastos(page);
     await page.getByTestId("gastos-nuevo").click();
     await completar(page, { concepto: "Con medio", monto: "100" });
     await page.locator("#medio_pago_id").selectOption("1");
@@ -632,7 +625,7 @@ test.describe("Gastos: búsqueda y períodos", () => {
   });
 
   test("también busca por medio de pago", async ({ page }) => {
-    await abrirGastos(page, "ADMIN", { medios: MEDIOS });
+    await abrirGastos(page);
     await page.getByTestId("gastos-nuevo").click();
     await completar(page, { concepto: "Pago a proveedor", monto: "100" });
     await page.locator("#medio_pago_id").selectOption("2");
@@ -732,7 +725,7 @@ test.describe("Gastos: búsqueda y períodos", () => {
       "Creado por",
       "Acciones",
     ]);
-    const primera = filas(page).first();
+    const primera = page.getByTestId("gastos-fila-1");
     await expect(primera.locator("td").nth(0)).toHaveText("01-03-2026");
     await expect(primera.locator("td").nth(2)).toContainText("450.000,00");
     await expect(primera.locator("td").nth(4)).toHaveText("admin1");
@@ -806,7 +799,7 @@ test.describe("Gastos: acceso y teclado", () => {
   });
 
   test("Enter repetido no duplica el gasto", async ({ page }) => {
-    await abrirGastos(page);
+    await abrirGastos(page, "ADMIN", { preparar: (b) => b.demorar("POST /gastos", 600) });
     await page.getByTestId("gastos-nuevo").click();
     await completar(page, { concepto: "Enter doble", monto: "10" });
     await page.locator("#monto").press("Enter");
@@ -938,7 +931,7 @@ test.describe("Gastos: fecha futura", () => {
     await guardar(page).click();
     await expect(errorDe(page, "fecha")).toHaveText("La fecha no puede ser futura.");
     await page.getByTestId("modal-cancelar").click();
-    await expect(filas(page).nth(1).locator("td").nth(0)).toHaveText("05-03-2026");
+    await expect(page.getByTestId("gastos-fila-2").locator("td").nth(0)).toHaveText("05-03-2026");
     await expect(page.getByTestId("gastos-total")).toHaveText(TOTAL_INICIAL);
   });
 
@@ -949,7 +942,7 @@ test.describe("Gastos: fecha futura", () => {
     await completar(page, { fecha: "10-04-2026" });
     await guardar(page).click();
     await expect(aviso(page)).toHaveText("Gasto actualizado");
-    await expect(filas(page).nth(1).locator("td").nth(0)).toHaveText("10-04-2026");
+    await expect(page.getByTestId("gastos-fila-2").locator("td").nth(0)).toHaveText("10-04-2026");
   });
 
   test("los gastos de ejemplo, todos anteriores a hoy, se pueden editar sin tocar la fecha", async ({ page }) => {
@@ -975,32 +968,17 @@ test.describe("Gastos: fecha futura", () => {
 
 // ---------------------------------------------------------------------------
 // Nombres y tipos de la base: el medio de pago viaja como número entero (INT) y "Creado por" sale de creado_por.
-// Para ver lo que la pantalla envía al guardar se entrega al navegador una copia de gastos-pantalla.js con un
-// registro de lo enviado; el archivo real no se toca. Si ese archivo cambia y el reemplazo no encaja, el test avisa.
+// Lo que la pantalla envía al guardar se lee de lo que recibió el Backend falso.
 // ---------------------------------------------------------------------------
 
-const PANTALLA = "**/js/gastos-pantalla.js";
-const registrarEnvios = async (page) => {
-  await page.route(PANTALLA, async (route) => {
-    const original = await route.fetch();
-    let cuerpo = await original.text();
-    const reemplazos = [
-      ["  crear: (datos) => {", "  crear: (datos) => { (window.__crear ||= []).push(structuredClone(datos));"],
-      ["else servicio.actualizar(gasto, datos);", "else { (window.__actualizar ||= []).push(structuredClone(datos)); servicio.actualizar(gasto, datos); }"],
-    ];
-    for (const [desde, hasta] of reemplazos) {
-      if (!cuerpo.includes(desde)) throw new Error(`gastos-pantalla.js cambió: no se encontró «${desde}»`);
-      cuerpo = cuerpo.replace(desde, hasta);
-    }
-    await route.fulfill({ body: cuerpo, contentType: "application/javascript" });
-  });
-};
-const enviados = (page, clave) => page.evaluate((c) => window[c] || [], clave);
+// Lo que la pantalla envía al guardar lo registra el Backend falso.
+const registrarEnvios = async () => {};
+const enviados = async (_page, clave) => backend.enviados(clave === "__crear" ? "POST" : "PUT", clave === "__crear" ? "/gastos" : "/gastos/:id");
 
 test.describe("Gastos: lo que se envía y lo que se muestra, con los nombres de la base", () => {
   test("el medio de pago elegido viaja como número entero, no como texto", async ({ page }) => {
     await registrarEnvios(page);
-    await abrirGastos(page, "ADMIN", { medios: MEDIOS });
+    await abrirGastos(page);
     await page.getByTestId("gastos-nuevo").click();
     await completar(page, { concepto: "Con medio", monto: "100" });
     await page.locator("#medio_pago_id").selectOption("2");
@@ -1013,14 +991,14 @@ test.describe("Gastos: lo que se envía y lo que se muestra, con los nombres de 
 
   test("sin medio de pago viaja null", async ({ page }) => {
     await registrarEnvios(page);
-    await abrirGastos(page, "ADMIN", { medios: MEDIOS });
+    await abrirGastos(page);
     await crearGasto(page, { concepto: "Sin medio", monto: "100" });
     expect((await enviados(page, "__crear"))[0].medio_pago_id).toBeNull();
   });
 
   test("al editar, el medio de pago también viaja como número, y quitarlo manda null", async ({ page }) => {
     await registrarEnvios(page);
-    await abrirGastos(page, "ADMIN", { medios: MEDIOS });
+    await abrirGastos(page);
     await page.getByTestId("gastos-editar-2").click();
     await page.locator("#medio_pago_id").selectOption("1");
     await guardar(page).click();
@@ -1046,7 +1024,7 @@ test.describe("Gastos: lo que se envía y lo que se muestra, con los nombres de 
     await abrirGastos(page);
     await expect(filas(page).first().locator("td").nth(4)).toHaveText("admin1");
     await crearGasto(page, { concepto: "Nuevo", monto: "10" });
-    await expect(filas(page).last().locator("td").nth(4)).toHaveText("usuario1");
+    await expect(filas(page).filter({ hasText: "Nuevo" }).locator("td").nth(4)).toHaveText("usuario1");
   });
 
   test("al editar un gasto, «Creado por» no cambia", async ({ page }) => {
@@ -1133,7 +1111,7 @@ test.describe("Gastos: el concepto no tiene largo máximo", () => {
     const largo = "Pago de alquiler y expensas del local comercial, incluye el ajuste trimestral. ".repeat(6).trim();
     expect(largo.length).toBeGreaterThan(400);
     await crearGasto(page, { concepto: largo, monto: "100" });
-    await expect(filas(page).last().locator("td").nth(1)).toHaveText(largo);
+    await expect(filas(page).filter({ hasText: "ajuste trimestral" }).locator("td").nth(1)).toHaveText(largo);
     await expect(aviso(page)).toHaveText("Gasto registrado");
   });
 
@@ -1154,7 +1132,7 @@ test.describe("Gastos: el concepto no tiene largo máximo", () => {
     await expect(page.locator("#concepto")).toHaveValue(largo);
     await completar(page, { concepto: `${largo}!` });
     await guardar(page).click();
-    await expect(filas(page).last().locator("td").nth(1)).toHaveText(`${largo}!`);
+    await expect(filas(page).filter({ hasText: "yyyyyyyyyy" }).locator("td").nth(1)).toHaveText(`${largo}!`);
   });
 
   test("el concepto sigue siendo obligatorio", async ({ page }) => {
@@ -1205,23 +1183,23 @@ test.describe("Gastos: quién y cuándo creó y modificó cada gasto", () => {
 
   test("«Creado por» muestra el nombre y, al pasar el mouse, el día y la hora", async ({ page }) => {
     await abrirGastos(page);
-    const celdaCreador = filas(page).nth(1).locator("td").nth(4);
+    const celdaCreador = page.getByTestId("gastos-fila-2").locator("td").nth(4);
     await expect(celdaCreador).toHaveText("admin1");
     await expect(celdaCreador.locator("span")).toHaveAttribute("title", "Creado por admin1 el 05-03-2026 08:30");
   });
 
   test("un gasto recién creado dice que lo creó el usuario de la sesión, con la hora actual", async ({ page }) => {
     await page.clock.setFixedTime(AHORA);
-    await abrirGastos(page);
+    await abrirGastos(page, "ADMIN", { ahora: AHORA });
     await crearGasto(page, { fecha: "10-04-2026", concepto: "Nuevo", monto: "10" });
-    await expect(filas(page).last().locator("td").nth(4).locator("span")).toHaveAttribute("title", "Creado por usuario1 el 10-04-2026 12:00");
+    await expect(filas(page).filter({ hasText: "Nuevo" }).locator("td").nth(4).locator("span")).toHaveAttribute("title", "Creado por usuario1 el 10-04-2026 12:00");
     await page.getByTestId("gastos-editar-8").click();
     await expect(auditoria(page)).toHaveText("Creado por usuario1 el 10-04-2026 12:00");
   });
 
   test("después de editar, se agrega quién y cuándo lo modificó, y lo de la creación no cambia", async ({ page }) => {
     await page.clock.setFixedTime(AHORA);
-    await abrirGastos(page);
+    await abrirGastos(page, "ADMIN", { ahora: AHORA });
     await page.getByTestId("gastos-editar-2").click();
     await completar(page, { concepto: "Luz editada" });
     await guardar(page).click();
