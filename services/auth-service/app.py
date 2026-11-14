@@ -46,8 +46,8 @@ CORS(
     # Permite que las peticiones incluyan credenciales y cabeceras de autorización (JWT / Cookies)
     supports_credentials=True,
     
-    # Métodos HTTP permitidos para interactuar con los endpoints
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    # Métodos HTTP permitidos para interactuar con los endpoints (incluye PATCH para habilitar/deshabilitar)
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     
     # Cabeceras HTTP que el navegador tiene permiso de enviar sin que sean bloqueadas
     allow_headers=["Content-Type", "Authorization"]
@@ -55,6 +55,18 @@ CORS(
 
 # Carga estrictamente desde .env (sin secretos hardcodeados)
 SECRET_KEY = os.getenv("JWT_SECRET")
+
+def formatear_utc_z(dt):
+    """
+    Convierte un objeto datetime de PostgreSQL a formato estándar ISO 8601 UTC terminado en 'Z'
+    (ej. '2026-11-10T18:00:57Z'). De este modo, el Frontend convierte la marca temporal
+    automáticamente a la hora local del usuario sin desfases horarios.
+    """
+    if not dt:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(datetime.timezone.utc)
+    return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
 
 def get_db_connection():
     """
@@ -595,106 +607,6 @@ def restablecer_password():
         cur.close()
         conn.close()
 
-#ACTUALIZAR DATOS DEL NEGOCIO (PUT /api/negocio)
-@app.route('/api/auth/negocio', methods=['PUT'])
-def actualizar_negocio():
-    """
-    Permite al PROPIETARIO o ADMIN actualizar el nombre comercial, rubro de su negocio o/y categoria impositiva del negocio.
-    Aplica Control de Acceso por Roles (RBAC) rechazando a roles no autorizados (CAJERO) con 403.
-    Garantiza aislamiento multi-tenant extrayendo el negocio_id estrictamente del JWT.
-    """
-    # 1. Verificación de la cabecera de autorización
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({"status": "error", "mensaje": "Token no proporcionado"}), 401
-
-    token = auth_header.split(" ")[1]
-
-    try:
-        # 2. Decodificación y validación criptográfica del token
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        jti = payload.get("jti")
-
-        # 3. Comprobación de seguridad en la lista negra
-        if jti and token_esta_bloqueado(jti):
-            return jsonify({"status": "error", "mensaje": "Sesión invalidada. Inicie sesión nuevamente"}), 401
-
-        # 4. Control de Acceso basado en Roles (RBAC)
-        rol = payload.get("rol")
-        if rol not in ['PROPIETARIO', 'ADMIN']:
-            return jsonify({
-                "status": "error", 
-                "mensaje": "Acceso denegado: solo usuarios con rol PROPIETARIO o ADMIN pueden modificar el negocio"
-            }), 403
-
-        # 5. Extracción segura del tenant (negocio) desde el token
-        negocio_id = payload.get("negocio_id")
-        if not negocio_id:
-            return jsonify({"status": "error", "mensaje": "Token carece de identificación de negocio"}), 400
-
-        # 6. Lectura y validación de datos a actualizar
-        datos = request.get_json(silent=True) or {}
-        nombre_comercial = datos.get('nombre_comercial') or datos.get('nombre')
-        rubro = datos.get('rubro')
-        categoria_impositiva = datos.get('categoria_impositiva')
-
-        # Validación de al menos un campo presente
-        if not nombre_comercial and not rubro and not categoria_impositiva:
-            return jsonify({
-                "status": "error", 
-                "mensaje": "Debe proporcionar al menos un campo para actualizar (nombre_comercial, rubro o categoria_impositiva)"
-            }), 400
-
-        if categoria_impositiva:
-            categoria_impositiva = categoria_impositiva.strip().upper()
-            if categoria_impositiva not in ['RESPONSABLE_INSCRIPTO', 'MONOTRIBUTISTA', 'EXENTO']:
-                return jsonify({
-                    "status": "error",
-                    "mensaje": "Categoría impositiva inválida. Debe ser RESPONSABLE_INSCRIPTO, MONOTRIBUTISTA o EXENTO"
-                }), 400
-
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        try:
-            # 7. Actualización dinámica en PostgreSQL preservando datos existentes si alguno viene nulo
-            cur.execute(
-                """UPDATE emprendimientos 
-                   SET nombre_comercial = COALESCE(%s, nombre_comercial),
-                       rubro = COALESCE(%s, rubro),
-                       categoria_impositiva = COALESCE(%s, categoria_impositiva)
-                   WHERE id = %s
-                   RETURNING id, identificador, nombre_comercial, rubro, categoria_impositiva""",
-                (nombre_comercial, rubro, categoria_impositiva, negocio_id)
-            )
-            negocio_actualizado = cur.fetchone()
-
-            if not negocio_actualizado:
-                return jsonify({"status": "error", "mensaje": "Negocio no encontrado"}), 404
-
-            conn.commit()
-
-            return jsonify({
-                "status": "ok",
-                "mensaje": "Datos del negocio actualizados correctamente",
-                "negocio": {
-                    "identificador": negocio_actualizado['identificador'],
-                    "nombre_comercial": negocio_actualizado['nombre_comercial'],
-                    "rubro": negocio_actualizado['rubro'],
-                    "categoria_impositiva": negocio_actualizado['categoria_impositiva']
-                }
-            }), 200
-
-        finally:
-            cur.close()
-            conn.close()
-
-    except jwt.ExpiredSignatureError:
-        return jsonify({"status": "error", "mensaje": "El token ha expirado"}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({"status": "error", "mensaje": "Token inválido"}), 401
-    except Exception as e:
-        return jsonify({"status": "error", "mensaje": f"Error al actualizar datos del negocio: {str(e)}"}), 500
 
 #--------------------------------------------------------------------------------------- ALDI.
 # MÓDULO DE PERSONALIZACIÓN
@@ -760,6 +672,7 @@ def verificar_sesion_y_rol(roles_autorizados=None):
     except jwt.InvalidTokenError:
         return None, jsonify({"status": "error", "mensaje": "Token de seguridad inválido"}), 401
 
+
 # Consulta de perfil del negocio (GET /api/auth/negocio)
 @app.route('/api/auth/negocio', methods=['GET'])
 def obtener_datos_negocio():
@@ -798,9 +711,89 @@ def obtener_datos_negocio():
                 "nombre_comercial": negocio['nombre_comercial'],
                 "rubro": negocio['rubro'],
                 "categoria_impositiva": negocio['categoria_impositiva'],
-                "fecha_registro": negocio['fecha_registro'].isoformat() if negocio['fecha_registro'] else None
+                # Devuelve fecha_registro en formato ISO 8601 UTC terminado en 'Z'
+                "fecha_registro": formatear_utc_z(negocio['fecha_registro'])
             }
         }), 200
+    finally:
+        cur.close()
+        conn.close()
+
+
+# Actualizar datos del negocio (PUT /api/auth/negocio)
+@app.route('/api/auth/negocio', methods=['PUT'])
+def actualizar_negocio():
+    """
+    Permite al PROPIETARIO o ADMIN actualizar nombre comercial, rubro y categoría impositiva.
+    - Valida cada campo por separado devolviendo el diccionario 'errores' por campo.
+    - Si 'rubro' viene como texto vacío (""), lo guarda como NULL en BD para borrar el anterior.
+    - Retorna el objeto 'negocio' completo incluyendo 'fecha_registro' con 'Z'.
+    """
+    payload, error_resp, status = verificar_sesion_y_rol(roles_autorizados=['PROPIETARIO', 'ADMIN'])
+    if error_resp:
+        return error_resp, status
+
+    negocio_id = payload.get("negocio_id")
+    datos = request.get_json(silent=True) or {}
+
+    nombre_comercial = (datos.get('nombre_comercial') or datos.get('nombre') or '').strip()
+    categoria = (datos.get('categoria_impositiva') or '').strip().upper()
+
+    # Manejo explícito de rubro opcional: si la pantalla manda "" (vacío), lo limpiamos a None (NULL en SQL)
+    rubro_raw = datos.get('rubro')
+    rubro = rubro_raw.strip() if isinstance(rubro_raw, str) else None
+    if rubro == "":
+        rubro = None
+
+    # Validaciones separadas por campo para resaltar los inputs exactos en el Frontend
+    errores = {}
+    if not nombre_comercial:
+        errores['nombre_comercial'] = "Rellene el nombre o razón social."
+    elif len(nombre_comercial) > 100:
+        errores['nombre_comercial'] = "El nombre comercial no puede superar los 100 caracteres."
+
+    if rubro and len(rubro) > 50:
+        errores['rubro'] = "El rubro no puede superar los 50 caracteres."
+
+    if categoria not in ['RESPONSABLE_INSCRIPTO', 'MONOTRIBUTISTA', 'EXENTO']:
+        errores['categoria_impositiva'] = "Elija la categoría impositiva."
+
+    if errores:
+        return jsonify({
+            "status": "error",
+            "mensaje": "Error de validación en los datos enviados",
+            "errores": errores
+        }), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Actualiza directamente los 3 campos y devuelve el registro completo con fecha_registro
+        cur.execute(
+            """UPDATE auth.emprendimientos 
+               SET nombre_comercial = %s,
+                   rubro = %s,
+                   categoria_impositiva = %s
+               WHERE id = %s
+               RETURNING identificador, nombre_comercial, rubro, categoria_impositiva, fecha_registro""",
+            (nombre_comercial, rubro, categoria, negocio_id)
+        )
+        negocio_actualizado = cur.fetchone()
+
+        if not negocio_actualizado:
+            return jsonify({"status": "error", "mensaje": "Negocio no encontrado"}), 404
+
+        conn.commit()
+        negocio_actualizado['fecha_registro'] = formatear_utc_z(negocio_actualizado['fecha_registro'])
+
+        return jsonify({
+            "status": "ok",
+            "mensaje": "Datos del negocio actualizados correctamente",
+            "negocio": negocio_actualizado
+        }), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"status": "error", "mensaje": f"Error al actualizar datos del negocio: {str(e)}"}), 500
     finally:
         cur.close()
         conn.close()
@@ -849,13 +842,15 @@ def listar_personal():
                 "dni": u['dni'],
                 "rol": u['rol'],
                 "activo": u['activo'],
-                "fecha_creacion": u['fecha_creacion'].isoformat() if u['fecha_creacion'] else None
+                # Serializado en UTC terminado en 'Z'
+                "fecha_creacion": formatear_utc_z(u['fecha_creacion'])
             })
 
         return jsonify({"status": "ok", "personal": resultado}), 200
     finally:
         cur.close()
         conn.close()
+
 
 # Alta de personal (POST /api/auth/personal)
 @app.route('/api/auth/personal', methods=['POST'])
@@ -864,8 +859,9 @@ def crear_personal():
     Registra un nuevo miembro del equipo (Cajero o Administrador).
     Aplica las reglas acordadas:
     - Validación de contraseña segura (8-64 caracteres, mayús, minús, núm, símbolo).
-    - Unicidad de 'usuario' y 'correo' dentro del mismo negocio.
+    - Unicidad de 'usuario' y 'correo' discriminando el campo duplicado en 'errores'.
     - Prohíbe crear usuarios con rol PROPIETARIO (solo hay uno por negocio).
+    - Retorna el objeto 'usuario' completo incluyendo 'correo', 'dni' y 'fecha_creacion' con 'Z'.
     """
     payload, error_resp, status = verificar_sesion_y_rol(roles_autorizados=['PROPIETARIO', 'ADMIN'])
     if error_resp:
@@ -882,40 +878,69 @@ def crear_personal():
     dni = (str(datos.get('dni') or '')).strip() or None
     rol = (datos.get('rol') or 'CAJERO').strip().upper()
 
-    # Controles de negocio e integridad:
-    # Validaciones obligatorias
-    if not usuario or not correo or not password or not nombre or not apellido:
-        return jsonify({"status": "error", "mensaje": "Todos los campos obligatorios deben estar completos"}), 400
+    # Controles de negocio e integridad agrupados por campo en el diccionario 'errores':
+    errores = {}
+
+    if not nombre:
+        errores['nombre'] = "El nombre es obligatorio."
+    if not apellido:
+        errores['apellido'] = "El apellido es obligatorio."
+
+    # Formato de usuario: minúsculas y números, 4 a 20 caracteres
+    if not usuario:
+        errores['usuario'] = "El nombre de usuario es obligatorio."
+    elif not re.match(r'^[a-z0-9]{4,20}$', usuario):
+        errores['usuario'] = "El usuario debe tener entre 4 y 20 caracteres (solo letras minúsculas y números)."
+
+    # Correo electrónico válido
+    if not correo or '@' not in correo:
+        errores['correo'] = "Ingrese un correo electrónico válido."
 
     # No se puede crear otro PROPIETARIO
     if rol not in ['ADMIN', 'CAJERO']:
-        return jsonify({"status": "error", "mensaje": "Rol inválido. Solo se pueden crear Administradores o Empleados"}), 400
-
-    # Formato de usuario: minúsculas y números, 4 a 20 caracteres
-    if not re.match(r'^[a-z0-9]{4,20}$', usuario):
-        return jsonify({"status": "error", "mensaje": "El usuario debe tener entre 4 y 20 caracteres (solo letras minúsculas y números)"}), 400
+        errores['rol'] = "Rol inválido. Solo se pueden crear Administradores o Empleados."
 
     # Validación de contraseña fuerte según especificación OWASP
-    if len(password) < 8 or len(password) > 64:
-        return jsonify({"status": "error", "mensaje": "La contraseña debe tener entre 8 y 64 caracteres"}), 400
-    if not re.search(r'[A-Z]', password) or not re.search(r'[a-z]', password) or not re.search(r'\d', password) or not re.search(r'[^A-Za-z0-9\s]', password):
-        return jsonify({"status": "error", "mensaje": "La contraseña debe incluir al menos una mayúscula, una minúscula, un número y un símbolo especial"}), 400
+    if not password:
+        errores['password'] = "La contraseña es obligatoria."
+    elif len(password) < 8 or len(password) > 64:
+        errores['password'] = "La contraseña debe tener entre 8 y 64 caracteres."
+    elif not re.search(r'[A-Z]', password) or not re.search(r'[a-z]', password) or not re.search(r'\d', password) or not re.search(r'[^A-Za-z0-9\s]', password):
+        errores['password'] = "La contraseña debe incluir al menos una mayúscula, una minúscula, un número y un símbolo especial."
 
     # Validación de DNI (opcional pero si viene debe ser de 7 u 8 dígitos)
     if dni and not re.match(r'^\d{7,8}$', dni):
-        return jsonify({"status": "error", "mensaje": "El DNI debe tener 7 u 8 números sin puntos"}), 400
+        errores['dni'] = "El DNI debe tener 7 u 8 números sin puntos."
+
+    if errores:
+        return jsonify({
+            "status": "error",
+            "mensaje": "Error de validación en los datos enviados",
+            "errores": errores
+        }), 400
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
-        # Verificar duplicados dentro del mismo comercio
+        # Verificar duplicados dentro del mismo comercio discriminando si es usuario o correo
         cur.execute(
-            "SELECT id FROM auth.usuarios WHERE emprendimiento_id = %s AND (usuario = %s OR lower(correo) = %s)",
+            """SELECT usuario, correo FROM auth.usuarios 
+               WHERE emprendimiento_id = %s AND (lower(usuario) = %s OR lower(correo) = %s)""",
             (negocio_id, usuario, correo)
         )
-        if cur.fetchone():
-            return jsonify({"status": "error", "mensaje": "El nombre de usuario o correo ya está en uso en este negocio"}), 409
+        duplicado = cur.fetchone()
+        if duplicado:
+            err_dup = {}
+            if duplicado['usuario'].lower() == usuario:
+                err_dup['usuario'] = "El nombre de usuario ya está registrado en este negocio."
+            if duplicado['correo'].lower() == correo:
+                err_dup['correo'] = "El correo ya está registrado en este negocio."
+            return jsonify({
+                "status": "error",
+                "mensaje": "Datos duplicados en el negocio",
+                "errores": err_dup
+            }), 409
 
         # Guarda la versión cifrada irreversible de la clave. La base de datos nunca almacena contraseñas en texto plano.
         password_hash = generate_password_hash(password)
@@ -924,7 +949,7 @@ def crear_personal():
             """INSERT INTO auth.usuarios 
                (emprendimiento_id, usuario, correo, password_hash, nombre, apellido, dni, rol, activo)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
-               RETURNING id, usuario, correo, nombre, apellido, rol, activo, fecha_creacion""",
+               RETURNING id, usuario, correo, nombre, apellido, dni, rol, activo, fecha_creacion""",
             (negocio_id, usuario, correo, password_hash, nombre, apellido, dni, rol)
         )
         nuevo_usuario = cur.fetchone()
@@ -936,11 +961,13 @@ def crear_personal():
             "usuario": {
                 "id": nuevo_usuario['id'],
                 "usuario": nuevo_usuario['usuario'],
+                "correo": nuevo_usuario['correo'],
                 "nombre": nuevo_usuario['nombre'],
                 "apellido": nuevo_usuario['apellido'],
+                "dni": nuevo_usuario['dni'],
                 "rol": nuevo_usuario['rol'],
                 "activo": nuevo_usuario['activo'],
-                "fecha_creacion": nuevo_usuario['fecha_creacion'].isoformat()
+                "fecha_creacion": formatear_utc_z(nuevo_usuario['fecha_creacion'])
             }
         }), 201
 
@@ -952,14 +979,17 @@ def crear_personal():
         cur.close()
         conn.close()
 
+
 # Edición de personal (PUT /api/auth/personal/<id>)
 @app.route('/api/auth/personal/<int:usuario_id>', methods=['PUT'])
 def actualizar_personal(usuario_id):
     """
     Actualiza datos de un usuario existente.
     - Propietario edita a todos; Admin solo edita Cajeros o a sí mismo.
-    - El rol del Propietario no se puede modificar.
-    - La contraseña es opcional: si viene vacía, no se altera.
+    - El campo 'usuario' se ignora si viene (no es editable).
+    - El rol del Propietario no se puede modificar (pero si envían 'PROPIETARIO', se acepta).
+    - La contraseña es opcional: si no viene o viene vacía, se conserva la anterior.
+    - Verifica que el correo no pertenezca a otro usuario del negocio (409 con errores.correo).
     """
     payload, error_resp, status = verificar_sesion_y_rol(roles_autorizados=['PROPIETARIO', 'ADMIN'])
     if error_resp:
@@ -984,34 +1014,75 @@ def actualizar_personal(usuario_id):
         if actor_rol == 'ADMIN' and objetivo['rol'] in ['PROPIETARIO', 'ADMIN'] and actor_id != usuario_id:
             return jsonify({"status": "error", "mensaje": "Solo el Propietario puede editar a otros administradores"}), 403
 
-        nombre = (datos.get('nombre') or objetivo['nombre']).strip()
-        apellido = (datos.get('apellido') or objetivo['apellido']).strip()
-        correo = (datos.get('correo') or objetivo['correo']).strip().lower()
-        dni = (str(datos.get('dni') or '')).strip() or None
-        nuevo_rol = datos.get('rol') or objetivo['rol']
+        nombre = (datos.get('nombre') if 'nombre' in datos and datos.get('nombre') is not None else objetivo['nombre'] or '').strip()
+        apellido = (datos.get('apellido') if 'apellido' in datos and datos.get('apellido') is not None else objetivo['apellido'] or '').strip()
+        correo = (datos.get('correo') if 'correo' in datos and datos.get('correo') is not None else objetivo['correo'] or '').strip().lower()
+        dni = (str(datos.get('dni') or '').strip() or None) if 'dni' in datos else objetivo['dni']
+        nuevo_rol = (datos.get('rol') or objetivo['rol']).strip().upper()
         nueva_password = datos.get('password')
 
-        # El rol del Propietario está blindado
-        if objetivo['rol'] == 'PROPIETARIO' and nuevo_rol != 'PROPIETARIO':
-            return jsonify({"status": "error", "mensaje": "No se puede cambiar el rol del Propietario"}), 400
+        errores = {}
+        if not nombre:
+            errores['nombre'] = "El nombre es obligatorio."
+        if not apellido:
+            errores['apellido'] = "El apellido es obligatorio."
+        if not correo or '@' not in correo:
+            errores['correo'] = "Ingrese un correo electrónico válido."
+        if dni and not re.match(r'^\d{7,8}$', dni):
+            errores['dni'] = "El DNI debe tener 7 u 8 números sin puntos."
 
-        # Si se envía nueva contraseña, se valida.
+        # El rol del Propietario está blindado (acepta 'PROPIETARIO' si lo mandan sin cambiarlo)
+        if objetivo['rol'] == 'PROPIETARIO':
+            if nuevo_rol != 'PROPIETARIO':
+                errores['rol'] = "No se puede cambiar el rol del Propietario."
+        elif nuevo_rol not in ['ADMIN', 'CAJERO']:
+            errores['rol'] = "Rol inválido. Debe ser ADMIN o CAJERO."
+
+        # Si se envía nueva contraseña no vacía, se valida con OWASP y se actualiza; si no viene, conserva la anterior.
         password_hash = objetivo['password_hash']
-        if nueva_password and nueva_password.strip():
+        if nueva_password is not None and str(nueva_password).strip() != "":
             if len(nueva_password) < 8 or len(nueva_password) > 64:
-                return jsonify({"status": "error", "mensaje": "La nueva contraseña debe tener entre 8 y 64 caracteres"}), 400
-            password_hash = generate_password_hash(nueva_password)
+                errores['password'] = "La contraseña debe tener entre 8 y 64 caracteres."
+            elif not re.search(r'[A-Z]', nueva_password) or not re.search(r'[a-z]', nueva_password) or not re.search(r'\d', nueva_password) or not re.search(r'[^A-Za-z0-9\s]', nueva_password):
+                errores['password'] = "La contraseña debe incluir al menos una mayúscula, una minúscula, un número y un símbolo especial."
+            else:
+                password_hash = generate_password_hash(nueva_password)
+
+        if errores:
+            return jsonify({
+                "status": "error",
+                "mensaje": "Error de validación en los datos enviados",
+                "errores": errores
+            }), 400
+
+        # Verificar que el correo no esté ocupado por otro empleado del negocio
+        cur.execute(
+            "SELECT id FROM auth.usuarios WHERE emprendimiento_id = %s AND lower(correo) = %s AND id != %s",
+            (negocio_id, correo, usuario_id)
+        )
+        if cur.fetchone():
+            return jsonify({
+                "status": "error",
+                "mensaje": "Correo duplicado",
+                "errores": {"correo": "Este correo ya está en uso por otro empleado."}
+            }), 409
 
         cur.execute(
             """UPDATE auth.usuarios 
                SET nombre = %s, apellido = %s, correo = %s, dni = %s, rol = %s, password_hash = %s
                WHERE id = %s AND emprendimiento_id = %s
-               RETURNING id, usuario, correo, nombre, apellido, rol, activo""",
+               RETURNING id, usuario, correo, nombre, apellido, dni, rol, activo, fecha_creacion""",
             (nombre, apellido, correo, dni, nuevo_rol, password_hash, usuario_id, negocio_id)
         )
+        actualizado = cur.fetchone()
         conn.commit()
+        actualizado['fecha_creacion'] = formatear_utc_z(actualizado['fecha_creacion'])
 
-        return jsonify({"status": "ok", "mensaje": "Usuario actualizado correctamente"}), 200
+        return jsonify({
+            "status": "ok",
+            "mensaje": "Usuario actualizado correctamente",
+            "usuario": actualizado
+        }), 200
 
     except Exception as e:
         conn.rollback()
@@ -1034,6 +1105,8 @@ def habilitar_usuario(usuario_id):
 
     try:
         cur.execute("UPDATE auth.usuarios SET activo = TRUE WHERE id = %s AND emprendimiento_id = %s", (usuario_id, negocio_id))
+        if cur.rowcount == 0:
+            return jsonify({"status": "error", "mensaje": "Usuario no encontrado"}), 404
         conn.commit()
         return jsonify({"status": "ok", "mensaje": "Usuario habilitado correctamente"}), 200
     finally:
@@ -1114,6 +1187,7 @@ def deshabilitar_usuario(usuario_id):
         cur.close()
         conn.close()
 
+
 # Eliminación de personal (DELETE /api/auth/personal/<id>)
 @app.route('/api/auth/personal/<int:usuario_id>', methods=['DELETE'])
 def eliminar_usuario(usuario_id):
@@ -1148,7 +1222,8 @@ def eliminar_usuario(usuario_id):
         if actor_rol == 'ADMIN' and objetivo['rol'] == 'ADMIN':
             return jsonify({"status": "error", "mensaje": "Solo el Propietario puede eliminar a otros administradores"}), 403
 
-        # Si era administrador activo, comprobar que no sea el último
+        # Solo verifica el cupo mínimo si el administrador que se intenta borrar está ACTIVO (activo = TRUE).
+        # Si ya estaba deshabilitado (activo = FALSE), no forma parte de los administradores activos y se permite eliminarlo.
         if objetivo['rol'] in ['PROPIETARIO', 'ADMIN'] and objetivo['activo']:
             cur.execute(
                 """SELECT COUNT(*) AS total 
