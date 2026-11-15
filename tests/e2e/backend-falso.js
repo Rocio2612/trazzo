@@ -94,14 +94,16 @@ async function simularBackend(page, { rol = "PROPIETARIO", semilla = null, ahora
     if (body.categoria_impositiva && !["RESPONSABLE_INSCRIPTO", "MONOTRIBUTISTA", "EXENTO"].includes(String(body.categoria_impositiva).trim().toUpperCase())) {
       errores.categoria_impositiva = "Elija la categoría impositiva.";
     }
+    if (typeof body.rubro === "string" && body.rubro.trim().length > 50) errores.rubro = "El rubro no puede superar los 50 caracteres.";
+    if (!body.categoria_impositiva) errores.categoria_impositiva = "Elija la categoría impositiva.";
     if (Object.keys(errores).length) return error(400, "Error de validación en los datos enviados", errores);
-    // Igual que el Backend real: lo que no viene (o viene null) conserva el valor anterior; un rubro vacío ("") lo vacía.
+    // Igual que el Backend real: se guardan los tres campos; un rubro vacío ("") o null lo vacía (queda NULL).
     const n = estado.negocio;
-    if (body.nombre_comercial) n.nombre_comercial = String(body.nombre_comercial).trim();
-    if (body.rubro !== undefined && body.rubro !== null) n.rubro = body.rubro;
-    if (body.categoria_impositiva) n.categoria_impositiva = String(body.categoria_impositiva).trim().toUpperCase();
+    n.nombre_comercial = String(body.nombre_comercial).trim();
+    n.rubro = typeof body.rubro === "string" && body.rubro.trim() ? body.rubro.trim() : null;
+    n.categoria_impositiva = String(body.categoria_impositiva).trim().toUpperCase();
     const { identificador, nombre_comercial, rubro, categoria_impositiva } = n;
-    return [200, { status: "ok", mensaje: "Datos del negocio actualizados", negocio: { identificador, nombre_comercial, rubro, categoria_impositiva } }];
+    return [200, { status: "ok", mensaje: "Datos del negocio actualizados correctamente", negocio: { identificador, nombre_comercial, rubro, categoria_impositiva, fecha_registro: n.fecha_registro } }];
   };
 
   // ---------- Personal ----------
@@ -174,7 +176,7 @@ async function simularBackend(page, { rol = "PROPIETARIO", semilla = null, ahora
   // ---------- Medios de pago ----------
   const medioPublico = ({ id, nombre, es_predeterminado }) => ({ id, nombre, es_predeterminado });
   const mediosGET = () => {
-    if (!estado.medios.some((m) => sinTildes(m.nombre) === "efectivo")) estado.medios.push({ id: siguienteId(estado.medios), nombre: "Efectivo", es_predeterminado: true, activo: true });
+    if (!estado.medios.some((m) => m.es_predeterminado)) estado.medios.push({ id: siguienteId(estado.medios), nombre: "Efectivo", es_predeterminado: true, activo: true });
     const activos = estado.medios.filter((m) => m.activo).sort((a, b) => Number(b.es_predeterminado) - Number(a.es_predeterminado) || a.nombre.localeCompare(b.nombre, "es"));
     return [200, { status: "ok", medios_pago: activos.map(medioPublico) }];
   };
@@ -199,8 +201,13 @@ async function simularBackend(page, { rol = "PROPIETARIO", semilla = null, ahora
     if (!nombre) return error(400, "El nombre es obligatorio", { nombre: "El nombre es obligatorio" });
     const medio = estado.medios.find((m) => m.id === Number(id));
     if (!medio) return error(404, "Medio de pago no encontrado");
-    if (estado.medios.some((m) => m.id !== medio.id && sinTildes(m.nombre) === sinTildes(nombre))) {
-      return error(409, "Ya existe otro medio de pago con ese nombre", { nombre: "Ya existe otro medio de pago con ese nombre" });
+    if (nombre.length > 50) return error(400, "El nombre no puede superar los 50 caracteres", { nombre: "El nombre no puede superar los 50 caracteres." });
+    const conflicto = estado.medios.find((m) => m.id !== medio.id && sinTildes(m.nombre) === sinTildes(nombre));
+    if (conflicto) {
+      const mensaje = conflicto.activo
+        ? "Ya existe otro medio de pago con ese nombre."
+        : "Ese nombre pertenece a un medio de pago eliminado anteriormente. Crealo como nuevo para volver a habilitarlo.";
+      return error(409, mensaje, { nombre: mensaje });
     }
     medio.nombre = nombre;
     return [200, { status: "ok", mensaje: "Medio de pago actualizado", medio_pago: medioPublico(medio) }];

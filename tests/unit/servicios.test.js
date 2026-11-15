@@ -47,7 +47,7 @@ describe("servicioNegocio", () => {
     expect(fetchAPI).toHaveBeenCalledWith("/auth/negocio", "PUT", datos);
   });
 
-  it("un rubro null viaja como texto vacío (el Backend ignora null y conservaría el anterior)", async () => {
+  it("un rubro null viaja como texto vacío (así el Backend borra el rubro anterior)", async () => {
     fetchAPI.mockResolvedValue({ negocio: {} });
     await servicioNegocio.guardar({ nombre_comercial: "X", rubro: null, categoria_impositiva: "EXENTO" });
     expect(fetchAPI.mock.calls[0][2].rubro).toBe("");

@@ -1236,3 +1236,56 @@ test.describe("Gastos: quién y cuándo creó y modificó cada gasto", () => {
     await expect(auditoria(page)).toHaveCount(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Un gasto cuyo medio de pago se eliminó después: sigue mostrando el nombre, y al editarlo sin tocar el medio
+// no se manda medio_pago_id (así el Backend conserva el que tenía; mandar null lo borraría).
+// ---------------------------------------------------------------------------
+
+test.describe("Gastos: medio de pago eliminado después de registrar el gasto", () => {
+  const conMedioEliminado = {
+    semilla: (estado) => {
+      estado.medios.push({ id: 3, nombre: "Débito viejo", es_predeterminado: false, activo: false });
+      estado.gastos.find((g) => g.id === 2).medio_pago_id = 3;
+    },
+  };
+  const verMedio = (page) => page.getByTestId("gastos-fila-2").locator("td").nth(3);
+
+  test("el gasto sigue mostrando el nombre del medio aunque ya no se ofrezca", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", conMedioEliminado);
+    await expect(verMedio(page)).toHaveText("Débito viejo");
+    await page.getByTestId("gastos-nuevo").click();
+    await expect(page.locator("#medio_pago_id option")).toHaveText(["Sin especificar", "Efectivo", "Transferencia"]);
+  });
+
+  test("al editar otro dato sin tocar el medio, no se manda medio_pago_id y el gasto conserva el medio", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", conMedioEliminado);
+    await page.getByTestId("gastos-editar-2").click();
+    await completar(page, { concepto: "Luz de noviembre" });
+    await guardar(page).click();
+    await expect(aviso(page)).toHaveText("Gasto actualizado");
+    const [envio] = await enviados(page, "__actualizar");
+    expect(envio).not.toHaveProperty("medio_pago_id");
+    expect(envio.concepto).toBe("Luz de noviembre");
+    await expect(verMedio(page)).toHaveText("Débito viejo");
+  });
+
+  test("si se elige otro medio, se manda ese", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", conMedioEliminado);
+    await page.getByTestId("gastos-editar-2").click();
+    await page.locator("#medio_pago_id").selectOption("2");
+    await guardar(page).click();
+    await expect(verMedio(page)).toHaveText("Transferencia");
+    expect((await enviados(page, "__actualizar"))[0].medio_pago_id).toBe(2);
+  });
+
+  test("un gasto con un medio activo sigue mandando medio_pago_id, y quitarlo manda null", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", { semilla: (estado) => (estado.gastos.find((g) => g.id === 2).medio_pago_id = 2) });
+    await page.getByTestId("gastos-editar-2").click();
+    await expect(page.locator("#medio_pago_id")).toHaveValue("2");
+    await page.locator("#medio_pago_id").selectOption("");
+    await guardar(page).click();
+    await expect(verMedio(page)).not.toHaveText("Transferencia");
+    expect((await enviados(page, "__actualizar"))[0].medio_pago_id).toBeNull();
+  });
+});

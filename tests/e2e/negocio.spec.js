@@ -146,14 +146,14 @@ test.describe("Mi negocio: rubro", () => {
     expect((await payloads()).map((p) => p.rubro)).toEqual(["Gastronomía", "Indumentaria", "Tecnología", "Almacén", "Librería"]);
   });
 
-  test("'Sin especificar' envía el rubro como texto vacío (el Backend ignora un null) y queda sin rubro", async ({ page }) => {
+  test("'Sin especificar' envía el rubro como texto vacío y el Backend lo guarda sin rubro (NULL)", async ({ page }) => {
     await abrir(page, { reemplazos: [REGISTRAR_PAYLOADS] });
     await page.locator("#rubro").selectOption("");
     await guardar(page).click();
     await expect(toast(page)).toHaveText("Datos del negocio actualizados");
     expect((await payloads())[0].rubro).toBe("");
     await expect(page.locator("#rubro")).toHaveValue("");
-    expect(backend.estado.negocio.rubro).toBe("");
+    expect(backend.estado.negocio.rubro).toBeNull();
   });
 
   test("un rubro propio se envía recortado", async ({ page }) => {
