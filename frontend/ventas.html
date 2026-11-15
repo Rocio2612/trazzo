@@ -3,20 +3,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trazzo - Ventas</title>
+    <title>Trazzo - Nueva venta</title>
     <link rel="stylesheet" href="css/base.css">
     <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/gastos.css">
+    <link rel="stylesheet" href="css/ventas.css">
 </head>
 <body>
 
-    <main class="contenido-vacio">
-        <h1>Ventas</h1>
-        <p>En construcción</p>
+    <!-- Nueva venta: es la pantalla principal de Ventas. Las partes que cambian (productos, carrito, total y
+         los modales) las dibuja js/ventas-pantalla.js. -->
+    <main id="ventas-pagina" class="gastos-pagina" data-modulo="ventas">
+
+        <div class="gastos-encabezado ventas-encabezado">
+            <div>
+                <h1>Nueva venta</h1>
+                <p class="gastos-ayuda">Armá la lista de productos y apretá Cobrar para completar los datos y confirmar.</p>
+            </div>
+            <a href="historial-ventas.html" class="btn btn-outline gastos-btn-con-icono ventas-btn-grande" data-testid="venta-historial">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+                <span>Historial de ventas</span>
+            </a>
+        </div>
+
+        <!-- Avisos de arriba: sin productos, cantidades inválidas y bloqueo por stock -->
+        <div id="ventas-alertas" class="ventas-alertas" data-testid="venta-alertas"></div>
+
+        <div class="ventas-layout">
+
+            <!-- Productos disponibles -->
+            <section class="gastos-tarjeta">
+                <div class="ventas-panel-titulo">
+                    <h2>Productos disponibles</h2>
+                    <span class="ventas-insignia ventas-insignia-gris ventas-insignia-plana" id="venta-disponibles" data-testid="venta-disponibles">0 disponibles</span>
+                </div>
+                <div class="ventas-panel-herramientas">
+                    <div class="gastos-buscador">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="search" id="venta-buscador" class="gastos-entrada gastos-buscador-entrada" placeholder="Buscar producto…" data-testid="venta-buscador" aria-label="Buscar producto" autocomplete="off">
+                    </div>
+                </div>
+                <div id="venta-productos" class="ventas-lista-productos" data-testid="venta-productos">
+                    <div class="gastos-vacio ventas-vacio-chico">Cargando productos…</div>
+                </div>
+            </section>
+
+            <div class="ventas-columna">
+
+                <!-- Productos seleccionados (carrito) -->
+                <section class="gastos-tarjeta ventas-carrito">
+                    <div class="ventas-panel-titulo">
+                        <div class="ventas-titulo-grupo">
+                            <h2>Productos seleccionados</h2>
+                            <span class="ventas-insignia ventas-insignia-gris ventas-insignia-plana" id="venta-items-contador" data-testid="venta-items-contador">0 ítems</span>
+                        </div>
+                        <button type="button" class="btn btn-outline gastos-btn-chico gastos-btn-con-icono gastos-btn-eliminar ventas-btn-vaciar" id="venta-vaciar" data-testid="venta-vaciar" title="Quitar todos los productos del carrito">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                            <span>Vaciar carrito</span>
+                        </button>
+                    </div>
+                    <!-- Los títulos de las columnas se ven siempre, aunque todavía no haya productos -->
+                    <div class="ventas-carrito-cuerpo" id="venta-carrito-zona">
+                        <table class="gastos-tabla" data-testid="venta-carrito">
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th class="num">Precio unitario</th>
+                                    <th>Cantidad</th>
+                                    <th class="num">Subtotal</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="venta-carrito-filas"></tbody>
+                        </table>
+                        <div class="gastos-vacio ventas-vacio-chico" id="venta-carrito-vacio" data-testid="venta-carrito-vacio">No hay productos seleccionados. Hacé clic en un producto de la lista para sumarlo a la venta.</div>
+                    </div>
+                </section>
+
+                <!-- Total de la venta y botón "Cobrar" -->
+                <section class="gastos-tarjeta ventas-total">
+                    <div>
+                        <span class="ventas-total-etiqueta">Total de la venta</span>
+                        <strong class="ventas-total-monto" id="venta-total" data-testid="venta-total">$ 0,00</strong>
+                    </div>
+                    <button type="button" class="btn btn-primario gastos-btn-con-icono ventas-btn-cobrar" id="venta-cobrar" data-testid="venta-cobrar" data-modulo="ventas" data-accion="crear">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+                        <span>Cobrar</span>
+                    </button>
+                </section>
+
+            </div>
+        </div>
     </main>
 
     <script src="js/config.js"></script>
     <script src="js/api.js"></script>
     <script src="js/roles.js"></script>
     <script type="module" src="js/layout.js"></script>
+    <script type="module" src="js/ventas-pantalla.js"></script>
 </body>
 </html>

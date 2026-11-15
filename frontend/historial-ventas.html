@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trazzo - Historial de ventas</title>
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/gastos.css">
+    <link rel="stylesheet" href="css/ventas.css">
+</head>
+<body>
+
+    <!-- Historial de ventas: se llega desde el botón "Historial de ventas" de Nueva venta. Las filas y los modales
+         (detalle, anular y ocultar) los dibuja js/historial-ventas-pantalla.js. -->
+    <main id="historial-ventas-pagina" class="gastos-pagina" data-modulo="ventas">
+
+        <div class="gastos-encabezado ventas-encabezado">
+            <h1>Historial de ventas</h1>
+            <a href="ventas.html" class="btn btn-outline gastos-btn-con-icono ventas-btn-grande" data-testid="ventas-volver">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                <span>Volver a ventas</span>
+            </a>
+        </div>
+
+        <!-- Período -->
+        <div class="gastos-acciones">
+            <div class="gastos-selector">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+                <select id="ventas-filtro-fecha" class="gastos-entrada gastos-select-fecha" data-testid="ventas-filtro-fecha" aria-label="Período">
+                    <option value="todas">Todas las ventas</option>
+                    <option value="hoy">Hoy</option>
+                    <option value="mes">Este mes</option>
+                    <option value="anio">Este año</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Buscador, filtro de estado y tipo, y "Ver ocultos" -->
+        <div class="gastos-barra gastos-barra-junta">
+            <div class="gastos-buscador">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="search" id="ventas-buscador" class="gastos-entrada gastos-buscador-entrada" placeholder="Buscar por N° de venta, cliente o tipo…" data-testid="ventas-buscador" aria-label="Buscar" autocomplete="off">
+            </div>
+            <select id="ventas-filtro-estado" class="gastos-entrada ventas-filtro" data-testid="ventas-filtro-estado" aria-label="Filtrar por estado o tipo">
+                <option value="">Todas</option>
+                <option value="CONFIRMADA">Confirmadas</option>
+                <option value="ANULADA">Anuladas</option>
+                <option value="CONTADO">Contado</option>
+                <option value="CUENTA_CORRIENTE">Cuenta corriente</option>
+            </select>
+            <!-- "Ver ocultos" es solo del Administrador: roles.js lo esconde al Cajero -->
+            <button type="button" class="gastos-chip" id="ventas-filtro-ocultos" data-testid="ventas-filtro-ocultos" data-modulo="ventas" data-accion="ocultar">Ver ocultos</button>
+        </div>
+
+        <!-- Tabla de ventas -->
+        <div class="gastos-tarjeta">
+            <div class="gastos-tabla-contenedor" id="ventas-tabla-contenedor" style="--tabla-descuento: 300px">
+                <table class="gastos-tabla" data-testid="ventas-tabla">
+                    <thead>
+                        <tr>
+                            <th>N° de venta</th>
+                            <th>Tipo de venta</th>
+                            <th>Cliente</th>
+                            <th>Fecha y hora</th>
+                            <th class="num">Total</th>
+                            <th>Estado</th>
+                            <th class="acciones-columna">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ventas-filas"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/roles.js"></script>
+    <script type="module" src="js/layout.js"></script>
+    <script type="module" src="js/historial-ventas-pantalla.js"></script>
+</body>
+</html>

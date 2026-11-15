@@ -49,7 +49,7 @@ const PERMISOS = {
     notificaciones: ["ver", "eliminar"],
     productos: ["ver", "crear", "editar", "reponer"],
     clientes: ["seleccionar"],
-    ventas: ["ver", "crear", "editar", "ticket"],
+    ventas: ["ver", "crear", "editar", "ticket", "anular"],
     cuentas_corrientes: ["ver", "crear", "editar"],
   },
 };

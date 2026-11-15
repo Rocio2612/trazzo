@@ -1,0 +1,583 @@
+/* --- PANTALLAS DE VENTAS: NUEVA VENTA E HISTORIAL DE VENTAS ---
+   Se usan junto con css/gastos.css (tarjetas, tabla, modales, campos, avisos y botones).
+   Todas las clases propias empiezan con "ventas-" para no pisar los estilos de las demás pantallas.
+   Los colores salen de base.css y gastos.css; el rojo y el ámbar son solo para avisos y errores. */
+:root {
+  --ventas-verde: #146c43;
+  --ventas-verde-fondo: #e8f5ee;
+  --ventas-verde-borde: #b7dfc9;
+  --ventas-azul-suave: #e7f0fb;
+  --ventas-azul-suave-borde: #b6d1ee;
+}
+
+/* --- Encabezado y botones grandes ------------------------------------------------------------- */
+.ventas-encabezado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ventas-encabezado .gastos-ayuda {
+  margin-top: 0.25rem;
+}
+
+/* "Historial de ventas" y "Volver a ventas": un poco más grandes que el resto de los botones */
+.ventas-btn-grande {
+  gap: 0.5rem;
+  padding: 0.62rem 1.15rem;
+  font-size: 0.97rem;
+  text-decoration: none;
+}
+
+.ventas-btn-grande:hover {
+  text-decoration: none;
+}
+
+.ventas-btn-grande svg {
+  width: 19px;
+  height: 19px;
+}
+
+/* --- Cartelitos ------------------------------------------------------------------------------- */
+.ventas-insignia {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid;
+  border-radius: 999px;
+}
+
+.ventas-insignia-plana {
+  margin-left: 0;
+}
+
+.ventas-insignia-gris {
+  color: #333;
+  background-color: #f1f1f1;
+  border-color: #d9d9d9;
+}
+
+.ventas-insignia-rojo {
+  color: #b02a37;
+  background-color: var(--gastos-rojo-fondo);
+  border-color: var(--gastos-rojo-borde);
+}
+
+.ventas-insignia-verde {
+  color: var(--ventas-verde);
+  background-color: var(--ventas-verde-fondo);
+  border-color: var(--ventas-verde-borde);
+}
+
+/* Tipo de venta (letra más fuerte para que se lea mejor) */
+.ventas-tipo-contado {
+  font-weight: 700;
+  color: #0a4a99;
+  background-color: var(--ventas-azul-suave);
+  border-color: var(--ventas-azul-suave-borde);
+}
+
+.ventas-tipo-cc {
+  font-weight: 700;
+  color: #111;
+  background-color: #eef0f2;
+  border-color: #c9cdd2;
+}
+
+/* --- Avisos ----------------------------------------------------------------------------------- */
+.ventas-banner-rojo {
+  color: #b02a37;
+  background-color: var(--gastos-rojo-fondo);
+  border-color: var(--gastos-rojo-borde);
+  border-left: 4px solid var(--gastos-rojo);
+}
+
+.ventas-banner-verde {
+  color: #0f5132;
+  background-color: var(--ventas-verde-fondo);
+  border-color: var(--ventas-verde-borde);
+}
+
+/* Zona de avisos de arriba de Nueva venta (sin productos, cantidades, bloqueo por stock) */
+.ventas-alertas .gastos-banner {
+  margin-bottom: 1rem;
+}
+
+/* --- Nueva venta: dos columnas con tres cuadros ---------------------------------------------------- */
+.ventas-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.ventas-columna {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Los tres cuadros (productos, carrito y total) llevan el azul de la página en el borde */
+.ventas-layout .gastos-tarjeta {
+  border: 1px solid var(--color-primario);
+  box-shadow: 0 1px 2px rgba(0, 86, 179, 0.12), 0 6px 16px rgba(0, 86, 179, 0.07);
+}
+
+.ventas-panel-titulo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+  background-color: rgba(0, 86, 179, 0.34);
+  border-bottom: 1px solid var(--color-primario);
+  border-radius: 10px 10px 0 0;
+}
+
+.ventas-panel-titulo h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: #111;
+}
+
+.ventas-titulo-grupo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* --- Lista de productos --------------------------------------------------------------------------- */
+.ventas-panel-herramientas {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.75rem 0.75rem 0;
+}
+
+/* El buscador de productos: borde y lupa en el azul de la página */
+.ventas-panel-herramientas .gastos-entrada {
+  border-color: var(--color-primario);
+}
+
+.ventas-panel-herramientas .gastos-buscador svg {
+  color: var(--color-primario);
+}
+
+.ventas-lista-productos {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  height: 480px;
+  padding: 0.75rem;
+  overflow-y: auto;
+}
+
+.ventas-producto {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  background-color: #fff;
+  border: 1px solid var(--color-borde);
+  border-radius: 8px;
+}
+
+.ventas-producto:hover {
+  border-color: var(--color-primario);
+  background-color: #f6faff;
+}
+
+/* Sin stock: se ve pero no se puede elegir */
+.ventas-producto:disabled {
+  cursor: not-allowed;
+  background-color: #f3f4f6;
+}
+
+.ventas-producto:disabled:hover {
+  border-color: var(--color-borde);
+  background-color: #f3f4f6;
+}
+
+.ventas-producto:disabled strong,
+.ventas-producto:disabled .ventas-producto-precio {
+  color: #8a8f98;
+}
+
+.ventas-producto strong {
+  display: block;
+  font-size: 0.92rem;
+}
+
+.ventas-producto small {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--gastos-gris);
+}
+
+.ventas-producto-precio {
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ventas-vacio-chico {
+  padding: 2.5rem 1rem;
+}
+
+/* --- Carrito (alto fijo; si hay muchos ítems se desplaza por dentro) ------------------------------ */
+.ventas-carrito {
+  display: flex;
+  flex-direction: column;
+  height: 390px;
+}
+
+.ventas-carrito-cuerpo {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* "Vaciar carrito": fondo blanco propio para que no tome el color del encabezado */
+.ventas-btn-vaciar {
+  background-color: #fff;
+}
+
+.ventas-btn-vaciar:hover {
+  background-color: var(--gastos-rojo-fondo);
+}
+
+.ventas-nombre {
+  font-weight: 600;
+}
+
+.ventas-celda-doble {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.ventas-celda-doble small {
+  font-size: 0.72rem;
+  color: var(--gastos-gris);
+}
+
+.ventas-cantidad-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.ventas-cantidad-control .gastos-entrada {
+  width: 3.4rem;
+  padding: 0.3rem 0.35rem;
+  text-align: center;
+}
+
+.ventas-celda-cantidad small.gastos-error {
+  display: block;
+  max-width: 11rem;
+  margin-top: 0.25rem;
+}
+
+/* Aviso de stock debajo del campo de cantidad: más chico y en una sola línea */
+.ventas-celda-cantidad small.ventas-aviso-stock {
+  max-width: none;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+/* --- Total y botón "Cobrar" ----------------------------------------------------------------------- */
+.ventas-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+}
+
+.ventas-total-etiqueta,
+.ventas-total-cobrar span {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--gastos-gris);
+}
+
+.ventas-total .ventas-total-etiqueta {
+  color: #111;
+}
+
+.ventas-total-monto {
+  display: block;
+  font-size: 1.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ventas-btn-cobrar {
+  justify-content: center;
+  min-width: 10rem;
+  padding: 0.7rem 1.5rem;
+  font-size: 1rem;
+}
+
+.ventas-btn-cobrar svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* --- Modal "Cobrar" y venta confirmada --------------------------------------------------------------- */
+.ventas-campos-fila {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 1rem;
+}
+
+.ventas-total-cobrar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background-color: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-radius: 8px;
+}
+
+.ventas-total-cobrar strong {
+  font-size: 1.4rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ventas-total-cobrar:last-child {
+  margin-bottom: 0;
+}
+
+/* Recuadro con listas (IVA discriminado y desglose del saldo a favor) */
+.ventas-panel {
+  margin: -0.25rem 0 1rem;
+  padding: 0.9rem 1rem;
+  background-color: #fafafa;
+  border: 1px solid var(--color-borde);
+  border-radius: 8px;
+}
+
+.ventas-panel-desglose {
+  margin: 0 0 0.6rem;
+}
+
+.ventas-lista-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.ventas-lista-items li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.15rem 0;
+}
+
+/* IVA sin discriminar: texto simple, sin recuadro */
+.ventas-texto-iva {
+  margin: 0 0 1rem;
+}
+
+/* Aviso de saldo a favor: casilla y cuánto usar (todos los textos en negro) */
+.ventas-credito,
+.ventas-credito .ventas-credito-texto,
+.ventas-credito .ventas-credito-casilla,
+.ventas-credito .ventas-credito-monto label,
+.ventas-credito .ventas-credito-monto .gastos-ayuda {
+  color: #111;
+}
+
+.ventas-credito .ventas-credito-texto {
+  margin: 0 0 0.4rem;
+  font-weight: 600;
+}
+
+.ventas-credito-casilla {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.ventas-credito-casilla input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.ventas-credito-monto {
+  margin-top: 0.7rem;
+}
+
+.ventas-credito-monto label {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.ventas-credito-monto .gastos-entrada {
+  width: 100%;
+  max-width: 14rem;
+}
+
+/* Venta confirmada */
+.ventas-exito-numero {
+  margin-bottom: 1rem;
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ventas-exito .ventas-total-cobrar {
+  margin-top: 1rem;
+}
+
+.ventas-exito .gastos-banner {
+  margin-top: 0.75rem;
+}
+
+/* --- Datos en dos columnas (venta confirmada y detalle) ------------------------------------------ */
+.ventas-etiqueta {
+  margin: 0 0 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--gastos-gris);
+}
+
+.ventas-ficha {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem 1.25rem;
+  margin: 0;
+}
+
+.ventas-ficha div {
+  min-width: 0;
+}
+
+.ventas-ficha dt {
+  margin-bottom: 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--gastos-gris);
+}
+
+.ventas-ficha dd {
+  margin: 0;
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
+/* --- Detalle de la venta (modal ancho) ------------------------------------------------------------ */
+.ventas-modal-ancho {
+  width: min(720px, 100%);
+}
+
+.ventas-detalle-cabecera {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.1rem;
+}
+
+.ventas-detalle-cabecera h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.ventas-seccion + .ventas-seccion {
+  margin-top: 1.1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-borde);
+}
+
+.ventas-seccion-titulo {
+  margin: 0 0 0.7rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.ventas-tabla-modal {
+  overflow-x: auto;
+  border: 1px solid var(--color-borde);
+  border-radius: 8px;
+}
+
+.ventas-total-detalle {
+  margin-bottom: 0.5rem;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+/* --- Historial de ventas ---------------------------------------------------------------------------- */
+.ventas-tachado {
+  color: var(--gastos-gris);
+  text-decoration: line-through;
+}
+
+.ventas-numero {
+  font-weight: 600;
+}
+
+/* --- Pantallas angostas ------------------------------------------------------------------------------ */
+@media (max-width: 960px) {
+  .ventas-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .ventas-campos-fila,
+  .ventas-ficha {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Filtro de estado y tipo, pegado al buscador */
+.ventas-filtro {
+  min-width: 150px;
+  cursor: pointer;
+}
+
+/* Los elementos con el atributo hidden se esconden aunque otra regla les ponga display */
+[hidden] {
+  display: none !important;
+}
+
+/* Campos de solo lectura (fecha y número de venta): fondo gris de los campos bloqueados */
+.gastos-modal .gastos-entrada[readonly] {
+  color: #495057;
+  background-color: var(--color-superficie);
+}
+
+/* La etiqueta chica de "Cliente" / "N° de venta" gana al estilo de los párrafos de los modales */
+.gastos-modal-cuerpo .ventas-etiqueta {
+  margin: 0 0 0.15rem;
+  font-size: 0.72rem;
+}

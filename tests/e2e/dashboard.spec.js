@@ -132,7 +132,7 @@ test.describe("Módulos según el rol", () => {
     ["ventas", "ticket", true, true],
     ["ventas", "ocultar", true, false],
     ["ventas", "eliminar", true, false],
-    ["ventas", "anular", true, false],
+    ["ventas", "anular", true, true],
     ["cuentas_corrientes", "ver", true, true],
     ["cuentas_corrientes", "editar", true, true],
     ["cuentas_corrientes", "ver_datos_completos", true, false],
@@ -262,7 +262,7 @@ test.describe("Barra lateral", () => {
   ];
 
   // Pantallas que ya tienen contenido: no muestran el cartel "En construcción" y su título puede ser otro.
-  const TITULO_DE_PANTALLA = { productos: "Productos", proveedores: "Proveedores", gastos: "Gastos operativos" };
+  const TITULO_DE_PANTALLA = { ventas: "Nueva venta", productos: "Productos", proveedores: "Proveedores", gastos: "Gastos operativos" };
 
   for (const [modulo, archivo, titulo] of PANTALLAS) {
     const terminada = modulo in TITULO_DE_PANTALLA;
@@ -284,8 +284,9 @@ test.describe("Barra lateral", () => {
     for (const [modulo, archivo] of [["ventas", "ventas.html"], ["cuentas_corrientes", "cuenta-corriente.html"], ["productos", "productos.html"]]) {
       await page.getByTestId(`menu-${modulo}`).click();
       await expect(page).toHaveURL(new RegExp(`${archivo}$`));
-      // Productos ya tiene su pantalla; las otras todavía muestran el cartel.
-      if (modulo === "productos") await expect(page.getByRole("heading", { name: "Productos", exact: true })).toBeVisible();
+      // Ventas y Productos ya tienen su pantalla; las otras todavía muestran el cartel.
+      if (modulo === "ventas") await expect(page.getByRole("heading", { name: "Nueva venta", exact: true })).toBeVisible();
+      else if (modulo === "productos") await expect(page.getByRole("heading", { name: "Productos", exact: true })).toBeVisible();
       else await expect(page.getByText("En construcción")).toBeVisible();
     }
   });
