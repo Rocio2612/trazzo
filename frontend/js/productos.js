@@ -1,5 +1,4 @@
-// Trazzo - Sprint 2 - Módulo 5: Productos (Bienes de Cambio)
-import { fetchAPI } from "./api.js";
+// Trazzo - Sprint 2 - Módulo 5: Productos
 import {
   calcularPrecioVenta,
   precioMenorAlCosto,
@@ -15,20 +14,24 @@ let filtroStockBajo = false;
 let verOcultos = false;
 let precioEditadoManual = false;
 let montoRepoEditadoManual = false;
-
-// Fecha local (YYYY-MM-DD). toISOString() devuelve fecha UTC y de noche
-// en Argentina adelanta el día, chocando con chk_repo_fecha_no_futura.
-const obtenerFechaLocal = () => {
-  const hoy = new Date();
-  const offset = hoy.getTimezoneOffset() * 60000;
-  return new Date(hoy.getTime() - offset).toISOString().split("T")[0];
-};
+let timerBusqueda = null;
+let ultimaCarga = 0; // evita que una respuesta vieja pise a una más nueva
 
 document.addEventListener("DOMContentLoaded", () => {
   cargarProductos();
   cargarSelectores();
   configurarEventos();
 });
+
+// Escapa texto antes de meterlo en innerHTML (nombres cargados por usuarios).
+const esc = (valor) =>
+  String(valor ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
+  );
 
 const mostrarToast = (msg) => {
   const toast = document.getElementById("toast");
@@ -39,33 +42,20 @@ const mostrarToast = (msg) => {
 
 const cargarSelectores = async () => {
   try {
-    const [cats, provs] = await Promise.all([
-      fetchAPI("/categorias"),
-      fetchAPI("/proveedores"),
-    ]);
+    const respuesta = await fetchAPI("/proveedores");
+    // Acepta tanto un array directo como { items: [...] }
+    const provs = Array.isArray(respuesta) ? respuesta : respuesta?.items || [];
 
-    const selectCat = document.getElementById("categoria_id");
     const selectProv = document.getElementById("proveedor_id");
     const repoProv = document.getElementById("proveedor_id_repo");
 
-    // Categorías (opcional: categoria_id admite NULL)
-    if (cats.length === 0) {
-      selectCat.innerHTML = '<option value="">Sin categorías creadas</option>';
-    } else {
-      selectCat.innerHTML = '<option value="">Seleccione categoría</option>';
-      cats.forEach(
-        (c) =>
-          (selectCat.innerHTML += `<option value="${c.id}">${c.nombre}</option>`),
-      );
-    }
-
-    // Proveedores (obligatorio: proveedor_id es NOT NULL en la base)
+    // Proveedor obligatorio: proveedor_id es NOT NULL en la base
     const provOpts =
       provs.length === 0
         ? '<option value="">Debe cargar proveedores primero</option>'
         : '<option value="">Seleccione proveedor...</option>' +
           provs
-            .map((p) => `<option value="${p.id}">${p.nombre}</option>`)
+            .map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`)
             .join("");
 
     selectProv.innerHTML = provOpts;
@@ -79,28 +69,35 @@ const cargarSelectores = async () => {
 
 const cargarProductos = async () => {
   const tbody = document.getElementById("productos-tbody");
+  const miCarga = ++ultimaCarga;
   tbody.innerHTML =
     '<tr><td colspan="8" style="text-align:center;">Cargando...</td></tr>';
 
-  let url = `/productos?q=${document.getElementById("buscador").value}&tipo_producto=BIEN_DE_CAMBIO`;
-  if (filtroStockBajo) url += "&stock_bajo=true";
-  if (verOcultos && esAdmin) url += "&ocultos=true";
+  const params = new URLSearchParams({
+    q: document.getElementById("buscador").value.trim(),
+    tipo_producto: "BIEN_DE_CAMBIO",
+  });
+  if (filtroStockBajo) params.set("stock_bajo", "true");
+  if (verOcultos && esAdmin) params.set("ocultos", "true");
 
   try {
-    const data = await fetchAPI(url);
+    const data = await fetchAPI(`/productos?${params.toString()}`);
+    if (miCarga !== ultimaCarga) return; // llegó otra búsqueda más nueva
+    if (!data) return; // sesión vencida: fetchAPI ya redirige al login
+
+    const items = data.items || [];
     tbody.innerHTML = "";
 
-    if (data.items.length === 0) {
+    if (items.length === 0) {
       tbody.innerHTML =
         '<tr><td colspan="8" style="text-align:center; color:gray;">Sin productos</td></tr>';
       return;
     }
 
-    data.items.forEach((prod) => {
+    items.forEach((prod) => {
       const tr = document.createElement("tr");
 
-      // Insignias de stock. NUMERIC puede llegar como texto ("10.00"),
-      // así que se convierte antes de comparar.
+      // NUMERIC puede llegar como texto ("10.00"): se convierte antes de comparar.
       const cantidad = Number(prod.cantidad);
       const stockMinimo = Number(prod.stock_minimo);
       let stockHTML = `<span>${cantidad}</span>`;
@@ -109,44 +106,39 @@ const cargarProductos = async () => {
       else if (cantidad <= stockMinimo)
         stockHTML = `<span class="badge badge-ambar">Stock bajo</span>`;
 
-      // ÍCONOS SVG EN BLANCO Y NEGRO
       let accionesHTML = `
-                <button class="btn-icono" title="Reponer Stock">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                </button>
-                <button class="btn-icono" title="Editar">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                </button>
-                <button class="btn-icono" title="Dar de baja">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>
-                </button>
-            `;
+        <button class="btn-icono" title="Reponer Stock">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <button class="btn-icono" title="Dar de baja">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>
+        </button>
+      `;
 
       if (esAdmin) {
         accionesHTML += `
-                    <button class="btn-icono" title="Ocultar">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
-                    </button>
-                    <button class="btn-icono" title="Eliminar">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                    </button>
-                `;
+          <button class="btn-icono" title="Ocultar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+          </button>
+          <button class="btn-icono" title="Eliminar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          </button>
+        `;
       }
 
       tr.innerHTML = `
-                <td>${prod.nombre}</td>
-                <td>${prod.categoria_nombre || "—"}</td>
-                <td>${formatearMoneda(prod.precio_compra)}</td>
-                <td>${formatearMoneda(prod.precio_venta)}</td>
-                <td>${stockHTML}</td>
-                <td>${stockMinimo}</td>
-                <td>${prod.proveedor_nombre || "—"}</td>
-                <td><div class="acciones-flex">${accionesHTML}</div></td>
-            `;
+        <td>${esc(prod.nombre)}</td>
+        <td>${esc(prod.categoria_nombre) || "—"}</td>
+        <td>${formatearMoneda(prod.precio_compra)}</td>
+        <td>${formatearMoneda(prod.precio_venta)}</td>
+        <td>${stockHTML}</td>
+        <td>${stockMinimo}</td>
+        <td>${esc(prod.proveedor_nombre) || "—"}</td>
+        <td><div class="acciones-flex">${accionesHTML}</div></td>
+      `;
 
       tr.querySelector('[title="Reponer Stock"]').onclick = () =>
         abrirReposicion(prod);
-      tr.querySelector('[title="Editar"]').onclick = () => abrirEditar(prod);
       tr.querySelector('[title="Dar de baja"]').onclick = () => abrirBaja(prod);
 
       if (esAdmin) {
@@ -159,29 +151,51 @@ const cargarProductos = async () => {
       tbody.appendChild(tr);
     });
   } catch (error) {
+    if (miCarga !== ultimaCarga) return;
     tbody.innerHTML =
       '<tr><td colspan="8" style="text-align:center; color:red;">Error al cargar</td></tr>';
   }
 };
 
 const configurarEventos = () => {
-  document
-    .getElementById("buscador")
-    .addEventListener("input", () => cargarProductos());
+  // Buscador con debounce: espera 300 ms sin tipear antes de pedir al servidor
+  document.getElementById("buscador").addEventListener("input", () => {
+    clearTimeout(timerBusqueda);
+    timerBusqueda = setTimeout(cargarProductos, 300);
+  });
+
   document.getElementById("btn-stock-bajo").addEventListener("click", (e) => {
     filtroStockBajo = !filtroStockBajo;
-    e.target.classList.toggle("activo", filtroStockBajo);
-    cargarProductos();
-  });
-  document.getElementById("btn-ver-ocultos").addEventListener("click", (e) => {
-    verOcultos = !verOcultos;
-    e.target.classList.toggle("activo", verOcultos);
+    e.currentTarget.classList.toggle("activo", filtroStockBajo);
     cargarProductos();
   });
 
-  // Fórmula de precio
+  const btnOcultos = document.getElementById("btn-ver-ocultos");
+  // "Ver ocultos" es solo para Admin/Propietario
+  if (!esAdmin) {
+    btnOcultos.classList.add("hidden");
+  } else {
+    btnOcultos.addEventListener("click", (e) => {
+      verOcultos = !verOcultos;
+      e.currentTarget.classList.toggle("activo", verOcultos);
+      cargarProductos();
+    });
+  }
+
+  const validarAvisoPrecio = () => {
+    const pv = document.getElementById("precio_venta").value;
+    const pc = document.getElementById("precio_compra").value;
+    const banner = document.getElementById("banner-precio-menor");
+    if (precioMenorAlCosto(pv, pc)) banner.classList.remove("hidden");
+    else banner.classList.add("hidden");
+  };
+
+  // Fórmula de precio sugerido
   const actualizarPrecioSugerido = () => {
-    if (precioEditadoManual) return;
+    if (precioEditadoManual) {
+      validarAvisoPrecio();
+      return;
+    }
     const costo =
       parseFloat(document.getElementById("precio_compra").value) || 0;
     const rent = parseFloat(document.getElementById("rentabilidad").value) || 0;
@@ -204,15 +218,7 @@ const configurarEventos = () => {
     validarAvisoPrecio();
   });
 
-  const validarAvisoPrecio = () => {
-    const pv = document.getElementById("precio_venta").value;
-    const pc = document.getElementById("precio_compra").value;
-    const banner = document.getElementById("banner-precio-menor");
-    if (precioMenorAlCosto(pv, pc)) banner.classList.remove("hidden");
-    else banner.classList.add("hidden");
-  };
-
-  // Guardar Producto
+  // Guardar producto
   document
     .getElementById("form-producto")
     .addEventListener("submit", async (e) => {
@@ -220,10 +226,8 @@ const configurarEventos = () => {
       const btn = e.target.querySelector('button[type="submit"]');
       btn.disabled = true;
 
-      const id = document.getElementById("prod-id").value;
-
       const payload = {
-        nombre: document.getElementById("nombre").value,
+        nombre: document.getElementById("nombre").value.trim(),
         precio_compra: parseFloat(
           document.getElementById("precio_compra").value,
         ),
@@ -231,22 +235,22 @@ const configurarEventos = () => {
           parseFloat(document.getElementById("rentabilidad").value) || 0,
         iva_alicuota: parseFloat(document.getElementById("iva_alicuota").value),
         precio_venta: parseFloat(document.getElementById("precio_venta").value),
-        cantidad: parseInt(document.getElementById("cantidad").value),
-        stock_minimo: parseInt(document.getElementById("stock_minimo").value),
-        categoria_id: document.getElementById("categoria_id").value || null,
+        cantidad: parseInt(document.getElementById("cantidad").value, 10),
+        stock_minimo: parseInt(
+          document.getElementById("stock_minimo").value,
+          10,
+        ),
         // Obligatorio: productos.proveedor_id es NOT NULL
-        proveedor_id: parseInt(document.getElementById("proveedor_id").value),
-        tipo_producto: "BIEN_DE_CAMBIO",
+        proveedor_id: parseInt(
+          document.getElementById("proveedor_id").value,
+          10,
+        ),
       };
 
       try {
-        await fetchAPI(
-          id ? `/productos/${id}` : "/productos",
-          id ? "PUT" : "POST",
-          payload,
-        );
+        await fetchAPI("/productos", "POST", payload);
         document.getElementById("modal-producto").classList.add("hidden");
-        mostrarToast(id ? "Producto actualizado" : "Producto creado");
+        mostrarToast("Producto creado");
         cargarProductos();
       } catch (error) {
         alert(error.message || "Error al guardar");
@@ -255,10 +259,10 @@ const configurarEventos = () => {
       }
     });
 
-  // Reposición
+  // Reposición: monto sugerido = cantidad × último costo (editable)
   document.getElementById("repo-cantidad").addEventListener("input", (e) => {
     if (montoRepoEditadoManual) return;
-    const cant = parseInt(e.target.value) || 0;
+    const cant = parseInt(e.target.value, 10) || 0;
     const costo =
       parseFloat(document.getElementById("repo-ultimo-costo").value) || 0;
     document.getElementById("monto_total").value = calcularMontoReposicion(
@@ -279,17 +283,17 @@ const configurarEventos = () => {
       btn.disabled = true;
 
       const payload = {
-        cantidad: parseInt(document.getElementById("repo-cantidad").value),
+        cantidad: parseInt(document.getElementById("repo-cantidad").value, 10),
         monto_total: parseFloat(document.getElementById("monto_total").value),
-        fecha_adquisicion: document.getElementById("fecha_adquisicion").value,
         proveedor_id: parseInt(
           document.getElementById("proveedor_id_repo").value,
+          10,
         ),
       };
 
       try {
         await fetchAPI(
-          `/productos/${document.getElementById("repo-prod-id").value}/reposiciones`,
+          `/productos/${document.getElementById("repo-prod-id").value}/reposicion`,
           "POST",
           payload,
         );
@@ -303,23 +307,20 @@ const configurarEventos = () => {
       }
     });
 
-  // Baja
-  // "cantidad" se manda positiva; el backend arma el movimiento en
-  // movimientos_stock (tipo 'BAJA', cantidad_movimiento negativa, stock_resultante).
+  // Baja: "cantidad" se manda positiva; el backend arma el movimiento negativo.
   document.getElementById("form-baja").addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = e.target.querySelector('button[type="submit"]');
     btn.disabled = true;
 
     const payload = {
-      cantidad: parseInt(document.getElementById("baja-cantidad").value),
+      cantidad: parseInt(document.getElementById("baja-cantidad").value, 10),
       motivo: document.getElementById("baja-motivo").value,
-      fecha: document.getElementById("baja-fecha").value,
     };
 
     try {
       await fetchAPI(
-        `/productos/${document.getElementById("baja-prod-id").value}/bajas`,
+        `/productos/${document.getElementById("baja-prod-id").value}/baja`,
         "POST",
         payload,
       );
@@ -337,43 +338,25 @@ const configurarEventos = () => {
     .getElementById("btn-nuevo-producto")
     .addEventListener("click", () => {
       document.getElementById("form-producto").reset();
-      document.getElementById("prod-id").value = "";
       precioEditadoManual = false;
       document.getElementById("banner-precio-menor").classList.add("hidden");
       document.getElementById("modal-producto").classList.remove("hidden");
     });
 };
 
-const abrirEditar = (prod) => {
-  document.getElementById("prod-id").value = prod.id;
-  document.getElementById("nombre").value = prod.nombre;
-  document.getElementById("precio_compra").value = prod.precio_compra;
-  document.getElementById("rentabilidad").value = prod.rentabilidad || 0;
-  document.getElementById("iva_alicuota").value = prod.iva_alicuota || 21;
-  document.getElementById("precio_venta").value = prod.precio_venta;
-  document.getElementById("cantidad").value = Number(prod.cantidad);
-  document.getElementById("stock_minimo").value = Number(prod.stock_minimo);
-  document.getElementById("categoria_id").value = prod.categoria_id || "";
-  document.getElementById("proveedor_id").value = prod.proveedor_id || "";
-
-  precioEditadoManual = true;
-  document.getElementById("modal-producto").classList.remove("hidden");
-};
-
 const abrirReposicion = (prod) => {
+  // reset() primero: si no, borraría los hidden que se cargan después
+  document.getElementById("form-reposicion").reset();
   document.getElementById("repo-prod-id").value = prod.id;
   document.getElementById("repo-ultimo-costo").value = prod.precio_compra;
-  document.getElementById("form-reposicion").reset();
   montoRepoEditadoManual = false;
-  document.getElementById("fecha_adquisicion").value = obtenerFechaLocal();
   document.getElementById("modal-reposicion").classList.remove("hidden");
 };
 
 const abrirBaja = (prod) => {
-  document.getElementById("baja-prod-id").value = prod.id;
   document.getElementById("form-baja").reset();
+  document.getElementById("baja-prod-id").value = prod.id;
   document.getElementById("baja-cantidad").max = Number(prod.cantidad);
-  document.getElementById("baja-fecha").value = obtenerFechaLocal();
   document.getElementById("modal-baja").classList.remove("hidden");
 };
 
@@ -381,7 +364,7 @@ const abrirBaja = (prod) => {
 const ocultarProducto = async (id) => {
   if (!confirm("¿Ocultar este producto? No se borrarán sus datos.")) return;
   try {
-    await fetchAPI(`/productos/${id}/visibilidad`, "PATCH");
+    await fetchAPI(`/productos/${id}/ocultar`, "PATCH");
     mostrarToast("Producto oculto");
     cargarProductos();
   } catch (e) {

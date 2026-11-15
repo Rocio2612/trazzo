@@ -258,11 +258,11 @@
       </div>
     </main>
 
-    <!-- MODAL: NUEVO/EDITAR PRODUCTO -->
+    <!-- MODAL: NUEVO PRODUCTO -->
     <div id="modal-producto" class="modal-backdrop hidden">
       <div class="modal-caja">
         <div class="modal-header">
-          <h2>Nuevo / Editar Producto</h2>
+          <h2>Nuevo Producto</h2>
           <button
             type="button"
             class="btn-icono"
@@ -274,8 +274,6 @@
           </button>
         </div>
         <form id="form-producto">
-          <input type="hidden" id="prod-id" />
-
           <div id="banner-precio-menor" class="banner-ambar hidden">
             El precio de venta es menor al costo unitario.
           </div>
@@ -354,13 +352,6 @@
                 min="0"
               />
             </div>
-          </div>
-
-          <div class="form-group">
-            <label>Categoría (opcional)</label>
-            <select id="categoria_id" class="form-control">
-              <option value="">Sin categorías creadas</option>
-            </select>
           </div>
 
           <div class="form-group">
@@ -443,15 +434,6 @@
             />
           </div>
           <div class="form-group">
-            <label>Fecha de adquisición *</label>
-            <input
-              type="date"
-              id="fecha_adquisicion"
-              class="form-control"
-              required
-            />
-          </div>
-          <div class="form-group">
             <label>Proveedor *</label>
             <select id="proveedor_id_repo" class="form-control" required>
               <option value="">Seleccione proveedor...</option>
@@ -522,10 +504,6 @@
               <option value="perdido">Perdido</option>
               <option value="no_utilizado">No utilizado</option>
             </select>
-          </div>
-          <div class="form-group">
-            <label>Fecha *</label>
-            <input type="date" id="baja-fecha" class="form-control" required />
           </div>
           <div style="text-align: right; margin-top: 1.5rem">
             <button
