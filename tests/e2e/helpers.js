@@ -1,4 +1,14 @@
-const API = "http://192.168.1.43:5000/api"; // debe coincidir con frontend/js/config.js
+const fs = require("fs");
+const path = require("path");
+
+// La dirección de la API se lee de frontend/js/config.js: así los tests siguen a la IP que use el equipo
+// y no hay que acordarse de cambiarla en dos lugares.
+const API = (() => {
+  const config = fs.readFileSync(path.join(__dirname, "../../frontend/js/config.js"), "utf8");
+  const encontrada = /API_URL\s*=\s*['"]([^'"]+)['"]/.exec(config);
+  if (!encontrada) throw new Error("No se encontró API_URL en frontend/js/config.js");
+  return encontrada[1];
+})();
 
 const base64url = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
 
