@@ -1,4 +1,5 @@
 import { formatearDinero } from "./formatos.js";
+import { servicioInsumos } from "./servicios/insumos.js";
 
 const h = (etiqueta, props = {}, ...hijos) => {
     const el = document.createElement(etiqueta);
@@ -22,10 +23,10 @@ const ICONO_RESTAURAR = '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L
 const ICONO_ELIMINAR = '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>';
 const ICONO_MAS = '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>';
 
-let insumos = [
-    { id: 1, nombre: "Café molido", precio_compra: 8500, cantidad: 5, unidad_medida: "unidades", costo_total: 42500, fecha: "04-03-2026", proveedor: "Distribuidora Norte", creado_por: "admin1", oculto: false }
-];
+// Arranca vacío. Los datos vienen de la API.
+let insumos = [];
 let verOcultos = false;
+let refrescarUI = null; // Guarda la función para actualizar la pantalla
 
 const abrirModal = ({ titulo, cuerpo, onGuardar }) => {
     const fondo = h("div", { class: "gastos-modal-fondo" });
@@ -37,12 +38,20 @@ const abrirModal = ({ titulo, cuerpo, onGuardar }) => {
         h("div", { class: "gastos-modal-pie" }, h("button", { class: "btn btn-outline", text: "Cancelar", onclick: () => fondo.remove() }), btnGuardar)
     );
 
-    btnGuardar.addEventListener("click", () => {
-        btnGuardar.disabled = true; btnGuardar.textContent = "Guardando..."; onGuardar(); fondo.remove();
+    btnGuardar.addEventListener("click", async () => {
+        btnGuardar.disabled = true; btnGuardar.textContent = "Guardando...";
+        try {
+            await onGuardar();
+            fondo.remove();
+        } catch (error) {
+            alert(error.message || "Error al guardar");
+            btnGuardar.disabled = false; btnGuardar.textContent = "Guardar";
+        }
     });
     fondo.append(modal); document.body.append(fondo);
 };
 
+// --- SE EJECUTA PRIMERO: DIBUJA TU DISEÑO ---
 const iniciarPantalla = () => {
     const pagina = document.getElementById("insumos-pagina");
     const zonaTabla = h("div");
@@ -111,38 +120,57 @@ const iniciarPantalla = () => {
         h("div", { class: "gastos-barra" }, buscador, chipOcultos),
         zonaTabla
     );
-    refrescar();
+    
+    refrescarUI = refrescar; // Guardamos la función
+    refrescar(); // Dibujamos vacío por defecto
 };
 
+// --- SE EJECUTA SEGUNDO: BUSCA LOS DATOS ---
+const cargarDatos = async () => {
+    try {
+        const datos = await servicioInsumos.listar();
+        insumos = datos.insumos.map(item => ({
+            id: item.id,
+            nombre: item.nombre,
+            precio_compra: item.costo_unitario, 
+            cantidad: item.cantidad,
+            unidad_medida: item.unidad_medida || "unidades",
+            costo_total: item.valor_stock, 
+            fecha: item.fecha || item.creado_en?.slice(0, 10) || "—",
+            proveedor: item.proveedor_nombre || "—",
+            creado_por: item.creado_por || "admin",
+            oculto: item.activo === false || item.oculto === true || false
+        }));
+        if (refrescarUI) refrescarUI(); // Actualiza la tabla con los datos reales
+    } catch (error) {
+        console.error("Error al cargar insumos:", error);
+        alert("No se pudieron cargar los insumos. ¿Está el backend encendido?");
+    }
+};
+
+// --- MODALES ---
 const crear = () => {
     const form = h("div", {},
         h("div", { class: "gastos-campo" }, h("label", { text: "Nombre *" }), h("input", { id: "m-nombre", class: "gastos-entrada" })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Costo unitario *" }), h("input", { id: "m-costo", type: "number", class: "gastos-entrada" })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Cantidad *" }), h("input", { id: "m-cant", type: "number", step: "1", class: "gastos-entrada" })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Fecha *" }), h("input", { id: "m-fecha", class: "gastos-entrada", placeholder: "dd-mm-aaaa" })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Proveedor registrado (opcional)" }), h("select", { id: "m-prov-select", class: "gastos-entrada" }, h("option", { value: "", text: "Sin proveedor" }), h("option", { value: "Distribuidora Norte", text: "Distribuidora Norte" }))),
+        h("div", { class: "gastos-campo" }, h("label", { text: "Proveedor registrado (opcional)" }), h("select", { id: "m-prov-select", class: "gastos-entrada" }, h("option", { value: "", text: "Sin proveedor" }), h("option", { value: "1", text: "Distribuidora Norte" }))),
         h("div", { class: "gastos-campo" }, h("label", { text: "O escribir un proveedor" }), h("input", { id: "m-prov-input", class: "gastos-entrada", placeholder: "Nombre o razón social" })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Costo total" }), h("input", { id: "m-total", class: "gastos-entrada", readonly: true, style: "background:#f8f9fa;", placeholder: "Se calcula automáticamente" }), h("p", { class: "gastos-ayuda", text: "Costo unitario × cantidad. Lo calcula el sistema." }))
     );
     
     abrirModal({
         titulo: "Nuevo insumo", cuerpo: form,
-        onGuardar: () => {
+        onGuardar: async () => {
             const costo = parseFloat(document.getElementById("m-costo").value) || 0;
             const cant = parseInt(document.getElementById("m-cant").value) || 0;
-            const provSelect = document.getElementById("m-prov-select").value;
-            const provInput = document.getElementById("m-prov-input").value;
-            
-            insumos.push({
-                id: Date.now(), 
+            await servicioInsumos.crear({
                 nombre: document.getElementById("m-nombre").value,
-                precio_compra: costo, cantidad: cant, 
-                unidad_medida: "unidades", costo_total: costo * cant,
-                fecha: document.getElementById("m-fecha").value, 
-                proveedor: provInput || provSelect || "—", 
-                creado_por: "admin1", oculto: false
+                precio_compra: costo, cantidad: cant, stock_minimo: 0, proveedor_id: 1, iva_alicuota: 21.00,
+                fecha: document.getElementById("m-fecha").value
             });
-            iniciarPantalla();
+            await cargarDatos();
         }
     });
 
@@ -155,29 +183,7 @@ const crear = () => {
     }, 50);
 };
 
-const editar = (insumo) => {
-    const form = h("div", {},
-        h("div", { class: "gastos-campo" }, h("label", { text: "Nombre *" }), h("input", { id: "m-nombre", class: "gastos-entrada", value: insumo.nombre })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Costo unitario *" }), h("input", { id: "m-costo", type: "number", class: "gastos-entrada", value: insumo.precio_compra })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Cantidad *" }), h("input", { id: "m-cant", type: "number", step: "1", class: "gastos-entrada", value: insumo.cantidad })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Fecha *" }), h("input", { id: "m-fecha", class: "gastos-entrada", value: insumo.fecha })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Proveedor" }), h("input", { id: "m-proveedor", class: "gastos-entrada", value: insumo.proveedor === "—" ? "" : insumo.proveedor })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Costo total" }), h("input", { id: "m-total", class: "gastos-entrada", readonly: true, style: "background:#f8f9fa;", value: formatearDinero(insumo.costo_total) }))
-    );
-    abrirModal({
-        titulo: "Editar insumo", cuerpo: form,
-        onGuardar: () => {
-            insumo.nombre = document.getElementById("m-nombre").value;
-            insumo.precio_compra = parseFloat(document.getElementById("m-costo").value);
-            insumo.cantidad = parseInt(document.getElementById("m-cant").value);
-            insumo.fecha = document.getElementById("m-fecha").value;
-            insumo.proveedor = document.getElementById("m-proveedor").value || "—";
-            insumo.costo_total = insumo.precio_compra * insumo.cantidad;
-            iniciarPantalla();
-        }
-    });
-};
-
+const editar = (insumo) => alert("La API de edición para insumos aún no está documentada.");
 const reponer = (insumo) => {
     const form = h("div", {},
         h("p", { text: `Reponiendo stock de: ${insumo.nombre}`, style: "margin-bottom:1rem; font-weight:bold;" }),
@@ -187,19 +193,15 @@ const reponer = (insumo) => {
     );
     abrirModal({
         titulo: "Reponer stock", cuerpo: form,
-        onGuardar: () => {
+        onGuardar: async () => {
             const cant = parseInt(document.getElementById("m-cant").value) || 0;
             const monto = parseFloat(document.getElementById("m-monto").value) || 0;
-            if(cant <= 0 || monto <= 0) { alert("Complete los campos correctamente"); return; }
-            insumo.cantidad += cant;
-            insumo.precio_compra = monto / cant; 
-            insumo.costo_total = insumo.cantidad * insumo.precio_compra;
-            insumo.fecha = document.getElementById("m-fecha").value;
-            iniciarPantalla();
+            if(cant <= 0 || monto <= 0) throw new Error("Complete los campos correctamente");
+            await servicioInsumos.reponer(insumo.id, { proveedor_id: 1, cantidad: cant, monto_total: monto });
+            await cargarDatos();
         }
     });
 };
-
 const consumir = (insumo) => {
     const form = h("div", {},
         h("p", { text: `Consumiendo: ${insumo.nombre}`, style: "margin-bottom:1rem; font-weight:bold;" }),
@@ -208,15 +210,15 @@ const consumir = (insumo) => {
     );
     abrirModal({
         titulo: "Registrar consumo", cuerpo: form,
-        onGuardar: () => {
+        onGuardar: async () => {
             const cant = parseInt(document.getElementById("m-cant").value) || 0;
-            if (cant <= 0) return;
-            if (cant > insumo.cantidad) { alert("No hay stock suficiente"); return; }
-            insumo.cantidad -= cant;
-            insumo.costo_total = insumo.cantidad * insumo.precio_compra;
-            iniciarPantalla();
+            if (cant <= 0) throw new Error("Ingrese una cantidad válida");
+            await servicioInsumos.consumir(insumo.id, { cantidad: cant, motivo: "Consumo operativo" });
+            await cargarDatos();
         }
     });
 };
 
+// ¡ACÁ ESTÁ LA CLAVE! Primero dibuja, después busca.
 iniciarPantalla();
+cargarDatos();

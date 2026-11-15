@@ -1,4 +1,5 @@
 import { formatearDinero } from "./formatos.js";
+import { servicioEquipamiento } from "./servicios/equipamiento.js";
 
 const h = (etiqueta, props = {}, ...hijos) => {
     const el = document.createElement(etiqueta);
@@ -22,12 +23,10 @@ const ICONO_RESTAURAR = '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L
 const ICONO_ELIMINAR = '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>';
 const ICONO_MAS = '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>';
 
-// Datos alineados a la BD (Ya no guardamos los estados fraccionados, solo el total)
-let bienes = [
-    { id: 1, nombre: "Heladera exhibidora", precio_compra: 850000, cantidad: 1, fecha: "12-02-2026", creado_por: "admin1", oculto: false },
-    { id: 2, nombre: "Balanza electrónica", precio_compra: 95000, cantidad: 2, fecha: "03-03-2026", creado_por: "admin1", oculto: false }
-];
+// Arranca vacío. Los datos vienen de la API.
+let bienes = [];
 let verOcultos = false;
+let refrescarUI = null;
 
 const abrirModal = ({ titulo, cuerpo, onGuardar }) => {
     const fondo = h("div", { class: "gastos-modal-fondo" });
@@ -39,12 +38,20 @@ const abrirModal = ({ titulo, cuerpo, onGuardar }) => {
         h("div", { class: "gastos-modal-pie" }, h("button", { class: "btn btn-outline", text: "Cancelar", onclick: () => fondo.remove() }), btnGuardar)
     );
 
-    btnGuardar.addEventListener("click", () => {
-        btnGuardar.disabled = true; btnGuardar.textContent = "Guardando..."; onGuardar(); fondo.remove();
+    btnGuardar.addEventListener("click", async () => {
+        btnGuardar.disabled = true; btnGuardar.textContent = "Guardando...";
+        try {
+            await onGuardar();
+            fondo.remove();
+        } catch (error) {
+            alert(error.message || "Error al guardar");
+            btnGuardar.disabled = false; btnGuardar.textContent = "Guardar";
+        }
     });
     fondo.append(modal); document.body.append(fondo);
 };
 
+// --- SE EJECUTA PRIMERO: DIBUJA TU DISEÑO ---
 const iniciarPantalla = () => {
     const pagina = document.getElementById("bienes-pagina");
     const zonaTabla = h("div");
@@ -54,7 +61,6 @@ const iniciarPantalla = () => {
         let sumaTotal = 0;
         const filtradosActivos = bienes.filter(b => !b.oculto);
         
-        // Sumamos el valor total (cantidad * precio_compra)
         filtradosActivos.forEach(b => {
             sumaTotal += (b.cantidad * b.precio_compra);
         });
@@ -72,7 +78,6 @@ const iniciarPantalla = () => {
         const filas = filtrados.map(bien => {
             const valorTotal = bien.cantidad * bien.precio_compra;
             
-            // SOLO QUEDAN LOS BOTONES DE EDITAR Y OCULTAR
             const acciones = bien.oculto 
                 ? h("div", { class: "gastos-acciones-fila" }, 
                     h("button", { class: "btn btn-outline gastos-btn-chico gastos-btn-icono gastos-btn-icono-texto", onclick: () => { bien.oculto = false; refrescar(); } }, crearSvg(ICONO_RESTAURAR), h("span", { text: "Restaurar" })),
@@ -89,12 +94,11 @@ const iniciarPantalla = () => {
                 h("td", { text: bien.cantidad }),
                 h("td", { text: formatearDinero(valorTotal) }),
                 h("td", { text: bien.fecha }),
-                h("td", { text: bien.creado_por }), // Sin columna Estado
+                h("td", { text: bien.creado_por }),
                 h("td", { class: "acciones-columna" }, acciones)
             );
         });
 
-        // TABLA SIN COLUMNA ESTADO
         zonaTabla.replaceChildren(
             h("div", { class: "gastos-tarjeta" },
                 filtrados.length === 0 ? h("div", { class: "gastos-vacio", text: verOcultos ? "Sin elementos ocultos" : "Sin equipamiento" })
@@ -119,9 +123,33 @@ const iniciarPantalla = () => {
         h("div", { class: "gastos-barra" }, buscador, chipOcultos),
         zonaTabla
     );
-    refrescar();
+    
+    refrescarUI = refrescar;
+    refrescar(); // Dibuja vacío por defecto
 };
 
+// --- SE EJECUTA SEGUNDO: BUSCA LOS DATOS ---
+const cargarDatos = async () => {
+    try {
+        const datos = await servicioEquipamiento.listar();
+        bienes = datos.bienes.map(item => ({
+            id: item.id,
+            nombre: item.nombre,
+            precio_compra: item.costo_adquisicion, 
+            cantidad: item.cantidad,
+            valor_total: item.valor_total, 
+            fecha: item.fecha_adquisicion || item.creado_en?.slice(0, 10) || "—",
+            creado_por: item.creado_por || "admin",
+            oculto: item.activo === false || item.oculto === true || false
+        }));
+        if (refrescarUI) refrescarUI();
+    } catch (error) {
+        console.error("Error al cargar equipamiento:", error);
+        alert("No se pudo cargar el equipamiento. ¿Está el backend encendido?");
+    }
+};
+
+// --- MODALES ---
 const crear = () => {
     const form = h("div", {},
         h("div", { class: "gastos-campo" }, h("label", { text: "Nombre *" }), h("input", { id: "m-nombre", class: "gastos-entrada" })),
@@ -132,37 +160,20 @@ const crear = () => {
     
     abrirModal({
         titulo: "Nuevo equipamiento", cuerpo: form,
-        onGuardar: () => {
-            bienes.push({
-                id: Date.now(), 
+        onGuardar: async () => {
+            await servicioEquipamiento.crear({
                 nombre: document.getElementById("m-nombre").value,
                 precio_compra: parseFloat(document.getElementById("m-valor").value) || 0, 
                 cantidad: parseInt(document.getElementById("m-cant").value) || 0,
-                fecha: document.getElementById("m-fecha").value, creado_por: "admin1", oculto: false
+                stock_minimo: 0, proveedor_id: 1, fecha_adquisicion: document.getElementById("m-fecha").value, iva_alicuota: 21.00
             });
-            iniciarPantalla();
+            await cargarDatos();
         }
     });
 };
 
-const editar = (bien) => {
-    const form = h("div", {},
-        h("div", { class: "gastos-campo" }, h("label", { text: "Nombre *" }), h("input", { id: "m-nombre", class: "gastos-entrada", value: bien.nombre })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Valor de Adquisición *" }), h("input", { id: "m-valor", type: "number", class: "gastos-entrada", value: bien.precio_compra })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Fecha de Adquisición *" }), h("input", { id: "m-fecha", class: "gastos-entrada", value: bien.fecha })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Cantidad Total *" }), h("input", { id: "m-cant", type: "number", step: "1", class: "gastos-entrada", value: bien.cantidad }))
-    );
-    
-    abrirModal({
-        titulo: "Editar equipamiento", cuerpo: form,
-        onGuardar: () => {
-            bien.nombre = document.getElementById("m-nombre").value;
-            bien.precio_compra = parseFloat(document.getElementById("m-valor").value);
-            bien.fecha = document.getElementById("m-fecha").value;
-            bien.cantidad = parseInt(document.getElementById("m-cant").value) || 0;
-            iniciarPantalla();
-        }
-    });
-};
+const editar = (bien) => alert("La API de edición para equipamiento aún no está documentada.");
 
+// ¡ACÁ ESTÁ LA CLAVE! Primero dibuja, después busca.
 iniciarPantalla();
+cargarDatos();
