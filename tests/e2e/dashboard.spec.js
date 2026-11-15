@@ -262,7 +262,7 @@ test.describe("Barra lateral", () => {
   ];
 
   // Pantallas que ya tienen contenido: no muestran el cartel "En construcción" y su título puede ser otro.
-  const TITULO_DE_PANTALLA = { ventas: "Nueva venta", productos: "Productos", proveedores: "Proveedores", gastos: "Gastos operativos" };
+  const TITULO_DE_PANTALLA = { ventas: "Nueva venta", productos: "Productos", proveedores: "Proveedores", gastos: "Gastos operativos", reportes: "Reportes" };
 
   for (const [modulo, archivo, titulo] of PANTALLAS) {
     const terminada = modulo in TITULO_DE_PANTALLA;

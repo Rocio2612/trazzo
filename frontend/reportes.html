@@ -6,17 +6,36 @@
     <title>Trazzo - Reportes</title>
     <link rel="stylesheet" href="css/base.css">
     <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/gastos.css">
+    <link rel="stylesheet" href="css/reportes.css">
 </head>
 <body>
 
-    <main class="contenido-vacio">
-        <h1>Reportes</h1>
-        <p>En construcción</p>
+    <!-- Reportes (solo lectura, solo Administrador): consolida Ventas, Cuenta Corriente, Productos, Bienes de Uso,
+         Insumos y Gastos. Las tarjetas y el desglose los dibuja js/reportes-pantalla.js. El Cajero no ve el link en el
+         menú y, si entra por la dirección, se le avisa (403) y vuelve al Panel sin cargar ningún dato.
+         Esta pantalla no lleva "contenido-fijo": al abrir y cerrar el menú lateral se acomoda al ancho disponible. -->
+    <main id="reportes-pagina" class="gastos-pagina" data-modulo="reportes">
+
+        <div class="gastos-encabezado reportes-encabezado">
+            <h1>Reportes</h1>
+            <div class="gastos-selector reportes-selector">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+                <select id="reportes-filtro-periodo" class="gastos-entrada reportes-select-periodo" data-testid="reportes-filtro-periodo" aria-label="Período">
+                    <option value="hoy">Hoy</option>
+                    <option value="mes" selected>Este mes</option>
+                    <option value="anio">Este año</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="reportes-contenido" data-testid="reportes-contenido"></div>
     </main>
 
     <script src="js/config.js"></script>
     <script src="js/api.js"></script>
     <script src="js/roles.js"></script>
     <script type="module" src="js/layout.js"></script>
+    <script type="module" src="js/reportes-pantalla.js"></script>
 </body>
 </html>
