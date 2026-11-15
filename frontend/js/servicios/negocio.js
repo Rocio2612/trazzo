@@ -9,7 +9,7 @@ export const servicioNegocio = {
 
   // Devuelve el negocio actualizado (el Backend no incluye fecha_registro en esta respuesta).
   guardar: async (datos) => {
-    // El Backend ignora un rubro null (conserva el anterior), así que "Sin especificar" viaja como texto vacío.
+    // "Sin especificar" viaja como texto vacío: el Backend lo guarda como NULL (borra el rubro anterior).
     const cuerpo = { ...datos, rubro: datos.rubro ?? "" };
     return (await fetchAPI("/auth/negocio", "PUT", cuerpo)).negocio;
   },

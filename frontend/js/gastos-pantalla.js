@@ -301,7 +301,13 @@ const iniciarPantalla = () => {
       // Si el Backend rechaza el gasto, el error sale en el formulario (que sigue abierto).
       alGuardar: async (datos) => {
         if (esNuevo) await servicioGastos.crear(datos);
-        else await servicioGastos.actualizar(gasto.id, datos);
+        else {
+          // Si el gasto tiene un medio de pago que ya no se ofrece (eliminado) y no se eligió otro, no se manda el campo:
+          // el Backend conserva el medio que tenía. Mandar null lo borraría.
+          const medioNoOfrecido = gasto.medio_pago_id != null && !mediosDePago.some((m) => m.id === String(gasto.medio_pago_id));
+          if (medioNoOfrecido && datos.medio_pago_id === null) delete datos.medio_pago_id;
+          await servicioGastos.actualizar(gasto.id, datos);
+        }
         await cargar();
         avisar(esNuevo ? "Gasto registrado" : "Gasto actualizado");
       },
