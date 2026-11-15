@@ -3,168 +3,65 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Trazzo Sprint 2 - Historial de Reposiciones</title>
+    <title>Trazzo - Historial de reposiciones</title>
     <link rel="stylesheet" href="css/base.css" />
     <link rel="stylesheet" href="css/layout.css" />
-
-    <style>
-      /* Mismos estilos visuales que Productos */
-      body {
-        background-color: #f8f9fa;
-        font-family: "Inter", sans-serif;
-        margin: 0;
-      }
-      .pagina {
-        padding: 1.5rem 2rem 3rem;
-        display: flex;
-        flex-direction: column;
-        gap: 1.5rem;
-      }
-      .cabecera {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-      .cabecera h1 {
-        font-size: 1.8rem;
-        color: #111111;
-        margin: 0;
-      }
-
-      .barra-filtros {
-        display: flex;
-        gap: 1rem;
-        align-items: center;
-        flex-wrap: wrap;
-      }
-      .barra-filtros input[type="text"] {
-        flex: 1 1 280px;
-        padding: 0.6rem 1rem;
-        border: 1px solid #dee2e6;
-        border-radius: 8px;
-        font-family: inherit;
-      }
-      .barra-filtros select {
-        padding: 0.6rem 1rem;
-        border: 1px solid #dee2e6;
-        border-radius: 8px;
-        font-family: inherit;
-        background: white;
-      }
-
-      .tarjeta {
-        background: #ffffff;
-        border: 1px solid #dee2e6;
-        border-radius: 10px;
-        overflow: hidden;
-      }
-      .tabla-scroll {
-        max-height: calc(100vh - 280px);
-        overflow-y: auto;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        text-align: left;
-      }
-      th {
-        position: sticky;
-        top: 0;
-        background: #ffffff;
-        color: #8c8c8c;
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        padding: 1rem;
-        border-bottom: 1px solid #dee2e6;
-        z-index: 10;
-      }
-      td {
-        padding: 1rem;
-        border-bottom: 1px solid #f1f3f5;
-        color: #212529;
-        font-size: 0.9rem;
-      }
-
-      .btn-volver {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.6rem 1rem;
-        border: 1px solid #dee2e6;
-        border-radius: 6px;
-        color: #212529;
-        text-decoration: none;
-        background: white;
-        font-weight: 500;
-      }
-      .btn-volver:hover {
-        background: #f8f9fa;
-      }
-
-      .hidden {
-        display: none !important;
-      }
-    </style>
+    <link rel="stylesheet" href="css/productos.css" />
   </head>
   <body>
-    <main class="pagina" data-modulo="productos">
-      <div class="cabecera">
-        <h1>Historial de Reposiciones</h1>
-        <a href="productos.html" class="btn-volver">← Volver a Productos</a>
+    <main class="productos-pagina" data-modulo="productos">
+      <div class="productos-cabecera">
+        <h1>Historial de reposiciones</h1>
+        <div class="cabecera-acciones">
+          <a href="productos.html" class="btn-pz btn-pz-sec"
+            >← Volver a Productos</a
+          >
+        </div>
       </div>
 
-      <div class="barra-filtros">
-        <!-- BASE DE DATOS: fecha_adquisicion -->
-        <select id="filtro-fecha">
-          <option value="todas">Todas las reposiciones</option>
-          <option value="hoy">Hoy</option>
-          <option value="mes">Este mes</option>
-          <option value="año">Este año</option>
-        </select>
-
+      <div class="productos-barra">
         <input
           type="text"
           id="buscador"
           placeholder="Buscar por producto o proveedor..."
+          autocomplete="off"
+          data-testid="buscador"
         />
-
-        <!-- BASE DE DATOS: proveedor_id / proveedor_nombre -->
-        <select id="filtro-proveedor">
+        <select id="filtro-proveedor" data-testid="filtro-proveedor">
           <option value="">Todos los proveedores</option>
+        </select>
+        <select id="filtro-fecha" data-testid="filtro-fecha">
+          <option value="todas">Todas las fechas</option>
+          <option value="hoy">Hoy</option>
+          <option value="mes">Este mes</option>
+          <option value="año">Este año</option>
         </select>
       </div>
 
-      <div class="tarjeta">
+      <div class="productos-tarjeta">
         <div class="tabla-scroll">
           <table>
             <thead>
               <tr>
-                <th>PRODUCTO</th>
-                <th>CANTIDAD</th>
-                <th>MONTO TOTAL</th>
-                <th>COSTO UNITARIO</th>
-                <th>FECHA ADQ.</th>
-                <th>PROVEEDOR</th>
-                <th>REGISTRADO POR</th>
-                <th>ESTADO</th>
-                <th class="acciones-admin hidden">ACCIONES</th>
+                <th>Producto</th>
+                <th>Cantidad</th>
+                <th>Monto total</th>
+                <th>Costo unitario real</th>
+                <th>Fecha</th>
+                <th>Proveedor</th>
+                <th>Registrado por</th>
+                <th>Estado</th>
+                <th class="acciones-admin hidden">Acciones</th>
               </tr>
             </thead>
-            <tbody id="historial-tbody">
-              <tr>
-                <td
-                  colspan="9"
-                  style="text-align: center; color: gray; padding: 2rem"
-                >
-                  Cargando historial...
-                </td>
-              </tr>
-            </tbody>
+            <tbody id="historial-tbody"></tbody>
           </table>
         </div>
       </div>
     </main>
-    <!-- SCRIPTS -->
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
     <script src="js/config.js"></script>
     <script src="js/api.js"></script>
     <script src="js/roles.js"></script>

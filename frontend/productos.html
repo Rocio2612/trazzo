@@ -3,228 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Trazzo Sprint 2 - Productos</title>
+    <title>Trazzo - Productos</title>
     <link rel="stylesheet" href="css/base.css" />
     <link rel="stylesheet" href="css/layout.css" />
-
-    <style>
-      body {
-        background-color: #f8f9fa;
-        font-family: "Inter", sans-serif;
-        margin: 0;
-      }
-      .productos-pagina {
-        padding: 1.5rem 2rem 3rem;
-        display: flex;
-        flex-direction: column;
-        gap: 1.5rem;
-      }
-      .productos-cabecera {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-      .productos-cabecera h1 {
-        font-size: 1.8rem;
-        color: #111111;
-        margin: 0;
-      }
-      .productos-barra {
-        display: flex;
-        gap: 1rem;
-        align-items: center;
-      }
-      .productos-barra input[type="text"] {
-        flex: 1 1 280px;
-        padding: 0.6rem 1rem;
-        border: 1px solid #dee2e6;
-        border-radius: 8px;
-        font-family: inherit;
-      }
-      .chip-filtro {
-        padding: 0.6rem 1.2rem;
-        border: 1px solid #dee2e6;
-        border-radius: 999px;
-        background: #ffffff;
-        cursor: pointer;
-        font-weight: 500;
-        transition: 0.2s;
-        font-family: inherit;
-        color: #212529;
-      }
-      .chip-filtro.activo {
-        background: #111111;
-        color: #ffffff;
-        border-color: #111111;
-      }
-      .productos-tarjeta {
-        background: #ffffff;
-        border: 1px solid #dee2e6;
-        border-radius: 10px;
-        overflow: hidden;
-      }
-      .tabla-scroll {
-        max-height: calc(100vh - 320px);
-        overflow-y: auto;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        text-align: left;
-      }
-      th {
-        position: sticky;
-        top: 0;
-        background: #ffffff;
-        color: #8c8c8c;
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        padding: 1rem;
-        border-bottom: 1px solid #dee2e6;
-        z-index: 10;
-      }
-      td {
-        padding: 1rem;
-        border-bottom: 1px solid #f1f3f5;
-        color: #212529;
-        font-size: 0.9rem;
-      }
-      tr:hover td {
-        background-color: #f8f9fa;
-      }
-      .acciones-flex {
-        display: flex;
-        gap: 0.5rem;
-      }
-      .btn-icono {
-        background: #ffffff;
-        border: 1px solid #dee2e6;
-        border-radius: 6px;
-        padding: 0.4rem;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: 0.2s;
-        color: #212529;
-      }
-      .btn-icono:hover {
-        background: #f8f9fa;
-      }
-      .badge {
-        padding: 0.2rem 0.6rem;
-        border-radius: 999px;
-        font-size: 0.75rem;
-        font-weight: bold;
-      }
-      .badge-rojo {
-        background: #fdecee;
-        color: #b02a37;
-      }
-      .badge-ambar {
-        background: #fff7e0;
-        color: #7a5200;
-      }
-      .modal-backdrop {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.4);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-      }
-      .modal-caja {
-        background: #ffffff;
-        border-radius: 12px;
-        width: 100%;
-        max-width: 540px;
-        padding: 1.5rem;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        max-height: 90vh;
-        overflow-y: auto;
-      }
-      .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-      }
-      .form-group {
-        margin-bottom: 1rem;
-      }
-      .form-group label {
-        display: block;
-        font-size: 0.9rem;
-        margin-bottom: 0.3rem;
-      }
-      .form-control {
-        width: 100%;
-        padding: 0.6rem;
-        border: 1px solid #dee2e6;
-        border-radius: 6px;
-        box-sizing: border-box;
-        font-family: inherit;
-      }
-      .banner-ambar {
-        background: #fff7e0;
-        border: 1px solid #f3d68a;
-        color: #7a5200;
-        padding: 0.8rem;
-        border-radius: 6px;
-        margin-bottom: 1rem;
-        font-size: 0.85rem;
-      }
-      .hidden {
-        display: none !important;
-      }
-      .toast {
-        position: fixed;
-        bottom: 24px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #111111;
-        color: #ffffff;
-        padding: 0.8rem 1.5rem;
-        border-radius: 8px;
-        font-size: 0.9rem;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.3s;
-        z-index: 2000;
-      }
-      .toast.mostrar {
-        opacity: 1;
-      }
-    </style>
+    <link rel="stylesheet" href="css/productos.css" />
   </head>
   <body>
     <main class="productos-pagina" data-modulo="productos">
       <div class="productos-cabecera">
         <h1>Productos</h1>
-        <div style="display: flex; gap: 1rem">
+        <div class="cabecera-acciones">
           <a
             href="historial-reposiciones.html"
-            style="
-              text-decoration: none;
-              padding: 0.6rem 1rem;
-              border: 1px solid #dee2e6;
-              border-radius: 6px;
-              color: #212529;
-            "
-            >Historial de Reposición</a
+            class="btn-pz btn-pz-sec"
+            data-testid="link-historial"
+            >Historial de reposición</a
           >
           <button
-            class="btn btn-primario"
+            type="button"
+            class="btn-pz btn-pz-primario"
             id="btn-nuevo-producto"
-            style="
-              padding: 0.6rem 1rem;
-              background: #0056b3;
-              color: white;
-              border: none;
-              border-radius: 6px;
-              cursor: pointer;
-            "
+            data-testid="btn-nuevo-producto"
           >
             + Nuevo producto
           </button>
@@ -232,9 +31,29 @@
       </div>
 
       <div class="productos-barra">
-        <input type="text" id="buscador" placeholder="Buscar por nombre..." />
-        <button id="btn-stock-bajo" class="chip-filtro">Stock bajo</button>
-        <button id="btn-ver-ocultos" class="chip-filtro">Ver ocultos</button>
+        <input
+          type="text"
+          id="buscador"
+          placeholder="Buscar por nombre..."
+          autocomplete="off"
+          data-testid="buscador"
+        />
+        <button
+          type="button"
+          id="btn-stock-bajo"
+          class="chip-filtro"
+          data-testid="filtro-stock-bajo"
+        >
+          Stock bajo
+        </button>
+        <button
+          type="button"
+          id="btn-ver-ocultos"
+          class="chip-filtro hidden"
+          data-testid="filtro-ocultos"
+        >
+          Ver ocultos
+        </button>
       </div>
 
       <div class="productos-tarjeta">
@@ -242,14 +61,14 @@
           <table>
             <thead>
               <tr>
-                <th>NOMBRE</th>
-                <th>CATEGORÍA</th>
-                <th>COSTO</th>
-                <th>PRECIO</th>
-                <th>STOCK</th>
-                <th>MÍNIMO</th>
-                <th>PROVEEDOR</th>
-                <th>ACCIONES</th>
+                <th>Nombre</th>
+                <th>Categoría</th>
+                <th>Costo</th>
+                <th>Precio</th>
+                <th>Stock</th>
+                <th>Mínimo</th>
+                <th>Proveedor</th>
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody id="productos-tbody"></tbody>
@@ -258,34 +77,52 @@
       </div>
     </main>
 
-    <!-- MODAL: NUEVO PRODUCTO -->
-    <div id="modal-producto" class="modal-backdrop hidden">
-      <div class="modal-caja">
+    <!-- MODAL: NUEVO / EDITAR PRODUCTO -->
+    <div
+      id="modal-producto"
+      class="modal-backdrop hidden"
+      data-testid="modal-producto"
+    >
+      <div
+        class="modal-caja"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-producto-titulo"
+      >
         <div class="modal-header">
-          <h2>Nuevo Producto</h2>
+          <h2 id="modal-producto-titulo">Nuevo producto</h2>
           <button
             type="button"
             class="btn-icono"
-            onclick="
-              document.getElementById('modal-producto').classList.add('hidden')
-            "
+            data-cerrar="modal-producto"
+            aria-label="Cerrar"
           >
             ✕
           </button>
         </div>
-        <form id="form-producto">
-          <div id="banner-precio-menor" class="banner-ambar hidden">
+        <form id="form-producto" novalidate>
+          <div
+            id="banner-precio-menor"
+            class="banner-ambar hidden"
+            data-testid="banner-precio-menor"
+          >
             El precio de venta es menor al costo unitario.
           </div>
 
           <div class="form-group">
-            <label>Nombre *</label>
-            <input type="text" id="nombre" class="form-control" required />
+            <label for="nombre">Nombre *</label>
+            <input
+              type="text"
+              id="nombre"
+              class="form-control"
+              required
+              maxlength="120"
+            />
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem">
+          <div class="form-grid">
             <div class="form-group">
-              <label>Precio Compra *</label>
+              <label for="precio_compra">Precio de compra (costo) *</label>
               <input
                 type="number"
                 id="precio_compra"
@@ -294,9 +131,12 @@
                 min="0.01"
                 step="0.01"
               />
+              <div class="ayuda hidden" id="ayuda-costo">
+                El costo cambia al registrar una reposición.
+              </div>
             </div>
             <div class="form-group">
-              <label>Rentabilidad (%) (Opcional)</label>
+              <label for="rentabilidad">Rentabilidad (%)</label>
               <input
                 type="number"
                 id="rentabilidad"
@@ -308,18 +148,18 @@
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem">
+          <div class="form-grid">
             <div class="form-group">
-              <label>IVA (%) *</label>
+              <label for="iva_alicuota">IVA (%) *</label>
               <select id="iva_alicuota" class="form-control">
                 <option value="21">21%</option>
-                <option value="10.5">10.5%</option>
+                <option value="10.5">10,5%</option>
                 <option value="27">27%</option>
                 <option value="0">0%</option>
               </select>
             </div>
             <div class="form-group">
-              <label>Precio de Venta *</label>
+              <label for="precio_venta">Precio de venta *</label>
               <input
                 type="number"
                 id="precio_venta"
@@ -331,58 +171,51 @@
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem">
+          <div class="form-grid">
             <div class="form-group">
-              <label>Stock Actual *</label>
+              <label for="cantidad">Stock actual *</label>
               <input
                 type="number"
                 id="cantidad"
                 class="form-control"
                 required
                 min="0"
+                step="1"
               />
+              <div class="ayuda hidden" id="ayuda-stock">
+                El stock se modifica con reposiciones y bajas.
+              </div>
             </div>
             <div class="form-group">
-              <label>Stock Mínimo *</label>
+              <label for="stock_minimo">Stock mínimo *</label>
               <input
                 type="number"
                 id="stock_minimo"
                 class="form-control"
                 required
                 min="0"
+                step="1"
               />
             </div>
           </div>
 
           <div class="form-group">
-            <label>Proveedor *</label>
-            <select id="proveedor_id" class="form-control" required>
-              <option value="">Seleccione proveedor...</option>
-            </select>
+            <label for="proveedor_id">Proveedor *</label>
+            <select id="proveedor_id" class="form-control"></select>
           </div>
 
-          <div style="text-align: right; margin-top: 1.5rem">
+          <div class="modal-pie">
             <button
               type="button"
-              class="btn btn-outline"
-              onclick="
-                document
-                  .getElementById('modal-producto')
-                  .classList.add('hidden')
-              "
+              class="btn-pz btn-pz-sec"
+              data-cerrar="modal-producto"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              class="btn btn-primario"
-              style="
-                background: #0056b3;
-                color: white;
-                padding: 0.5rem 1rem;
-                border: none;
-                border-radius: 6px;
-              "
+              class="btn-pz btn-pz-primario"
+              data-testid="guardar-producto"
             >
               Guardar
             </button>
@@ -392,38 +225,43 @@
     </div>
 
     <!-- MODAL: REPOSICIÓN -->
-    <div id="modal-reposicion" class="modal-backdrop hidden">
-      <div class="modal-caja">
+    <div
+      id="modal-reposicion"
+      class="modal-backdrop hidden"
+      data-testid="modal-reposicion"
+    >
+      <div
+        class="modal-caja"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-reposicion-titulo"
+      >
         <div class="modal-header">
-          <h2>Reposición de Stock</h2>
+          <h2 id="modal-reposicion-titulo">Reposición de stock</h2>
           <button
             type="button"
             class="btn-icono"
-            onclick="
-              document
-                .getElementById('modal-reposicion')
-                .classList.add('hidden')
-            "
+            data-cerrar="modal-reposicion"
+            aria-label="Cerrar"
           >
             ✕
           </button>
         </div>
-        <form id="form-reposicion">
-          <input type="hidden" id="repo-prod-id" />
-          <input type="hidden" id="repo-ultimo-costo" />
-
+        <form id="form-reposicion" novalidate>
+          <p id="repo-prod-nombre" style="margin-top: 0; font-weight: 600"></p>
           <div class="form-group">
-            <label>Cantidad *</label>
+            <label for="repo-cantidad">Cantidad *</label>
             <input
               type="number"
               id="repo-cantidad"
               class="form-control"
               required
               min="1"
+              step="1"
             />
           </div>
           <div class="form-group">
-            <label>Monto total *</label>
+            <label for="monto_total">Monto total *</label>
             <input
               type="number"
               id="monto_total"
@@ -432,36 +270,26 @@
               min="0.01"
               step="0.01"
             />
+            <div class="ayuda">
+              Se sugiere cantidad × último costo. Podés modificarlo.
+            </div>
           </div>
           <div class="form-group">
-            <label>Proveedor *</label>
-            <select id="proveedor_id_repo" class="form-control" required>
-              <option value="">Seleccione proveedor...</option>
-            </select>
+            <label for="proveedor_id_repo">Proveedor *</label>
+            <select id="proveedor_id_repo" class="form-control"></select>
           </div>
-
-          <div style="text-align: right; margin-top: 1.5rem">
+          <div class="modal-pie">
             <button
               type="button"
-              class="btn btn-outline"
-              onclick="
-                document
-                  .getElementById('modal-reposicion')
-                  .classList.add('hidden')
-              "
+              class="btn-pz btn-pz-sec"
+              data-cerrar="modal-reposicion"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              class="btn btn-primario"
-              style="
-                background: #0056b3;
-                color: white;
-                padding: 0.5rem 1rem;
-                border: none;
-                border-radius: 6px;
-              "
+              class="btn-pz btn-pz-primario"
+              data-testid="confirmar-reposicion"
             >
               Confirmar
             </button>
@@ -471,75 +299,74 @@
     </div>
 
     <!-- MODAL: BAJA -->
-    <div id="modal-baja" class="modal-backdrop hidden">
-      <div class="modal-caja">
+    <div id="modal-baja" class="modal-backdrop hidden" data-testid="modal-baja">
+      <div
+        class="modal-caja"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-baja-titulo"
+      >
         <div class="modal-header">
-          <h2>Registrar Baja</h2>
+          <h2 id="modal-baja-titulo">Registrar baja</h2>
           <button
             type="button"
             class="btn-icono"
-            onclick="
-              document.getElementById('modal-baja').classList.add('hidden')
-            "
+            data-cerrar="modal-baja"
+            aria-label="Cerrar"
           >
             ✕
           </button>
         </div>
-        <form id="form-baja">
-          <input type="hidden" id="baja-prod-id" />
+        <form id="form-baja" novalidate>
+          <p id="baja-prod-nombre" style="margin-top: 0; font-weight: 600"></p>
           <div class="form-group">
-            <label>Cantidad a dar de baja *</label>
+            <label for="baja-cantidad">Cantidad a dar de baja *</label>
             <input
               type="number"
               id="baja-cantidad"
               class="form-control"
               required
               min="1"
+              step="1"
             />
+            <div class="ayuda" id="baja-stock-actual"></div>
           </div>
           <div class="form-group">
-            <label>Motivo *</label>
+            <label for="baja-motivo">Motivo *</label>
+            <!-- Confirmar con Back los valores que acepta la base (CHECK de motivo). -->
             <select id="baja-motivo" class="form-control" required>
               <option value="roto">Roto</option>
               <option value="perdido">Perdido</option>
               <option value="no_utilizado">No utilizado</option>
             </select>
           </div>
-          <div style="text-align: right; margin-top: 1.5rem">
+          <div class="modal-pie">
             <button
               type="button"
-              class="btn btn-outline"
-              onclick="
-                document.getElementById('modal-baja').classList.add('hidden')
-              "
+              class="btn-pz btn-pz-sec"
+              data-cerrar="modal-baja"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              class="btn btn-primario"
-              style="
-                background: #0056b3;
-                color: white;
-                padding: 0.5rem 1rem;
-                border: none;
-                border-radius: 6px;
-              "
+              class="btn-pz btn-pz-primario"
+              data-testid="confirmar-baja"
             >
-              Registrar Baja
+              Registrar baja
             </button>
           </div>
         </form>
       </div>
     </div>
 
-    <div id="toast" class="toast"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+    <!-- api.js y config.js son scripts clásicos: fetchAPI y API_URL quedan globales -->
     <script src="js/config.js"></script>
     <script src="js/api.js"></script>
     <script src="js/roles.js"></script>
     <script type="module" src="js/layout.js"></script>
-    <!-- api.js y productosUtils.js se cargan solos como módulos vía los import -->
     <script type="module" src="js/productos.js"></script>
     <script type="module">
       import { iniciarNotificaciones } from "./js/notificaciones.js";
