@@ -102,11 +102,7 @@ def calcular_costo_neto_compra(monto_total, iva_alicuota, cat_negocio, cat_prove
         return round(float(monto_total) / (1.0 + (float(iva_alicuota) / 100.0)), 4)
     return round(float(monto_total), 4)
 
-
-# ==============================================================================
 # GESTIÓN DE MEDIOS DE PAGO (finanzas.medios_pago)
-# ==============================================================================
-
 # Listar Medios de Pago (GET /api/medios-pago)
 @app.route('/api/medios-pago', methods=['GET'])
 def listar_medios_pago():
@@ -356,11 +352,7 @@ def eliminar_medio_pago(medio_id):
         cur.close()
         conn.close()
 
-
-# ==============================================================================
 # GESTIÓN DE GASTOS OPERATIVOS (finanzas.gastos_operativos)
-# ==============================================================================
-
 @app.route('/api/gastos', methods=['GET'])
 def listar_gastos():
     """
