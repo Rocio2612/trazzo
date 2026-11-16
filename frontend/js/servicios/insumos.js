@@ -11,4 +11,7 @@ export const servicioInsumos = {
   consumir: async (id, datos) => await fetchAPI(`/bienes-gasto/${id}/consumo`, "POST", datos),
   ocultar: (id) => fetchAPI(`/bienes-gasto/${id}/ocultar`, "PATCH"),
   eliminar: (id) => fetchAPI(`/bienes-gasto/${id}`, "DELETE"),
+  // NUEVOS ENDPOINTS (Quedan listos para cuando el back los cree)
+  editar: (id, datos) => fetchAPI(`/bienes-gasto/${id}`, "PUT", datos),
+  restaurar: (id) => fetchAPI(`/bienes-gasto/${id}/restaurar`, "PATCH"),
 };

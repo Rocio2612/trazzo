@@ -9,4 +9,7 @@ export const servicioEquipamiento = {
   crear: async (datos) => (await fetchAPI("/bienes-uso", "POST", datos)).bien_uso,
   ocultar: (id) => fetchAPI(`/bienes-uso/${id}/ocultar`, "PATCH"),
   eliminar: (id) => fetchAPI(`/bienes-uso/${id}`, "DELETE"),
+  // NUEVOS ENDPOINTS (Quedan listos para cuando el back los cree)
+  editar: (id, datos) => fetchAPI(`/bienes-uso/${id}`, "PUT", datos),
+  restaurar: (id) => fetchAPI(`/bienes-uso/${id}/restaurar`, "PATCH"),
 };

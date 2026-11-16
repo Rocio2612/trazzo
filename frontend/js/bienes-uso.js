@@ -1,4 +1,4 @@
-import { formatearDinero } from "./formatos.js";
+import { formatearDinero, fechaDeMarcaParaMostrar, fechaParaEnviar } from "./formatos.js";
 import { servicioEquipamiento } from "./servicios/equipamiento.js";
 
 const h = (etiqueta, props = {}, ...hijos) => {
@@ -23,8 +23,8 @@ const ICONO_RESTAURAR = '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L
 const ICONO_ELIMINAR = '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>';
 const ICONO_MAS = '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>';
 
-// Arranca vacío. Los datos vienen de la API.
 let bienes = [];
+let resumenData = { patrimonio_total: 0 }; 
 let verOcultos = false;
 let refrescarUI = null;
 
@@ -51,23 +51,18 @@ const abrirModal = ({ titulo, cuerpo, onGuardar }) => {
     fondo.append(modal); document.body.append(fondo);
 };
 
-// --- SE EJECUTA PRIMERO: DIBUJA TU DISEÑO ---
 const iniciarPantalla = () => {
     const pagina = document.getElementById("bienes-pagina");
     const zonaTabla = h("div");
     const zonaTotal = h("div", { style: "display: flex; justify-content: space-between; align-items: center; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem;" });
 
     const refrescar = () => {
-        let sumaTotal = 0;
         const filtradosActivos = bienes.filter(b => !b.oculto);
-        
-        filtradosActivos.forEach(b => {
-            sumaTotal += (b.cantidad * b.precio_compra);
-        });
+        const totalMostrar = resumenData.patrimonio_total || 0;
 
         zonaTotal.replaceChildren(
             h("div", { style: "display: flex; gap: 2rem;" },
-                h("div", { style: "font-size: 1.25rem; font-weight: 600; color: #111;" }, "Valor Total del Equipamiento: ", h("span", { text: formatearDinero(sumaTotal), style: "color: #0056b3;" }))
+                h("div", { style: "font-size: 1.25rem; font-weight: 600; color: #111;" }, "Valor Total del Inventario: ", h("span", { text: formatearDinero(totalMostrar), style: "color: #0056b3;" }))
             ),
             h("div", { style: "background: #e9ecef; color: #495057; padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.9rem; font-weight: 500;" }, `${filtradosActivos.length} ${filtradosActivos.length === 1 ? 'equipo' : 'equipos'}`)
         );
@@ -78,14 +73,26 @@ const iniciarPantalla = () => {
         const filas = filtrados.map(bien => {
             const valorTotal = bien.cantidad * bien.precio_compra;
             
+            // CONECTAMOS LOS BOTONES AL BACKEND
             const acciones = bien.oculto 
                 ? h("div", { class: "gastos-acciones-fila" }, 
-                    h("button", { class: "btn btn-outline gastos-btn-chico gastos-btn-icono gastos-btn-icono-texto", onclick: () => { bien.oculto = false; refrescar(); } }, crearSvg(ICONO_RESTAURAR), h("span", { text: "Restaurar" })),
-                    h("button", { class: "btn btn-outline gastos-btn-chico gastos-btn-icono gastos-btn-eliminar", title: "Eliminar", onclick: () => { if (confirm("ADVERTENCIA: Eliminar este bien altera las sumatorias históricas. ¿Seguro que querés borrarlo definitivamente?")) { bienes = bienes.filter(b => b.id !== bien.id); refrescar(); } }}, crearSvg(ICONO_ELIMINAR))
+                    h("button", { class: "btn btn-outline gastos-btn-chico gastos-btn-icono gastos-btn-icono-texto", onclick: async () => {
+                        try { await servicioEquipamiento.restaurar(bien.id); await cargarDatos(); } 
+                        catch (e) { alert(e.message || "El backend aún no tiene el endpoint de restaurar"); }
+                    }}, crearSvg(ICONO_RESTAURAR), h("span", { text: "Restaurar" })),
+                    h("button", { class: "btn btn-outline gastos-btn-chico gastos-btn-icono gastos-btn-eliminar", title: "Eliminar", onclick: async () => { 
+                        if (confirm("ADVERTENCIA: Eliminar este bien altera las sumatorias históricas. ¿Seguro que querés borrarlo definitivamente?")) { 
+                            try { await servicioEquipamiento.eliminar(bien.id); await cargarDatos(); }
+                            catch (e) { alert(e.message || "Error al eliminar"); }
+                        } 
+                    }}, crearSvg(ICONO_ELIMINAR))
                   )
                 : h("div", { class: "gastos-acciones-fila" },
                     h("button", { class: "btn btn-outline gastos-btn-icono", title: "Editar", onclick: () => editar(bien) }, crearSvg(ICONO_EDITAR)),
-                    h("button", { class: "btn btn-outline gastos-btn-icono", title: "Ocultar", onclick: () => { bien.oculto = true; refrescar(); } }, crearSvg(ICONO_OCULTAR))
+                    h("button", { class: "btn btn-outline gastos-btn-icono", title: "Ocultar", onclick: async () => { 
+                        try { await servicioEquipamiento.ocultar(bien.id); await cargarDatos(); }
+                        catch (e) { alert(e.message || "Error al ocultar"); }
+                    }}, crearSvg(ICONO_OCULTAR))
                   );
 
             return h("tr", {},
@@ -93,7 +100,7 @@ const iniciarPantalla = () => {
                 h("td", { text: formatearDinero(bien.precio_compra) }),
                 h("td", { text: bien.cantidad }),
                 h("td", { text: formatearDinero(valorTotal) }),
-                h("td", { text: bien.fecha }),
+                h("td", { text: fechaDeMarcaParaMostrar(bien.fecha) }), 
                 h("td", { text: bien.creado_por }),
                 h("td", { class: "acciones-columna" }, acciones)
             );
@@ -125,55 +132,90 @@ const iniciarPantalla = () => {
     );
     
     refrescarUI = refrescar;
-    refrescar(); // Dibuja vacío por defecto
+    refrescar(); 
 };
 
-// --- SE EJECUTA SEGUNDO: BUSCA LOS DATOS ---
 const cargarDatos = async () => {
     try {
         const datos = await servicioEquipamiento.listar();
+        resumenData = datos.resumen; 
         bienes = datos.bienes.map(item => ({
             id: item.id,
             nombre: item.nombre,
             precio_compra: item.costo_adquisicion, 
             cantidad: item.cantidad,
             valor_total: item.valor_total, 
-            fecha: item.fecha_adquisicion || item.creado_en?.slice(0, 10) || "—",
+            fecha: item.fecha_adquisicion || item.creado_en || "—", 
             creado_por: item.creado_por || "admin",
             oculto: item.activo === false || item.oculto === true || false
         }));
         if (refrescarUI) refrescarUI();
     } catch (error) {
         console.error("Error al cargar equipamiento:", error);
-        alert("No se pudo cargar el equipamiento. ¿Está el backend encendido?");
+        alert(error.message || "No se pudo cargar el equipamiento."); 
     }
 };
 
-// --- MODALES ---
 const crear = () => {
     const form = h("div", {},
         h("div", { class: "gastos-campo" }, h("label", { text: "Nombre *" }), h("input", { id: "m-nombre", class: "gastos-entrada" })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Valor de Adquisición (Unitario) *" }), h("input", { id: "m-valor", type: "number", class: "gastos-entrada" })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Fecha de Adquisición *" }), h("input", { id: "m-fecha", class: "gastos-entrada", placeholder: "dd-mm-aaaa" })),
+        h("div", { class: "gastos-campo" }, h("label", { text: "Fecha de Adquisición *" }), h("input", { id: "m-fecha", type: "text", class: "gastos-entrada", placeholder: "dd-mm-aaaa" })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Cantidad Total *" }), h("input", { id: "m-cant", type: "number", step: "1", class: "gastos-entrada", value: "1" }))
     );
     
     abrirModal({
         titulo: "Nuevo equipamiento", cuerpo: form,
         onGuardar: async () => {
+            const nombre = document.getElementById("m-nombre").value.trim();
+            const valor = parseFloat(document.getElementById("m-valor").value);
+            const cant = parseInt(document.getElementById("m-cant").value);
+            const fecha = document.getElementById("m-fecha").value;
+
+            if (!nombre) throw new Error("El nombre es obligatorio.");
+            if (isNaN(valor) || valor < 0) throw new Error("Ingrese un valor de adquisición válido.");
+            if (isNaN(cant) || cant <= 0) throw new Error("La cantidad debe ser mayor a 0.");
+            
+            const fechaFormateada = fechaParaEnviar(fecha);
+            if (!fecha || !fechaFormateada) throw new Error("La fecha es obligatoria y debe tener el formato dd-mm-aaaa.");
+
             await servicioEquipamiento.crear({
-                nombre: document.getElementById("m-nombre").value,
-                precio_compra: parseFloat(document.getElementById("m-valor").value) || 0, 
-                cantidad: parseInt(document.getElementById("m-cant").value) || 0,
-                stock_minimo: 0, proveedor_id: 1, fecha_adquisicion: document.getElementById("m-fecha").value, iva_alicuota: 21.00
+                nombre: nombre, precio_compra: valor, cantidad: cant, stock_minimo: 0, 
+                proveedor_id: 1, fecha_adquisicion: fechaFormateada, iva_alicuota: 21.00
             });
             await cargarDatos();
         }
     });
 };
 
-const editar = (bien) => alert("La API de edición para equipamiento aún no está documentada.");
+// NUEVO MODAL DE EDITAR
+const editar = (bien) => {
+    const form = h("div", {},
+        h("div", { class: "gastos-campo" }, h("label", { text: "Nombre *" }), h("input", { id: "e-nombre", class: "gastos-entrada", value: bien.nombre })),
+        h("div", { class: "gastos-campo" }, h("label", { text: "Valor de Adquisición (Unitario) *" }), h("input", { id: "e-valor", type: "number", class: "gastos-entrada", value: bien.precio_compra })),
+        h("div", { class: "gastos-campo" }, h("label", { text: "Fecha de Adquisición *" }), h("input", { id: "e-fecha", type: "text", class: "gastos-entrada", placeholder: "dd-mm-aaaa", value: fechaDeMarcaParaMostrar(bien.fecha) }))
+    );
+    
+    abrirModal({
+        titulo: "Editar equipamiento", cuerpo: form,
+        onGuardar: async () => {
+            const nombre = document.getElementById("e-nombre").value.trim();
+            const valor = parseFloat(document.getElementById("e-valor").value);
+            const fecha = document.getElementById("e-fecha").value;
 
-// ¡ACÁ ESTÁ LA CLAVE! Primero dibuja, después busca.
+            if (!nombre) throw new Error("El nombre es obligatorio.");
+            if (isNaN(valor) || valor < 0) throw new Error("Ingrese un valor de adquisición válido.");
+            
+            const fechaFormateada = fechaParaEnviar(fecha);
+            if (!fecha || !fechaFormateada) throw new Error("La fecha es obligatoria y debe tener el formato dd-mm-aaaa.");
+
+            await servicioEquipamiento.editar(bien.id, {
+                nombre: nombre, precio_compra: valor, fecha_adquisicion: fechaFormateada
+            });
+            await cargarDatos();
+        }
+    });
+};
+
 iniciarPantalla();
 cargarDatos();
