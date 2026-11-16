@@ -1,5 +1,4 @@
 // js/notificaciones.js
-import { fetchAPI } from "./api.js";
 
 // --- FUNCIONES PURAS (Para Vitest) ---
 export const textoAlerta = (alerta) => {
@@ -29,7 +28,7 @@ export const textoContador = (cantidad) => {
 // --- LÓGICA DE LA CAMPANA ---
 
 export const iniciarNotificaciones = () => {
-  const btnCampana = document.getElementById("btn-campana");
+  const btnCampana = document.getElementById("campana");
   const contador = document.getElementById("campana-contador");
   const panel = document.getElementById("panel-alertas");
   if (!btnCampana || !contador) return;
@@ -42,9 +41,9 @@ export const iniciarNotificaciones = () => {
       const data = await fetchAPI("/notificaciones/contador");
       if (data.cantidad > 0) {
         contador.textContent = textoContador(data.cantidad); // Usamos la función
-        contador.style.display = "flex";
+        contador.hidden = false;
       } else {
-        contador.style.display = "none";
+        contador.hidden = true;
       }
     } catch (error) {
       console.warn("Fallo al consultar alertas", error);
@@ -65,15 +64,15 @@ export const iniciarNotificaciones = () => {
   btnCampana.addEventListener("click", async (e) => {
     e.stopPropagation();
     if (!panel) return;
-    panel.classList.toggle("hidden");
-    if (!panel.classList.contains("hidden")) {
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden) {
       cargarAlertas(panel, actualizarContador);
     }
   });
 
   document.addEventListener("click", (e) => {
     if (panel && !panel.contains(e.target) && !btnCampana.contains(e.target)) {
-      panel.classList.add("hidden");
+      panel.hidden = true;
     }
   });
 };
