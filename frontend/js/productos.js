@@ -1,5 +1,6 @@
 // Trazzo - Sprint 2 - Módulo 5: Productos
 // fetchAPI (api.js) y API_URL (config.js) son globales: los usa js/servicios/productos.js.
+// En productos.js, línea 3:
 import {
   calcularPrecioVenta,
   precioMenorAlCosto,
@@ -9,9 +10,10 @@ import {
   escaparHTML as esc,
   rolDesdeToken,
   esRolAdmin,
-  mensajeDeError,
 } from "./utils/productosUtils.js";
-import { servicioProductos } from "./servicios/productos.js";
+
+import { mensajeDeError } from "./servicios/errores.js";
+import { servicioProductos } from "./servicios/producto.js";
 import {
   cargarProveedores,
   llenarSelectProveedores,

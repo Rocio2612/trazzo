@@ -7,9 +7,9 @@ import {
   escaparHTML as esc,
   rolDesdeToken,
   esRolAdmin,
-  mensajeDeError,
 } from "./utils/productosUtils.js";
-import { servicioReposiciones } from "./servicios/productos.js";
+import { mensajeDeError } from "./servicios/errores.js";
+import { servicioReposiciones } from "./servicios/producto.js";
 
 const esAdmin = esRolAdmin(
   rolDesdeToken(localStorage.getItem("trazzo_access_token")) || "CAJERO",
