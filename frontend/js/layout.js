@@ -58,7 +58,7 @@ const MENU = [
     grupo: "Finanzas",
     items: [
       { modulo: "insumos", etiqueta: "Insumos", href: "insumos.html", disponible: true },
-      { modulo: "bienes_uso", etiqueta: "Bienes de Uso", href: "bienes-uso.html", disponible: true },
+      { modulo: "bienes_uso", etiqueta: "Equipamiento", href: "bienes-uso.html", disponible: true },
       { modulo: "gastos", etiqueta: "Gastos", href: "gastos.html", disponible: true },
       { modulo: "reportes", etiqueta: "Reportes", href: "reportes.html", disponible: true },
     ],
