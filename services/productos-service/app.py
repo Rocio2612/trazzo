@@ -135,7 +135,6 @@ def reponer_stock(id):
         cur.execute("UPDATE productos.productos SET cantidad = %s, precio_compra = %s, modificado_por = %s WHERE id = %s", (nuevo_stock, costo_real / float(datos['cantidad']), usuario, id))
         cur.execute("INSERT INTO productos.movimientos_stock (emprendimiento_id, producto_id, reposicion_id, tipo, cantidad_movimiento, stock_resultante, usuario) VALUES (%s, %s, %s, 'REPOSICION', %s, %s, %s)", (emprendimiento_id, id, reposicion_id, datos['cantidad'], nuevo_stock, usuario))
         
-        # Evaluamos alerta (por si estaba en mínimo y ahora subió)
         evaluar_alerta_stock(id, producto['nombre'], nuevo_stock, producto['stock_minimo'], emprendimiento_id)
         
         conn.commit()
@@ -147,7 +146,7 @@ def reponer_stock(id):
         cur.close()
         conn.close()
 
-# --- BAJAS (CON ALERTA INTEGRADA) ---
+# --- BAJAS ---
 @app.route('/api/productos/<int:id>/baja', methods=['POST'])
 def registrar_baja(id):
     datos = request.get_json()
@@ -158,7 +157,6 @@ def registrar_baja(id):
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        # Traemos nombre, stock_minimo y cantidad
         cur.execute("SELECT nombre, cantidad, stock_minimo FROM productos.productos WHERE id = %s AND emprendimiento_id = %s", (id, emprendimiento_id))
         producto = cur.fetchone()
         if not producto:
@@ -171,20 +169,95 @@ def registrar_baja(id):
 
         nuevo_stock = stock_actual - cantidad_baja
         cur.execute("UPDATE productos.productos SET cantidad = %s WHERE id = %s", (nuevo_stock, id))
-        
         cur.execute("""
             INSERT INTO productos.movimientos_stock 
             (emprendimiento_id, producto_id, tipo, cantidad_movimiento, stock_resultante, motivo, usuario) 
             VALUES (%s, %s, 'BAJA', %s, %s, %s, %s)
         """, (emprendimiento_id, id, -cantidad_baja, nuevo_stock, datos['motivo'], usuario))
 
-        # EVALUAMOS LA ALERTA ACÁ
         evaluar_alerta_stock(id, producto['nombre'], nuevo_stock, producto['stock_minimo'], emprendimiento_id)
         
         conn.commit()
         return jsonify({"status": "ok", "mensaje": "Baja registrada", "nuevo_stock": nuevo_stock}), 201
     except Exception as e:
         conn.rollback()
+        return jsonify({"status": "error", "mensaje": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+# --- OCULTAR / ELIMINAR PRODUCTO ---
+@app.route('/api/productos/<int:id>/ocultar', methods=['PATCH'])
+def ocultar_producto(id):
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("UPDATE productos.productos SET activo = FALSE WHERE id = %s RETURNING id", (id,))
+        if not cur.fetchone():
+            return jsonify({"status": "error", "mensaje": "Producto no encontrado"}), 404
+        conn.commit()
+        return jsonify({"status": "ok", "mensaje": "Producto oculto"}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"status": "error", "mensaje": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/api/productos/<int:id>', methods=['DELETE'])
+def eliminar_producto(id):
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT id FROM productos.movimientos_stock WHERE producto_id = %s LIMIT 1", (id,))
+        if cur.fetchone():
+            return jsonify({"status": "error", "mensaje": "No se puede eliminar: tiene movimientos"}), 409
+        cur.execute("DELETE FROM productos.productos WHERE id = %s", (id,))
+        conn.commit()
+        return jsonify({"status": "ok", "mensaje": "Producto eliminado"}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"status": "error", "mensaje": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+# --- PROVEEDORES ---
+@app.route('/api/proveedores', methods=['POST'])
+def crear_proveedor():
+    datos = request.get_json()
+    emprendimiento_id = 1
+    if not datos.get('nombre') or not datos.get('numero_documento') or not datos.get('categoria_impositiva'):
+        return jsonify({"status": "error", "mensaje": "Faltan datos obligatorios"}), 400
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""
+            INSERT INTO productos.proveedores 
+            (emprendimiento_id, nombre, tipo_documento, numero_documento, categoria_impositiva, telefono, correo, descripcion_compra) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id, nombre
+        """, (emprendimiento_id, datos['nombre'], datos.get('tipo_documento', 'CUIT'), datos['numero_documento'], datos['categoria_impositiva'], datos.get('telefono', ''), datos.get('correo', ''), datos.get('descripcion_compra', '')))
+        proveedor = cur.fetchone()
+        conn.commit()
+        return jsonify({"status": "ok", "mensaje": "Proveedor creado", "proveedor": proveedor}), 201
+    except Exception as e:
+        conn.rollback()
+        if "uq_proveedor_doc_tenant" in str(e):
+            return jsonify({"status": "error", "mensaje": "Proveedor ya existe"}), 409
+        return jsonify({"status": "error", "mensaje": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/api/proveedores', methods=['GET'])
+def listar_proveedores():
+    emprendimiento_id = 1
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT id, nombre, numero_documento FROM productos.proveedores WHERE emprendimiento_id = %s AND activo = TRUE ORDER BY nombre ASC", (emprendimiento_id,))
+        return jsonify({"status": "ok", "items": cur.fetchall()}), 200
+    except Exception as e:
         return jsonify({"status": "error", "mensaje": str(e)}), 500
     finally:
         cur.close()
