@@ -1,17 +1,38 @@
-// Trazzo - Sprint 2 - Notificaciones y Alertas de Stock
-// Lógica de la campana común del layout (ids: campana, campana-contador, panel-alertas).
-// Lo inicia layout.js en todas las pantallas. Usa fetchAPI global (api.js).
+// js/notificaciones.js
+import { fetchAPI } from "./api.js";
 
-let iniciado = false;
+// --- FUNCIONES PURAS (Para Vitest) ---
+export const textoAlerta = (alerta) => {
+  if (alerta.mensaje) return alerta.mensaje;
+
+  // Acepta tanto producto_nombre como nombre
+  const nombre =
+    alerta.producto_nombre || alerta.producto || alerta.nombre || "Producto";
+
+  // Acepta tanto stock_actual como cantidad
+  const stock =
+    alerta.stock_actual !== undefined
+      ? alerta.stock_actual
+      : alerta.cantidad !== undefined
+        ? alerta.cantidad
+        : null;
+
+  if (stock === null) return nombre;
+  return `${nombre}, quedan ${stock}`;
+};
+
+export const textoContador = (cantidad) => {
+  if (cantidad > 99) return "99+";
+  return String(cantidad);
+};
+
+// --- LÓGICA DE LA CAMPANA ---
 
 export const iniciarNotificaciones = () => {
-  if (iniciado) return;
-
-  const btnCampana = document.getElementById("campana");
+  const btnCampana = document.getElementById("btn-campana");
   const contador = document.getElementById("campana-contador");
   const panel = document.getElementById("panel-alertas");
   if (!btnCampana || !contador) return;
-  iniciado = true;
 
   let pollingInterval;
 
@@ -20,10 +41,10 @@ export const iniciarNotificaciones = () => {
     try {
       const data = await fetchAPI("/notificaciones/contador");
       if (data.cantidad > 0) {
-        contador.textContent = data.cantidad > 99 ? "99+" : data.cantidad;
-        contador.hidden = false;
+        contador.textContent = textoContador(data.cantidad); // Usamos la función
+        contador.style.display = "flex";
       } else {
-        contador.hidden = true;
+        contador.style.display = "none";
       }
     } catch (error) {
       console.warn("Fallo al consultar alertas", error);
@@ -44,21 +65,21 @@ export const iniciarNotificaciones = () => {
   btnCampana.addEventListener("click", async (e) => {
     e.stopPropagation();
     if (!panel) return;
-    panel.hidden = !panel.hidden;
-    if (!panel.hidden) {
+    panel.classList.toggle("hidden");
+    if (!panel.classList.contains("hidden")) {
       cargarAlertas(panel, actualizarContador);
     }
   });
 
   document.addEventListener("click", (e) => {
     if (panel && !panel.contains(e.target) && !btnCampana.contains(e.target)) {
-      panel.hidden = true;
+      panel.classList.add("hidden");
     }
   });
 };
 
 const cargarAlertas = async (contenedor, actualizarContador) => {
-  contenedor.innerHTML = ""; // Limpiar
+  contenedor.innerHTML = "";
   try {
     const alertas = await fetchAPI("/notificaciones");
     if (alertas.length === 0) {
@@ -76,9 +97,8 @@ const cargarAlertas = async (contenedor, actualizarContador) => {
         "display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; border-bottom:1px solid #eee;";
 
       const p = document.createElement("span");
-      p.textContent = `Quedan ${alerta.stock_actual} de ${alerta.producto_nombre}`;
+      p.textContent = textoAlerta(alerta); // Usamos la función
       p.style.fontSize = "0.85rem";
-      p.style.color = "#212529";
 
       const btn = document.createElement("button");
       btn.textContent = "Eliminar";
@@ -87,7 +107,6 @@ const cargarAlertas = async (contenedor, actualizarContador) => {
 
       btn.onclick = async () => {
         try {
-          // Endpoint actualizado según Sprint 2 (Módulo 4)
           await fetchAPI(
             `/notificaciones/${alerta.id}/eliminar-vista`,
             "PATCH",

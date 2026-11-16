@@ -27,12 +27,12 @@ const $ = (id) => document.getElementById(id);
 const estado = {
   stockBajo: false,
   ocultos: false,
-  precioManual: false, // el usuario editó el precio: ya no se sugiere uno
-  montoRepoManual: false, // el usuario editó el monto de la reposición
+  precioManual: false,
+  montoRepoManual: false,
   proveedores: [],
-  productos: new Map(), // id -> producto de la tabla actual
-  productoEnEdicion: null, // null = modal en modo "nuevo"
-  cargaActual: 0, // evita que una respuesta vieja pise a una más nueva
+  productos: new Map(),
+  productoEnEdicion: null,
+  cargaActual: 0,
   timerBusqueda: null,
 };
 
@@ -97,21 +97,26 @@ const renderizarTabla = (productos) => {
 
       let acciones = boton("reponer", "Reponer stock", prod.id);
       acciones += boton("baja", "Dar de baja", prod.id);
+
+      // TODO: Cuando el back implemente PUT, PATCH y DELETE, descomentar esto.
+      /*
       if (esAdmin) {
         acciones += boton("editar", "Editar", prod.id);
         acciones += boton("ocultar", "Ocultar", prod.id);
         acciones += boton("eliminar", "Eliminar", prod.id);
       }
+      */
 
+      // Como el back actual no hace JOIN, mostramos guiones en cat y prov.
       return `
         <tr class="${oculto ? "fila-oculta" : ""}" data-id="${esc(prod.id)}">
           <td>${esc(prod.nombre)}${oculto ? '<span class="badge badge-gris">Oculto</span>' : ""}</td>
-          <td>${esc(prod.categoria_nombre) || "—"}</td>
+          <td>—</td> <!-- categoria_nombre -->
           <td>${formatearMoneda(prod.precio_compra)}</td>
           <td>${formatearMoneda(prod.precio_venta)}</td>
           <td>${cantidad}${insignia}</td>
           <td>${minimo}</td>
-          <td>${esc(prod.proveedor_nombre) || "—"}</td>
+          <td>—</td> <!-- proveedor_nombre -->
           <td><div class="acciones-flex">${acciones}</div></td>
         </tr>`;
     })
@@ -127,7 +132,7 @@ const cargarProductos = async () => {
       stockBajo: estado.stockBajo,
       ocultos: estado.ocultos && esAdmin,
     });
-    if (miCarga !== estado.cargaActual) return; // llegó una búsqueda más nueva
+    if (miCarga !== estado.cargaActual) return;
     renderizarTabla(productos);
   } catch (error) {
     if (miCarga !== estado.cargaActual) return;
@@ -137,6 +142,16 @@ const cargarProductos = async () => {
       true,
     );
   }
+};
+
+const cargarListaProveedores = async () => {
+  estado.proveedores = await cargarProveedores();
+  llenarSelectProveedores($("proveedor_id"), estado.proveedores, {
+    valor: $("proveedor_id").value,
+  });
+  llenarSelectProveedores($("proveedor_id_repo"), estado.proveedores, {
+    valor: $("proveedor_id_repo").value,
+  });
 };
 
 // ---------- modal nuevo / editar ----------
@@ -173,12 +188,10 @@ const abrirModalProducto = (prod = null) => {
   $("modal-producto-titulo").textContent = editando
     ? "Editar producto"
     : "Nuevo producto";
-  // Al editar, costo y stock no se tocan acá: cambian con reposiciones y bajas.
   $("precio_compra").disabled = editando;
   $("cantidad").disabled = editando;
   $("ayuda-costo").classList.toggle("hidden", !editando);
   $("ayuda-stock").classList.toggle("hidden", !editando);
-  // Un select deshabilitado (sin proveedores) no valida "required": se valida en el submit.
   estado.precioManual = editando;
 
   if (editando) {
@@ -205,34 +218,33 @@ const guardarProducto = async (e) => {
     iva_alicuota: parseFloat($("iva_alicuota").value),
     rentabilidad: parseFloat($("rentabilidad").value) || 0,
     precio_venta: parseFloat($("precio_venta").value),
-    stock_minimo: parseInt($("stock_minimo").value, 10),
+    stock_minimo: parseFloat($("stock_minimo").value),
   };
   const proveedorId = parseInt($("proveedor_id").value, 10);
   if (Number.isInteger(proveedorId)) datos.proveedor_id = proveedorId;
 
   if (!editando) {
     datos.precio_compra = parseFloat($("precio_compra").value);
-    datos.cantidad = parseInt($("cantidad").value, 10);
+    datos.cantidad = parseFloat($("cantidad").value);
   }
 
-  // Validaciones (los campos disabled o novalidate no las hace el navegador)
   if (!datos.nombre)
     return mostrarToast("Ingresá el nombre del producto.", true);
   if (!editando && !(datos.precio_compra > 0))
     return mostrarToast("Ingresá un precio de compra mayor a 0.", true);
   if (!(datos.precio_venta > 0))
     return mostrarToast("Ingresá un precio de venta mayor a 0.", true);
-  if (!editando && !(datos.cantidad >= 0))
+  if (!editando && (!Number.isInteger(datos.cantidad) || datos.cantidad < 0))
     return mostrarToast("Ingresá el stock actual.", true);
-  if (!(datos.stock_minimo >= 0))
+  if (!Number.isInteger(datos.stock_minimo) || datos.stock_minimo < 0)
     return mostrarToast("Ingresá el stock mínimo.", true);
-  if (!editando && !datos.proveedor_id)
+  if (!datos.proveedor_id)
     return mostrarToast(
       "Elegí un proveedor. Si no hay, cargalos primero en Proveedores.",
       true,
     );
 
-  btn.disabled = true; // evita el doble clic
+  btn.disabled = true;
   try {
     if (editando) {
       await servicioProductos.actualizar(estado.productoEnEdicion.id, datos);
@@ -270,11 +282,11 @@ const guardarReposicion = async (e) => {
   e.preventDefault();
   const btn = e.target.querySelector('button[type="submit"]');
   const datos = {
-    cantidad: parseInt($("repo-cantidad").value, 10),
+    cantidad: parseFloat($("repo-cantidad").value),
     monto_total: parseFloat($("monto_total").value),
     proveedor_id: parseInt($("proveedor_id_repo").value, 10),
   };
-  if (!(datos.cantidad >= 1))
+  if (!Number.isInteger(datos.cantidad) || datos.cantidad < 1)
     return mostrarToast("Ingresá una cantidad válida.", true);
   if (!(datos.monto_total > 0))
     return mostrarToast("Ingresá el monto total.", true);
@@ -312,16 +324,15 @@ const abrirBaja = (prod) => {
   $("baja-cantidad").focus();
 };
 
-// "cantidad" se manda positiva; el backend arma el movimiento negativo en movimientos_stock.
 const guardarBaja = async (e) => {
   e.preventDefault();
   const btn = e.target.querySelector('button[type="submit"]');
   const stock = Number($("baja-prod-nombre").dataset.stock);
   const datos = {
-    cantidad: parseInt($("baja-cantidad").value, 10),
+    cantidad: parseFloat($("baja-cantidad").value),
     motivo: $("baja-motivo").value,
   };
-  if (!(datos.cantidad >= 1))
+  if (!Number.isInteger(datos.cantidad) || datos.cantidad < 1)
     return mostrarToast("Ingresá una cantidad válida.", true);
   if (datos.cantidad > stock)
     return mostrarToast(
@@ -386,7 +397,6 @@ const eliminarProducto = async (id) => {
 
 // ---------- eventos ----------
 const configurarEventos = () => {
-  // Cerrar modales: botones, clic en el fondo y tecla Escape
   document
     .querySelectorAll("[data-cerrar]")
     .forEach((el) =>
@@ -404,7 +414,6 @@ const configurarEventos = () => {
         .forEach((m) => m.classList.add("hidden"));
   });
 
-  // Filtros (el buscador espera 300 ms sin tipear)
   $("buscador").addEventListener("input", () => {
     clearTimeout(estado.timerBusqueda);
     estado.timerBusqueda = setTimeout(cargarProductos, 300);
@@ -424,7 +433,6 @@ const configurarEventos = () => {
     });
   }
 
-  // Acciones de cada fila (delegación)
   $("productos-tbody").addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-accion]");
     if (!btn) return;
@@ -440,7 +448,6 @@ const configurarEventos = () => {
     acciones[btn.dataset.accion]?.();
   });
 
-  // Nuevo producto y formulario
   $("btn-nuevo-producto").addEventListener("click", () => abrirModalProducto());
   ["precio_compra", "rentabilidad", "iva_alicuota"].forEach((id) =>
     $(id).addEventListener("input", sugerirPrecio),
@@ -452,7 +459,6 @@ const configurarEventos = () => {
   });
   $("form-producto").addEventListener("submit", guardarProducto);
 
-  // Reposición: monto sugerido = cantidad × último costo (editable)
   $("repo-cantidad").addEventListener("input", (e) => {
     if (estado.montoRepoManual) return;
     const costo = Number($("repo-prod-nombre").dataset.costo) || 0;
@@ -469,9 +475,6 @@ const configurarEventos = () => {
 
 document.addEventListener("DOMContentLoaded", async () => {
   configurarEventos();
-  // Los proveedores se cargan una vez y alimentan los dos desplegables
-  cargarProveedores().then((lista) => {
-    estado.proveedores = lista;
-  });
+  cargarListaProveedores();
   cargarProductos();
 });

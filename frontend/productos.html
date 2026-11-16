@@ -6,7 +6,7 @@
     <title>Trazzo - Productos</title>
     <link rel="stylesheet" href="css/base.css" />
     <link rel="stylesheet" href="css/layout.css" />
-    <link rel="stylesheet" href="css/productos.css" />
+    <link rel="stylesheet" href="css/producto.css" />
   </head>
   <body>
     <main class="productos-pagina" data-modulo="productos">
@@ -100,7 +100,7 @@
             ✕
           </button>
         </div>
-        <form id="form-producto" novalidate>
+        <form id="form-producto">
           <div
             id="banner-precio-menor"
             class="banner-ambar hidden"
@@ -201,7 +201,7 @@
 
           <div class="form-group">
             <label for="proveedor_id">Proveedor *</label>
-            <select id="proveedor_id" class="form-control"></select>
+            <select id="proveedor_id" class="form-control" required></select>
           </div>
 
           <div class="modal-pie">
@@ -247,7 +247,7 @@
             ✕
           </button>
         </div>
-        <form id="form-reposicion" novalidate>
+        <form id="form-reposicion">
           <p id="repo-prod-nombre" style="margin-top: 0; font-weight: 600"></p>
           <div class="form-group">
             <label for="repo-cantidad">Cantidad *</label>
@@ -276,7 +276,7 @@
           </div>
           <div class="form-group">
             <label for="proveedor_id_repo">Proveedor *</label>
-            <select id="proveedor_id_repo" class="form-control"></select>
+            <select id="proveedor_id_repo" class="form-control" required></select>
           </div>
           <div class="modal-pie">
             <button
@@ -317,7 +317,7 @@
             ✕
           </button>
         </div>
-        <form id="form-baja" novalidate>
+        <form id="form-baja">
           <p id="baja-prod-nombre" style="margin-top: 0; font-weight: 600"></p>
           <div class="form-group">
             <label for="baja-cantidad">Cantidad a dar de baja *</label>

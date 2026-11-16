@@ -1,22 +1,283 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Trazzo - Clientes</title>
-    <link rel="stylesheet" href="css/base.css">
-    <link rel="stylesheet" href="css/layout.css">
-</head>
-<body>
-
-    <main class="contenido-vacio">
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/layout.css" />
+    <link rel="stylesheet" href="css/clientes.css" />
+  </head>
+  <body>
+    <main class="clientes-pagina" data-modulo="clientes">
+      <div class="clientes-cabecera">
         <h1>Clientes</h1>
-        <p>En construcción</p>
+        <div class="cabecera-acciones solo-admin">
+          <button
+            type="button"
+            class="btn-pz btn-pz-primario"
+            id="btn-nuevo-cliente"
+          >
+            + Nuevo cliente
+          </button>
+        </div>
+      </div>
+
+      <div class="clientes-barra">
+        <div class="buscador-wrapper">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input
+            type="text"
+            id="buscador"
+            placeholder="Buscar por nombre, documento o correo..."
+            autocomplete="off"
+          />
+        </div>
+        <button
+          type="button"
+          class="chip-filtro solo-admin"
+          id="btn-ver-ocultos"
+        >
+          Ver ocultos
+        </button>
+      </div>
+
+      <div class="tabla-tarjeta">
+        <div class="tabla-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Nombre o razón social</th>
+                <th>Documento</th>
+                <th>Categoría impositiva</th>
+                <th style="text-align: right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="clientes-tbody">
+              <tr>
+                <td colspan="4" class="texto-vacio">Cargando clientes...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </main>
+
+    <!-- MODAL: NUEVO / EDITAR -->
+    <div id="modal-cliente" class="modal-backdrop hidden">
+      <div class="modal-caja" role="dialog" aria-modal="true">
+        <div class="modal-header">
+          <h2 id="modal-cliente-titulo">Nuevo cliente</h2>
+          <button type="button" class="btn-icono" data-cerrar="modal-cliente">
+            ✕
+          </button>
+        </div>
+        <form id="form-cliente" novalidate>
+          <div class="modal-body">
+            <div id="aviso-edicion" class="aviso-ambar hidden">
+              Esta ficha se creó con Alta rápida. Completá todos los datos para
+              dejarla al día.
+            </div>
+
+            <div class="form-group">
+              <label for="nombre">Nombre completo o razón social *</label>
+              <input
+                type="text"
+                id="nombre"
+                class="form-control"
+                maxlength="150"
+                required
+              />
+              <div class="error-message" id="error-nombre">
+                Completá el nombre o la razón social.
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="telefono">Teléfono *</label>
+              <input
+                type="tel"
+                id="telefono"
+                class="form-control"
+                placeholder="Ej.: 11 4555-1234"
+              />
+              <div class="error-message" id="error-telefono">
+                Completá el teléfono.
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="correo">Correo electrónico *</label>
+              <input
+                type="email"
+                id="correo"
+                class="form-control"
+                placeholder="nombre@dominio.com"
+              />
+              <div class="error-message" id="error-correo">
+                Completá el correo.
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="tipo_documento">Tipo de documento *</label>
+              <select id="tipo_documento" class="form-control">
+                <option value="">Elegí una opción</option>
+                <option value="DNI">DNI</option>
+                <option value="CUIT">CUIT</option>
+                <option value="CUIL">CUIL</option>
+              </select>
+              <div class="error-message" id="error-tipo_documento">
+                Elegí el tipo de documento.
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="numero_documento">Número de documento *</label>
+              <input type="text" id="numero_documento" class="form-control" />
+              <div class="ayuda" id="ayuda-documento">
+                Elegí primero el tipo de documento.
+              </div>
+              <div class="error-message" id="error-numero_documento"></div>
+            </div>
+
+            <div class="form-group">
+              <label for="domicilio">Domicilio *</label>
+              <input type="text" id="domicilio" class="form-control" />
+              <div class="error-message" id="error-domicilio">
+                Completá el domicilio.
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="categoria_impositiva">Categoría impositiva *</label>
+              <select id="categoria_impositiva" class="form-control">
+                <option value="">Elegí una opción</option>
+                <option value="RESPONSABLE_INSCRIPTO">
+                  Responsable Inscripto
+                </option>
+                <option value="MONOTRIBUTISTA">Monotributista</option>
+                <option value="EXENTO">Exento</option>
+                <option value="CONSUMIDOR_FINAL">Consumidor Final</option>
+              </select>
+              <div class="error-message" id="error-categoria_impositiva">
+                Elegí la categoría impositiva.
+              </div>
+            </div>
+          </div>
+          <div class="modal-pie">
+            <button
+              type="button"
+              class="btn-pz btn-pz-sec"
+              data-cerrar="modal-cliente"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              class="btn-pz btn-pz-primario"
+              id="btn-guardar-cliente"
+            >
+              Guardar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL: FICHA DEL CLIENTE -->
+    <div id="modal-ficha" class="modal-backdrop hidden">
+      <div class="modal-caja" role="dialog" aria-modal="true">
+        <div class="modal-header">
+          <h2>Ficha del cliente</h2>
+          <button type="button" class="btn-icono" data-cerrar="modal-ficha">
+            ✕
+          </button>
+        </div>
+        <div class="modal-body" id="ficha-contenido"></div>
+        <div class="modal-pie">
+          <button
+            type="button"
+            class="btn-pz btn-pz-sec"
+            data-cerrar="modal-ficha"
+          >
+            Cerrar
+          </button>
+          <button
+            type="button"
+            class="btn-pz btn-pz-primario solo-admin"
+            id="btn-ficha-editar"
+          >
+            Editar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: ERROR AL ELIMINAR (Bloqueado) -->
+    <div id="modal-error-eliminar" class="modal-backdrop hidden">
+      <div
+        class="modal-caja"
+        style="max-width: 440px"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div class="modal-header">
+          <h2>No se puede eliminar</h2>
+          <button
+            type="button"
+            class="btn-icono"
+            data-cerrar="modal-error-eliminar"
+          >
+            ✕
+          </button>
+        </div>
+        <div class="modal-body">
+          <div
+            style="
+              background: #fdecee;
+              border-left: 4px solid #dc3545;
+              color: #b02a37;
+              padding: 0.7rem 0.9rem;
+              border-radius: 8px;
+              margin-bottom: 1rem;
+              font-size: 0.85rem;
+            "
+          >
+            <span id="texto-error-eliminar"></span>
+          </div>
+          <p style="font-size: 0.85rem; color: #212529">
+            Queda oculto: no aparece en el listado y su historial se conserva.
+          </p>
+        </div>
+        <div class="modal-pie">
+          <button
+            type="button"
+            class="btn-pz btn-pz-primario"
+            data-cerrar="modal-error-eliminar"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="js/config.js"></script>
     <script src="js/api.js"></script>
     <script src="js/roles.js"></script>
     <script type="module" src="js/layout.js"></script>
-</body>
+    <script type="module" src="js/clientes.js"></script>
+  </body>
 </html>
