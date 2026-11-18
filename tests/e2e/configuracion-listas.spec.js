@@ -180,7 +180,8 @@ for (const l of LISTAS) {
       await abrir(page, ruta);
       await expect(items(page, l.tipo)).toHaveText(l.iniciales.map((nombre) => new RegExp(`^${nombre}`)));
       await expect(page.locator(`#panel-${l.tipo} .cfg-lista-cabecera`)).toHaveText(/Nombre\s*Acciones/);
-      for (const nombre of l.iniciales) await expect(item(page, l.tipo, nombre).getByRole("button", { name: "Editar" })).toBeVisible();
+      // Efectivo (medio por defecto) no tiene botón Editar.
+      for (const nombre of l.iniciales) await expect(item(page, l.tipo, nombre).getByRole("button", { name: "Editar" })).toHaveCount(nombre === "Efectivo" ? 0 : 1);
     });
 
     test("el campo para agregar tiene su ejemplo y el largo máximo de la base (100 en categorías, 50 en medios de pago)", async ({ page }) => {
@@ -498,31 +499,16 @@ test.describe("Configuración > Categorías: lista vacía", () => {
 test.describe("Configuración > Medios de pago: el medio por defecto", () => {
   const ruta = "/configuracion.html#medios-pago";
 
-  test("Efectivo muestra «Por defecto», se puede editar pero no eliminar", async ({ page }) => {
+  test("Efectivo muestra «Por defecto» y no se puede editar ni eliminar", async ({ page }) => {
     await abrir(page, ruta);
     const efectivo = item(page, "medios_pago", "Efectivo");
     await expect(efectivo.locator(".cfg-insignia")).toHaveText("Por defecto");
-    await expect(efectivo.getByRole("button", { name: "Editar" })).toBeVisible();
+    await expect(efectivo.getByRole("button", { name: "Editar" })).toHaveCount(0);
     await expect(efectivo.getByRole("button", { name: "Eliminar" })).toHaveCount(0);
-    await expect(item(page, "medios_pago", "Transferencia").locator(".cfg-insignia")).toHaveCount(0);
-  });
-
-  test("renombrar el medio por defecto conserva su insignia y sigue sin poder eliminarse", async ({ page }) => {
-    await abrir(page, ruta);
-    await item(page, "medios_pago", "Efectivo").getByRole("button", { name: "Editar" }).click();
-    await page.locator("#nombre").fill("Caja");
-    await guardar(page).click();
-    const caja = item(page, "medios_pago", "Caja");
-    await expect(caja.locator(".cfg-insignia")).toHaveText("Por defecto");
-    await expect(caja.getByRole("button", { name: "Eliminar" })).toHaveCount(0);
-  });
-
-  test("no se puede renombrar el medio por defecto con el nombre de otro", async ({ page }) => {
-    await abrir(page, ruta);
-    await item(page, "medios_pago", "Efectivo").getByRole("button", { name: "Editar" }).click();
-    await page.locator("#nombre").fill("transferencia");
-    await guardar(page).click();
-    await expect(page.locator("#error-nombre")).toHaveText("Ya existe un medio de pago con ese nombre.");
+    const transferencia = item(page, "medios_pago", "Transferencia");
+    await expect(transferencia.locator(".cfg-insignia")).toHaveCount(0);
+    await expect(transferencia.getByRole("button", { name: "Editar" })).toBeVisible();
+    await expect(transferencia.getByRole("button", { name: "Eliminar" })).toBeVisible();
   });
 
   test("los medios de pago nuevos no son por defecto y se pueden eliminar", async ({ page }) => {
@@ -789,9 +775,11 @@ for (const l of LISTAS) {
     });
 
     test("al editar, conservar el propio nombre sigue funcionando después de eliminar a otro", async ({ page }) => {
-      await abrir(page, ruta);
+      // En medios de pago el otro es Efectivo (por defecto, sin botón Editar): se agrega uno editable.
+      const otroEditable = l.tipo === "medios_pago" ? "Billetera" : l.otro;
+      await abrir(page, ruta, l.tipo === "medios_pago" ? { semilla: (e) => e.medios.push({ id: 9, nombre: "Billetera", es_predeterminado: false, activo: true }) } : {});
       await eliminar(page, l.eliminable);
-      await item(page, l.tipo, l.otro).getByRole("button", { name: "Editar" }).click();
+      await item(page, l.tipo, otroEditable).getByRole("button", { name: "Editar" }).click();
       await guardar(page).click();
       await expect(toast(page)).toHaveText("Cambios guardados");
     });

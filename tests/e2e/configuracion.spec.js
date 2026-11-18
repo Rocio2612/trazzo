@@ -191,11 +191,11 @@ test.describe("Configuración: Categorías y Medios de pago", () => {
     await expect(page.getByTestId("sin-opciones-categorias")).toContainText("Sin categorías");
   });
 
-  test("Efectivo es el medio de pago por defecto y no se puede eliminar", async ({ page }) => {
+  test("Efectivo es el medio de pago por defecto y no se puede editar ni eliminar", async ({ page }) => {
     await abrir(page, "/configuracion.html#medios-pago");
     const efectivo = page.getByTestId("medios_pago-lista").getByRole("listitem").filter({ hasText: "Efectivo" });
     await expect(efectivo).toContainText("Por defecto");
-    await expect(efectivo.getByRole("button", { name: "Editar" })).toBeVisible();
+    await expect(efectivo.getByRole("button", { name: "Editar" })).toHaveCount(0);
     await expect(efectivo.getByRole("button", { name: "Eliminar" })).toHaveCount(0);
 
     const transferencia = page.getByTestId("medios_pago-lista").getByRole("listitem").filter({ hasText: "Transferencia" });

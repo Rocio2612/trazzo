@@ -1,7 +1,7 @@
 // --- PESTAÑAS "CATEGORÍAS" Y "MEDIOS DE PAGO" DE CONFIGURACIÓN (módulo ES) ---
 // Las dos son una lista simple de nombres: un campo para agregar arriba y, debajo, cada elemento con sus
 // botones de editar y eliminar (con confirmación). Se arman con la misma función y cambian solo los textos.
-// "Efectivo" (es_predeterminado) se puede ver y editar pero no eliminar.
+// "Efectivo" (es_predeterminado) solo se puede ver: no se puede editar ni eliminar.
 
 import { abrirFormularioModal, avisar, bannerAmbar, boton, botonIcono, confirmar, crearSvg, h, ICONOS } from "./componentes/ui-panel.js";
 import { crearSinOpciones } from "./componentes/sin-opciones.js";
@@ -138,7 +138,8 @@ export const crearPanelLista = (tipo) => {
       h(
         "div",
         { class: "gastos-acciones-fila cfg-fila-acciones" },
-        botonIcono(ICONOS.editar, "Editar", { "data-testid": `${tipo}-editar-${elemento.id}`, "data-modulo": tipo, "data-accion": "editar", "data-id": elemento.id }),
+        !elemento.es_predeterminado &&
+          botonIcono(ICONOS.editar, "Editar", { "data-testid": `${tipo}-editar-${elemento.id}`, "data-modulo": tipo, "data-accion": "editar", "data-id": elemento.id }),
         !elemento.es_predeterminado &&
           botonIcono(ICONOS.eliminar, "Eliminar", { "data-testid": `${tipo}-eliminar-${elemento.id}`, "data-modulo": tipo, "data-accion": "eliminar", "data-id": elemento.id }, "gastos-btn-eliminar"),
       ),
