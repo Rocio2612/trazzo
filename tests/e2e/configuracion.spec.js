@@ -3,7 +3,7 @@ const { jwtFalso, iniciarSesionComo } = require("./helpers");
 const { simularBackend } = require("./backend-falso");
 
 // Backend falso (backend-falso.js): negocio, 4 personas (Propietario id 1, Admin id 2, Empleados 3 y 4) y 2 medios de pago
-// (Efectivo por defecto, Transferencia). Las 2 categorías (Remeras, Pantalones) siguen simuladas en el navegador.
+// (Efectivo por defecto, Transferencia) y 2 categorías (Pantalones, Remeras).
 
 const abrir = async (page, ruta, rol = "PROPIETARIO", extraToken = null) => {
   await simularBackend(page, { rol });

@@ -3,32 +3,20 @@ const { iniciarSesionComo } = require("./helpers");
 const { simularBackend, respuestaDeError } = require("./backend-falso");
 
 // Configuración > pestañas Personal / Categorías / Medios de pago, y las listas de Categorías y Medios de pago.
-// Categorías (todavía simuladas, mocks/categorias.js): Remeras (1) y Pantalones (2), guardadas en el navegador
-// (localStorage). Medios de pago (Backend falso, backend-falso.js): Efectivo (1, por defecto) y Transferencia (2).
+// Backend falso (backend-falso.js), para las dos listas:
+//   Categorías: Pantalones (2) y Remeras (1), en ese orden porque el Backend las devuelve ordenadas por nombre.
+//   Medios de pago: Efectivo (1, por defecto) y Transferencia (2).
 //
 // `abrir` recibe `semilla(estado)` y `preparar(backend)` para cambiar los datos del Backend falso o hacerlo fallar o
-// demorar. Para las categorías, `reemplazos` entrega al navegador una copia modificada de mocks/categorias.js con
-// `page.route`; el archivo real no se toca. Si ese mock cambia y el reemplazo ya no encaja, el test avisa.
+// demorar.
 
-const MOCK = "**/js/mocks/categorias.js";
-const CREAR_LISTA = "  crear: async (nombre) => {";
-const CREAR_LENTO = [CREAR_LISTA, `${CREAR_LISTA} await new Promise((r) => setTimeout(r, 500));`];
+// Ruta de cada lista en el Backend.
+const RUTA_API = { categorias: "/categorias", medios_pago: "/medios-pago" };
 // Opciones de `abrir` para que crear tarde medio segundo, en la lista que sea.
-const lento = (l) => (l.tipo === "medios_pago" ? { preparar: (b) => b.demorar("POST /medios-pago", 500) } : { reemplazos: [CREAR_LENTO] });
+const lento = (l) => ({ preparar: (b) => b.demorar(`POST ${RUTA_API[l.tipo]}`, 500) });
 
 let backend;
-const abrir = async (page, ruta = "/configuracion.html", { rol = "PROPIETARIO", reemplazos = [], semilla, preparar } = {}) => {
-  if (reemplazos.length) {
-    await page.route(MOCK, async (route) => {
-      const original = await route.fetch();
-      let cuerpo = await original.text();
-      for (const [desde, hasta] of reemplazos) {
-        if (!cuerpo.includes(desde)) throw new Error(`El mock cambió: no se encontró «${desde}»`);
-        cuerpo = cuerpo.replace(desde, hasta);
-      }
-      await route.fulfill({ body: cuerpo, contentType: "application/javascript" });
-    });
-  }
+const abrir = async (page, ruta = "/configuracion.html", { rol = "PROPIETARIO", semilla, preparar } = {}) => {
   backend = await simularBackend(page, { rol, semilla });
   preparar?.(backend);
   await iniciarSesionComo(page, rol);
@@ -44,12 +32,12 @@ const item = (page, tipo, nombre) => items(page, tipo).filter({ hasText: nombre 
 const LISTAS = [
   {
     tipo: "categorias",
-    maximo: 100,
+    maximo: 50,
     pestania: "categorias",
     hash: "#categorias",
     singular: "categoría",
     etiquetaEntrada: "Nombre de la categoría",
-    iniciales: ["Remeras", "Pantalones"],
+    iniciales: ["Pantalones", "Remeras"],
     placeholder: "Ej.: remeras, pantalones",
     aviso: "Estas categorías aparecen como opción (opcional) al crear un producto.",
     repetido: "Ya existe una categoría con ese nombre.",
@@ -184,7 +172,7 @@ for (const l of LISTAS) {
       for (const nombre of l.iniciales) await expect(item(page, l.tipo, nombre).getByRole("button", { name: "Editar" })).toHaveCount(nombre === "Efectivo" ? 0 : 1);
     });
 
-    test("el campo para agregar tiene su ejemplo y el largo máximo de la base (100 en categorías, 50 en medios de pago)", async ({ page }) => {
+    test("el campo para agregar tiene su ejemplo y el largo máximo del Backend (50)", async ({ page }) => {
       await abrir(page, ruta);
       await expect(page.getByTestId(`${l.tipo}-nombre`)).toHaveAttribute("placeholder", l.placeholder);
       await expect(page.getByTestId(`${l.tipo}-nombre`)).toHaveAttribute("maxlength", String(l.maximo));
@@ -438,25 +426,6 @@ for (const l of LISTAS) {
       await expect(item(page, l.tipo, "Persistente")).toHaveCount(1);
       await expect(item(page, l.tipo, l.eliminable)).toHaveCount(0);
     });
-
-    if (l.tipo === "categorias") test("si se borra lo guardado en el navegador, vuelven las categorías iniciales", async ({ page }) => {
-      await abrir(page, ruta);
-      await page.getByTestId(`${l.tipo}-nombre`).fill("Se pierde");
-      await page.getByTestId(`${l.tipo}-agregar`).click();
-      await page.evaluate(() => localStorage.removeItem("trazzo_mock_categorias"));
-      await page.reload();
-      await expect(item(page, l.tipo, "Se pierde")).toHaveCount(0);
-      await expect(items(page, l.tipo)).toHaveCount(2);
-    });
-
-    if (l.tipo === "categorias") test("si lo guardado está dañado, abre con las categorías iniciales y sin errores", async ({ page }) => {
-      const errores = [];
-      page.on("pageerror", (e) => errores.push(e.message));
-      await page.addInitScript(() => localStorage.setItem("trazzo_mock_categorias", "{esto no es json"));
-      await abrir(page, ruta);
-      await expect(items(page, l.tipo)).toHaveCount(2);
-      expect(errores).toEqual([]);
-    });
   });
 }
 
@@ -581,26 +550,15 @@ test.describe("Configuración > Categorías y Medios de pago: acceso", () => {
 });
 
 // ---------------------------------------------------------------------------
-// El servidor rechaza un nombre o falla. En Categorías (todavía simuladas) el error se arma cambiando el mock;
-// en Medios de pago, haciendo que el backend falso responda con ese error.
+// El servidor rechaza un nombre o falla: el backend falso responde con ese error.
 // ---------------------------------------------------------------------------
 
-const MOCK_ACCION = {
-  crear: "  crear: async (nombre) => {",
-  actualizar: "  actualizar: async (id, nombre) => {",
-  eliminar: "categorias.find((c) => c.id === id).activo = false;",
-};
-const BACKEND_ACCION = { crear: "POST /medios-pago", actualizar: "PUT /medios-pago/:id", eliminar: "DELETE /medios-pago/:id" };
+const BACKEND_ACCION = { crear: "POST", actualizar: "PUT", eliminar: "DELETE" };
 
 // Devuelve las opciones de `abrir` para que la acción de la lista falle una vez con ese error.
 const falla = (l, accion, { status = 500, mensaje, errores }) => {
-  if (l.tipo === "medios_pago") {
-    return { preparar: (b) => b.fallar(BACKEND_ACCION[accion], respuestaDeError(status, mensaje, errores), { veces: 1 }) };
-  }
-  const detalle = errores ? `, { status: ${status}, errores: ${JSON.stringify(errores)} }` : `, { status: ${status} }`;
-  const lanzar = `throw Object.assign(new Error(${JSON.stringify(mensaje)})${detalle});`;
-  const base = MOCK_ACCION[accion];
-  return { reemplazos: [[base, accion === "eliminar" ? lanzar : `${base} ${lanzar}`]] };
+  const ruta = RUTA_API[l.tipo] + (accion === "crear" ? "" : "/:id");
+  return { preparar: (b) => b.fallar(`${BACKEND_ACCION[accion]} ${ruta}`, respuestaDeError(status, mensaje, errores), { veces: 1 }) };
 };
 
 for (const l of LISTAS) {
@@ -728,13 +686,11 @@ test.describe("Configuración > Medios de pago: conexión con el Backend", () =>
 });
 
 // ---------------------------------------------------------------------------
-// Categorías: las categorías todavía son simuladas y vienen de mocks/categorias.js. Medios de pago: es_predeterminado
-// (el medio por defecto) viene del Backend.
+// Medios de pago: es_predeterminado (el medio por defecto) viene del Backend. Las categorías no tienen ese dato.
 // ---------------------------------------------------------------------------
 
 test.describe("Configuración > Medios de pago: «es_predeterminado»", () => {
-  test("las categorías nunca muestran «Por defecto», aunque una lista guardada lo trajera", async ({ page }) => {
-    await page.addInitScript(() => localStorage.setItem("trazzo_mock_categorias", JSON.stringify([{ id: 1, nombre: "Remeras", por_defecto: true }])));
+  test("las categorías nunca muestran «Por defecto»", async ({ page }) => {
     await abrir(page, "/configuracion.html#categorias");
     await expect(item(page, "categorias", "Remeras").locator(".cfg-insignia")).toHaveCount(0);
     await expect(item(page, "categorias", "Remeras").getByRole("button", { name: "Eliminar" })).toBeVisible();
@@ -752,9 +708,8 @@ test.describe("Configuración > Medios de pago: «es_predeterminado»", () => {
 });
 
 // ---------------------------------------------------------------------------
-// «Eliminar». Categorías (simuladas): se desactiva en vez de borrar y el nombre sigue ocupado (como `activo` en la base).
-// Medios de pago (Backend): si nunca se usó se borra de verdad y su nombre queda libre; si ya se usó en gastos se
-// desactiva y no se lista, y al crearlo de nuevo con el mismo nombre se reactiva.
+// «Eliminar». Si nunca se usó se borra de verdad y su nombre queda libre; si ya se usó (categoría con productos, medio
+// de pago con gastos) se desactiva y no se lista, y al crearlo de nuevo con el mismo nombre se reactiva.
 // ---------------------------------------------------------------------------
 
 for (const l of LISTAS) {
@@ -793,66 +748,49 @@ for (const l of LISTAS) {
   });
 }
 
-test.describe("Configuración > categoría: eliminar desactiva", () => {
+test.describe("Configuración > categoría: eliminar según si ya se usó", () => {
   const ruta = "/configuracion.html#categorias";
-  const ocupado = "Ya existe una categoría con ese nombre (puede estar eliminada).";
   const eliminar = async (page, nombre) => {
     await item(page, "categorias", nombre).getByRole("button", { name: "Eliminar" }).click();
     await page.getByTestId("modal-confirmar").click();
     await expect(item(page, "categorias", nombre)).toHaveCount(0);
   };
+  const conProductosEnRemeras = { semilla: (e) => (e.categorias.find((c) => c.nombre === "Remeras").en_uso = true) };
 
-  test("en lo guardado, la categoría sigue ahí pero inactiva (activo = false)", async ({ page }) => {
+  test("una que nunca se usó se borra de verdad y su nombre queda libre para volver a crearla", async ({ page }) => {
     await abrir(page, ruta);
     await eliminar(page, "Remeras");
-    const guardado = await page.evaluate(() => JSON.parse(localStorage.getItem("trazzo_mock_categorias")));
-    const elemento = guardado.find((e) => e.nombre === "Remeras");
-    expect(elemento.activo).toBe(false);
-    expect(guardado.filter((e) => e.activo !== false)).toHaveLength(1);
-  });
-
-  test("el nombre de lo eliminado sigue ocupado: al agregarlo de nuevo el servidor lo rechaza y lo explica", async ({ page }) => {
-    await abrir(page, ruta);
-    await eliminar(page, "Remeras");
+    expect(backend.estado.categorias.some((c) => c.nombre === "Remeras")).toBe(false);
     await page.getByTestId("categorias-nombre").fill("Remeras");
     await page.getByTestId("categorias-agregar").click();
-    await expect(page.getByTestId("categorias-error")).toHaveText(ocupado);
-    await expect(page.getByTestId("categorias-nombre")).toHaveValue("Remeras");
-    await expect(page.getByTestId("categorias-nombre")).toHaveClass(/con-error/);
+    await expect(item(page, "categorias", "Remeras")).toHaveCount(1);
+  });
+
+  test("una con productos no se lista pero sigue guardada como inactiva", async ({ page }) => {
+    await abrir(page, ruta, conProductosEnRemeras);
+    await eliminar(page, "Remeras");
+    expect(backend.estado.categorias.find((c) => c.nombre === "Remeras").activo).toBe(false);
+    await page.reload();
+    await expect(item(page, "categorias", "Remeras")).toHaveCount(0);
     await expect(items(page, "categorias")).toHaveCount(1);
-    await expect(toast(page)).toHaveCount(0);
-    await expect(page.getByTestId("categorias-agregar")).toBeEnabled();
   });
 
-  test("tampoco se puede con otras mayúsculas ni con espacios", async ({ page }) => {
-    await abrir(page, ruta);
+  test("una con productos y eliminada se reactiva al crear otra con el mismo nombre", async ({ page }) => {
+    await abrir(page, ruta, conProductosEnRemeras);
     await eliminar(page, "Remeras");
-    for (const texto of ["REMERAS", "  remeras  "]) {
-      await page.getByTestId("categorias-nombre").fill(texto);
-      await page.getByTestId("categorias-agregar").click();
-      await expect(page.getByTestId("categorias-error")).toHaveText(ocupado);
-    }
+    await page.getByTestId("categorias-nombre").fill("remeras");
+    await page.getByTestId("categorias-agregar").click();
+    await expect(item(page, "categorias", "remeras")).toHaveCount(1);
+    await expect(toast(page)).toHaveText("Categoría creada");
   });
 
-  test("el aviso desaparece al escribir otro nombre, y ese otro se puede agregar", async ({ page }) => {
-    await abrir(page, ruta);
-    await eliminar(page, "Remeras");
-    await page.getByTestId("categorias-nombre").fill("Remeras");
-    await page.getByTestId("categorias-agregar").click();
-    await expect(page.getByTestId("categorias-error")).toBeVisible();
-    await page.getByTestId("categorias-nombre").fill("Un nombre nuevo");
-    await expect(page.getByTestId("categorias-error")).toBeHidden();
-    await page.getByTestId("categorias-agregar").click();
-    await expect(item(page, "categorias", "Un nombre nuevo")).toHaveCount(1);
-  });
-
-  test("al editar, el nombre de una categoría eliminada también está ocupado", async ({ page }) => {
-    await abrir(page, ruta);
+  test("al editar, el nombre de una categoría eliminada (inactiva) está ocupado y el servidor lo explica", async ({ page }) => {
+    await abrir(page, ruta, conProductosEnRemeras);
     await eliminar(page, "Remeras");
     await item(page, "categorias", "Pantalones").getByRole("button", { name: "Editar" }).click();
     await page.locator("#nombre").fill("Remeras");
     await guardar(page).click();
-    await expect(page.locator("#error-nombre")).toHaveText(ocupado);
+    await expect(page.locator("#error-nombre")).toHaveText("Ese nombre pertenece a una categoría eliminada anteriormente. Creala como nueva para volver a habilitarla.");
     await expect(modal(page)).toHaveCount(1);
     await expect(guardar(page)).toBeEnabled();
   });
@@ -894,25 +832,15 @@ test.describe("Configuración > medio de pago: eliminar según si ya se usó", (
   });
 });
 
-test.describe("Configuración: listas de categorías guardadas con o sin «activo»", () => {
-  const sembrar = (page, categorias) => page.addInitScript((c) => localStorage.setItem("trazzo_mock_categorias", JSON.stringify(c)), categorias);
-
-  test("un elemento guardado sin el dato «activo» (listas anteriores) se ve como activo", async ({ page }) => {
-    await sembrar(page, [{ id: 1, nombre: "Sin dato" }]);
-    await abrir(page, "/configuracion.html#categorias");
-    await expect(item(page, "categorias", "Sin dato")).toHaveCount(1);
-  });
-
-  test("un elemento guardado como inactivo no se ve", async ({ page }) => {
-    await sembrar(page, [{ id: 1, nombre: "Visible", activo: true }, { id: 2, nombre: "Eliminada", activo: false }]);
-    await abrir(page, "/configuracion.html#categorias");
-    await expect(items(page, "categorias")).toHaveCount(1);
+test.describe("Configuración > Categorías: las inactivas no se ven", () => {
+  test("una categoría inactiva no se lista", async ({ page }) => {
+    await abrir(page, "/configuracion.html#categorias", { semilla: (e) => e.categorias.push({ id: 9, nombre: "Eliminada", activo: false, en_uso: true }) });
+    await expect(items(page, "categorias")).toHaveCount(2);
     await expect(item(page, "categorias", "Eliminada")).toHaveCount(0);
   });
 
   test("si todas las categorías están inactivas se ve el mensaje de lista vacía", async ({ page }) => {
-    await sembrar(page, [{ id: 1, nombre: "Vieja", activo: false }]);
-    await abrir(page, "/configuracion.html#categorias");
+    await abrir(page, "/configuracion.html#categorias", { semilla: (e) => e.categorias.forEach((c) => (c.activo = false)) });
     await expect(page.getByTestId("sin-opciones-categorias")).toBeVisible();
   });
 });

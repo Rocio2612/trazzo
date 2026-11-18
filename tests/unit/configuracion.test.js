@@ -529,16 +529,16 @@ describe("el Propietario conserva su rol al editarse", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Largos de la base: el nombre de una categoría admite 100 (VARCHAR(100)) y el de un medio de pago 50
-// (VARCHAR(50)); nombre y apellido pueden ser NULL en la base.
+// Largos del Backend: el nombre de una categoría y el de un medio de pago admiten 50 caracteres
+// (nombre y apellido pueden ser NULL en la base).
 // ---------------------------------------------------------------------------
 
 describe("largo del nombre de las listas, según la base", () => {
-  it("categorías: hasta 100 caracteres", () => {
-    expect(TEXTOS_LISTA.categorias.maximo).toBe(100);
-    expect(validarNombreLista("a".repeat(100), [], "una categoría", TEXTOS_LISTA.categorias.maximo)).toBeNull();
-    expect(validarNombreLista("a".repeat(101), [], "una categoría", TEXTOS_LISTA.categorias.maximo)).toBe(
-      "El nombre no puede superar los 100 caracteres.",
+  it("categorías: hasta 50 caracteres", () => {
+    expect(TEXTOS_LISTA.categorias.maximo).toBe(50);
+    expect(validarNombreLista("a".repeat(50), [], "una categoría", TEXTOS_LISTA.categorias.maximo)).toBeNull();
+    expect(validarNombreLista("a".repeat(51), [], "una categoría", TEXTOS_LISTA.categorias.maximo)).toBe(
+      "El nombre no puede superar los 50 caracteres.",
     );
   });
 
@@ -550,19 +550,13 @@ describe("largo del nombre de las listas, según la base", () => {
     );
   });
 
-  it("un nombre de 51 a 100 caracteres vale para una categoría pero no para un medio de pago", () => {
-    const nombre = "a".repeat(75);
-    expect(validarNombreLista(nombre, [], "una categoría", TEXTOS_LISTA.categorias.maximo)).toBeNull();
-    expect(validarNombreLista(nombre, [], "un medio de pago", TEXTOS_LISTA.medios_pago.maximo)).toMatch(/50 caracteres/);
-  });
-
   it("sin indicar el máximo se mantiene el de 50", () => {
     expect(validarNombreLista("a".repeat(50))).toBeNull();
     expect(validarNombreLista("a".repeat(51))).toBe("El nombre no puede superar los 50 caracteres.");
   });
 
   it("los espacios de los costados no cuentan para el largo, con cualquier máximo", () => {
-    expect(validarNombreLista(` ${"a".repeat(100)} `, [], "una categoría", 100)).toBeNull();
+    expect(validarNombreLista(` ${"a".repeat(50)} `, [], "una categoría", 50)).toBeNull();
   });
 });
 

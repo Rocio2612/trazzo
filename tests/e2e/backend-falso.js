@@ -1,6 +1,6 @@
 // --- BACKEND FALSO PARA LOS TESTS E2E ---
 // Simula, dentro del navegador de Playwright, los endpoints del Gateway que usan Mi negocio, Configuración
-// (Personal y Medios de pago) y Gastos, con las reglas que tiene el Backend real y los formatos de error por
+// (Personal, Categorías y Medios de pago) y Gastos, con las reglas que tiene el Backend real y los formatos de error por
 // campo que acordaron ({ errores: { campo: mensaje } }). Parte de los mismos datos de ejemplo de siempre.
 //
 //   const backend = await simularBackend(page, { rol: "PROPIETARIO", semilla: (estado) => { ... } });
@@ -45,6 +45,11 @@ const semillaInicial = () => ({
     { id: 2, usuario: "admin2", correo: "luis@kioscochicha.com", nombre: "Luis", apellido: "Gómez", dni: null, rol: "ADMIN", activo: true, fecha_creacion: "2026-02-03T10:30:00+00:00" },
     { id: 3, usuario: "cajero1", correo: "sofia@kioscochicha.com", nombre: "Sofía", apellido: "Díaz", dni: "40222333", rol: "CAJERO", activo: true, fecha_creacion: "2026-02-20T12:15:00+00:00" },
     { id: 4, usuario: "cajero2", correo: "marcos@kioscochicha.com", nombre: "Marcos", apellido: "Ruiz", dni: null, rol: "CAJERO", activo: false, fecha_creacion: "2026-03-10T09:45:00+00:00" },
+  ],
+  // `en_uso`: tiene productos asociados (al eliminarla se desactiva en vez de borrarse).
+  categorias: [
+    { id: 1, nombre: "Remeras", activo: true, en_uso: false },
+    { id: 2, nombre: "Pantalones", activo: true, en_uso: false },
   ],
   medios: [
     { id: 1, nombre: "Efectivo", es_predeterminado: true, activo: true },
@@ -173,6 +178,53 @@ async function simularBackend(page, { rol = "PROPIETARIO", semilla = null, ahora
     return [200, { status: "ok", mensaje: "Usuario eliminado correctamente" }];
   };
 
+  // ---------- Categorías (mismas reglas que finanzas-service: /categorias) ----------
+  const categoriaPublica = ({ id, nombre }) => ({ id, nombre });
+  const categoriasGET = () => {
+    const activas = estado.categorias.filter((c) => c.activo).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    return [200, { status: "ok", categorias: activas.map(categoriaPublica) }];
+  };
+  const categoriasPOST = (_a, _p, _q, body) => {
+    const nombre = String(body.nombre ?? "").trim();
+    if (!nombre) return error(400, "El nombre de la categoría es obligatorio", { nombre: "El nombre es obligatorio." });
+    if (nombre.length > 50) return error(400, "El nombre no puede superar los 50 caracteres", { nombre: "El nombre no puede superar los 50 caracteres." });
+    const igual = estado.categorias.find((c) => sinTildes(c.nombre) === sinTildes(nombre));
+    if (igual && igual.activo) return error(409, "Ya existe una categoría con ese nombre", { nombre: "Ya existe una categoría con ese nombre." });
+    if (igual) {
+      // Una categoría eliminada (desactivada) se reactiva al volver a crearla con el mismo nombre.
+      igual.activo = true;
+      igual.nombre = nombre;
+      return [201, { status: "ok", mensaje: "Categoría creada", categoria: categoriaPublica(igual) }];
+    }
+    const nueva = { id: siguienteId(estado.categorias), nombre, activo: true, en_uso: false };
+    estado.categorias.push(nueva);
+    return [201, { status: "ok", mensaje: "Categoría creada", categoria: categoriaPublica(nueva) }];
+  };
+  const categoriasPUT = (_a, { id }, _q, body) => {
+    const nombre = String(body.nombre ?? "").trim();
+    if (!nombre) return error(400, "El nombre es obligatorio", { nombre: "El nombre es obligatorio." });
+    if (nombre.length > 50) return error(400, "El nombre no puede superar los 50 caracteres", { nombre: "El nombre no puede superar los 50 caracteres." });
+    const categoria = estado.categorias.find((c) => c.id === Number(id) && c.activo);
+    const conflicto = estado.categorias.find((c) => c.id !== Number(id) && sinTildes(c.nombre) === sinTildes(nombre));
+    if (conflicto) {
+      const mensaje = conflicto.activo
+        ? "Ya existe otra categoría con ese nombre."
+        : "Ese nombre pertenece a una categoría eliminada anteriormente. Creala como nueva para volver a habilitarla.";
+      return error(409, mensaje, { nombre: mensaje });
+    }
+    if (!categoria) return error(404, "Categoría no encontrada");
+    categoria.nombre = nombre;
+    return [200, { status: "ok", mensaje: "Categoría actualizada", categoria: categoriaPublica(categoria) }];
+  };
+  const categoriasDELETE = (_a, { id }) => {
+    const categoria = estado.categorias.find((c) => c.id === Number(id));
+    if (!categoria) return error(404, "Categoría no encontrada");
+    // Con productos asociados se desactiva (para conservar el historial); si no, se borra de verdad.
+    if (categoria.en_uso) categoria.activo = false;
+    else estado.categorias.splice(estado.categorias.indexOf(categoria), 1);
+    return [200, { status: "ok", mensaje: "Categoría eliminada exitosamente" }];
+  };
+
   // ---------- Medios de pago ----------
   const medioPublico = ({ id, nombre, es_predeterminado }) => ({ id, nombre, es_predeterminado });
   const mediosGET = () => {
@@ -282,6 +334,10 @@ async function simularBackend(page, { rol = "PROPIETARIO", semilla = null, ahora
     ["PATCH", "/auth/personal/:id/habilitar", ["PROPIETARIO", "ADMIN"], personalHabilitar],
     ["PATCH", "/auth/personal/:id/deshabilitar", ["PROPIETARIO", "ADMIN"], personalDeshabilitar],
     ["DELETE", "/auth/personal/:id", ["PROPIETARIO", "ADMIN"], personalEliminar],
+    ["GET", "/categorias", null, categoriasGET],
+    ["POST", "/categorias", ["PROPIETARIO", "ADMIN"], categoriasPOST],
+    ["PUT", "/categorias/:id", ["PROPIETARIO", "ADMIN"], categoriasPUT],
+    ["DELETE", "/categorias/:id", ["PROPIETARIO", "ADMIN"], categoriasDELETE],
     ["GET", "/medios-pago", null, mediosGET],
     ["POST", "/medios-pago", ["PROPIETARIO", "ADMIN"], mediosPOST],
     ["PUT", "/medios-pago/:id", ["PROPIETARIO", "ADMIN"], mediosPUT],

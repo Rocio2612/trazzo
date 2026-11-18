@@ -6,7 +6,7 @@
 import { abrirFormularioModal, avisar, bannerAmbar, boton, botonIcono, confirmar, crearSvg, h, ICONOS } from "./componentes/ui-panel.js";
 import { crearSinOpciones } from "./componentes/sin-opciones.js";
 import { validarNombreLista } from "./personalizacion.js";
-import { servicioCategorias } from "./mocks/categorias.js";
+import { servicioCategorias } from "./servicios/categorias.js";
 import { mensajeDeError } from "./servicios/errores.js";
 import { servicioMediosPago } from "./servicios/medios-pago.js";
 
@@ -15,7 +15,7 @@ export const TEXTOS_LISTA = {
   categorias: {
     singular: "categoría",
     articulo: "una categoría",
-    maximo: 100, // productos.categorias.nombre es VARCHAR(100)
+    maximo: 50, // el backend limita el nombre de la categoria a 50 caracteres
     creado: "Categoría creada",
     etiquetaEntrada: "Nombre de la categoría",
     placeholder: "Ej.: remeras, pantalones",
@@ -36,7 +36,7 @@ export const TEXTOS_LISTA = {
 
 export const crearPanelLista = (tipo) => {
   const textos = TEXTOS_LISTA[tipo];
-  // Los medios de pago vienen del Backend (finanzas-service). Las categorías siguen simuladas hasta que haya API.
+  // Las categorías y los medios de pago vienen del Backend (finanzas-service).
   const servicio = tipo === "medios_pago" ? servicioMediosPago : servicioCategorias;
   const ctx = { elementos: [] };
   const zonaLista = h("div");
@@ -139,9 +139,9 @@ export const crearPanelLista = (tipo) => {
         "div",
         { class: "gastos-acciones-fila cfg-fila-acciones" },
         !elemento.es_predeterminado &&
-          botonIcono(ICONOS.editar, "Editar", { "data-testid": `${tipo}-editar-${elemento.id}`, "data-modulo": tipo, "data-accion": "editar", "data-id": elemento.id }),
+        botonIcono(ICONOS.editar, "Editar", { "data-testid": `${tipo}-editar-${elemento.id}`, "data-modulo": tipo, "data-accion": "editar", "data-id": elemento.id }),
         !elemento.es_predeterminado &&
-          botonIcono(ICONOS.eliminar, "Eliminar", { "data-testid": `${tipo}-eliminar-${elemento.id}`, "data-modulo": tipo, "data-accion": "eliminar", "data-id": elemento.id }, "gastos-btn-eliminar"),
+        botonIcono(ICONOS.eliminar, "Eliminar", { "data-testid": `${tipo}-eliminar-${elemento.id}`, "data-modulo": tipo, "data-accion": "eliminar", "data-id": elemento.id }, "gastos-btn-eliminar"),
       ),
     );
 
@@ -155,11 +155,11 @@ export const crearPanelLista = (tipo) => {
             ? h("div", { class: "gastos-vacio", "data-testid": `${tipo}-error-carga`, text: ctx.error })
             : h("div", { class: "gastos-vacio" }, crearSinOpciones(tipo, { conEnlace: false }))
           : h(
-              "div",
-              { class: "cfg-lista-scroll" },
-              h("div", { class: "cfg-lista-cabecera" }, h("span", { text: "Nombre" }), h("span", { text: "Acciones" })),
-              h("ul", { class: "cfg-lista", "data-testid": `${tipo}-lista` }, ctx.elementos.map(filaDeElemento)),
-            ),
+            "div",
+            { class: "cfg-lista-scroll" },
+            h("div", { class: "cfg-lista-cabecera" }, h("span", { text: "Nombre" }), h("span", { text: "Acciones" })),
+            h("ul", { class: "cfg-lista", "data-testid": `${tipo}-lista` }, ctx.elementos.map(filaDeElemento)),
+          ),
       ),
     );
 
