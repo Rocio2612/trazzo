@@ -352,6 +352,251 @@ def eliminar_medio_pago(medio_id):
         cur.close()
         conn.close()
 
+# GESTIÓN DE CATEGORÍAS DE PRODUCTOS (productos.categorias) 
+# Listar Categorías (GET /api/categorias)
+@app.route('/api/categorias', methods=['GET'])
+@app.route('/api/finanzas/categorias', methods=['GET'])
+def listar_categorias():
+    """
+    Retorna la lista de categorías activas del negocio ordenadas alfabéticamente.
+    - Accesible para PROPIETARIO, ADMIN y CAJERO (el Cajero la necesita para el selector de Productos).
+    - A diferencia de Medios de Pago, NO crea registros por defecto: si el comercio no tiene categorías,
+      devuelve una lista vacía ([]) para que el Frontend muestre 'Sin categorías' según CU-09.
+    """
+    payload, error_resp, status = verificar_token()
+    if error_resp:
+        return error_resp, status
+
+    negocio_id = payload.get("negocio_id")
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Filtra estrictamente por emprendimiento_id (aislamiento multi-tenant) y activo = TRUE
+        cur.execute(
+            """SELECT id, nombre
+               FROM productos.categorias
+               WHERE emprendimiento_id = %s AND activo = TRUE
+               ORDER BY nombre ASC""",
+            (negocio_id,)
+        )
+        categorias = cur.fetchall()
+        return jsonify({"status": "ok", "categorias": categorias}), 200
+    finally:
+        cur.close()
+        conn.close()
+
+
+# Alta de Categoría (POST /api/categorias)
+@app.route('/api/categorias', methods=['POST'])
+@app.route('/api/finanzas/categorias', methods=['POST'])
+def crear_categoria():
+    """
+    Crea una nueva categoría de productos (exclusivo para PROPIETARIO o ADMIN).
+    - Valida nombre obligatorio y longitud máxima de 50 caracteres.
+    - Controla unicidad por negocio (insensible a mayúsculas/minúsculas).
+    - Si existía una categoría con ese nombre pero estaba oculta/desactivada (activo = FALSE),
+      la reactiva automáticamente (activo = TRUE) sin duplicar filas en PostgreSQL.
+    """
+    payload, error_resp, status = verificar_token(roles_permitidos=['PROPIETARIO', 'ADMIN'])
+    if error_resp:
+        return error_resp, status
+
+    negocio_id = payload.get("negocio_id")
+    datos = request.get_json(silent=True) or {}
+    nombre = (datos.get('nombre') or '').strip()
+
+    # Validaciones de formato devolviendo diccionario 'errores' por campo para el Frontend
+    if not nombre:
+        return jsonify({
+            "status": "error",
+            "mensaje": "El nombre de la categoría es obligatorio",
+            "errores": {"nombre": "El nombre es obligatorio."}
+        }), 400
+    if len(nombre) > 50:
+        return jsonify({
+            "status": "error",
+            "mensaje": "El nombre no puede superar los 50 caracteres",
+            "errores": {"nombre": "El nombre no puede superar los 50 caracteres."}
+        }), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Comprobamos si ya existe en la tabla (activa o desactivada) dentro del mismo comercio
+        cur.execute(
+            """SELECT id, activo FROM productos.categorias
+               WHERE emprendimiento_id = %s AND lower(nombre) = lower(%s)""",
+            (negocio_id, nombre)
+        )
+        existente = cur.fetchone()
+
+        if existente:
+            if existente['activo']:
+                # Si ya está vigente, bloqueamos con 409 Conflict indicando el campo exacto
+                return jsonify({
+                    "status": "error",
+                    "mensaje": "Ya existe una categoría con ese nombre",
+                    "errores": {"nombre": "Ya existe una categoría con ese nombre."}
+                }), 409
+            else:
+                # Si había sido retirada lógicamente porque tenía productos históricos, la reactivamos
+                cur.execute(
+                    """UPDATE productos.categorias
+                       SET activo = TRUE, nombre = %s
+                       WHERE id = %s
+                       RETURNING id, nombre""",
+                    (nombre, existente['id'])
+                )
+                reactivada = cur.fetchone()
+                conn.commit()
+                return jsonify({"status": "ok", "mensaje": "Categoría creada", "categoria": reactivada}), 201
+
+        # Inserción limpia de la nueva categoría
+        cur.execute(
+            """INSERT INTO productos.categorias (emprendimiento_id, nombre, activo)
+               VALUES (%s, %s, TRUE)
+               RETURNING id, nombre""",
+            (negocio_id, nombre)
+        )
+        nueva = cur.fetchone()
+        conn.commit()
+        return jsonify({"status": "ok", "mensaje": "Categoría creada", "categoria": nueva}), 201
+
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        return jsonify({
+            "status": "error",
+            "mensaje": "Ya existe una categoría con ese nombre",
+            "errores": {"nombre": "Ya existe una categoría con ese nombre."}
+        }), 409
+    finally:
+        cur.close()
+        conn.close()
+
+
+# Edición de Categoría (PUT /api/categorias/<id>)
+@app.route('/api/categorias/<int:categoria_id>', methods=['PUT'])
+@app.route('/api/finanzas/categorias/<int:categoria_id>', methods=['PUT'])
+def actualizar_categoria(categoria_id):
+    """
+    Actualiza el nombre de una categoría existente (exclusivo para PROPIETARIO o ADMIN).
+    Verifica que el nuevo nombre no colisione con otra categoría del mismo comercio.
+    """
+    payload, error_resp, status = verificar_token(roles_permitidos=['PROPIETARIO', 'ADMIN'])
+    if error_resp:
+        return error_resp, status
+
+    negocio_id = payload.get("negocio_id")
+    datos = request.get_json(silent=True) or {}
+    nuevo_nombre = (datos.get('nombre') or '').strip()
+
+    if not nuevo_nombre:
+        return jsonify({
+            "status": "error",
+            "mensaje": "El nombre es obligatorio",
+            "errores": {"nombre": "El nombre es obligatorio."}
+        }), 400
+    if len(nuevo_nombre) > 50:
+        return jsonify({
+            "status": "error",
+            "mensaje": "El nombre no puede superar los 50 caracteres",
+            "errores": {"nombre": "El nombre no puede superar los 50 caracteres."}
+        }), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Verificamos si otro registro del mismo comercio ya utiliza ese nombre
+        cur.execute(
+            """SELECT id, activo FROM productos.categorias
+               WHERE emprendimiento_id = %s AND lower(nombre) = lower(%s) AND id != %s""",
+            (negocio_id, nuevo_nombre, categoria_id)
+        )
+        conflicto = cur.fetchone()
+        if conflicto:
+            if conflicto['activo']:
+                msg = "Ya existe otra categoría con ese nombre."
+            else:
+                msg = "Ese nombre pertenece a una categoría eliminada anteriormente. Creala como nueva para volver a habilitarla."
+            return jsonify({
+                "status": "error",
+                "mensaje": msg,
+                "errores": {"nombre": msg}
+            }), 409
+
+        cur.execute(
+            """UPDATE productos.categorias
+               SET nombre = %s
+               WHERE id = %s AND emprendimiento_id = %s AND activo = TRUE
+               RETURNING id, nombre""",
+            (nuevo_nombre, categoria_id, negocio_id)
+        )
+        actualizada = cur.fetchone()
+        if not actualizada:
+            return jsonify({"status": "error", "mensaje": "Categoría no encontrada"}), 404
+
+        conn.commit()
+        return jsonify({"status": "ok", "mensaje": "Categoría actualizada", "categoria": actualizada}), 200
+
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        return jsonify({
+            "status": "error",
+            "mensaje": "Ya existe otra categoría con ese nombre",
+            "errores": {"nombre": "Ya existe otra categoría con ese nombre."}
+        }), 409
+    finally:
+        cur.close()
+        conn.close()
+
+
+# Eliminación con preservación histórica (DELETE /api/categorias/<id>)
+@app.route('/api/categorias/<int:categoria_id>', methods=['DELETE'])
+@app.route('/api/finanzas/categorias/<int:categoria_id>', methods=['DELETE'])
+def eliminar_categoria(categoria_id):
+    """
+    Elimina una categoría respetando la regla de integridad histórica del Módulo 3.3 (CU-09):
+    - Si tiene productos asociados (activos u ocultos), aplica borrado lógico (activo = FALSE):
+      deja de aparecer en los desplegables para productos nuevos, pero los productos anteriores
+      conservan su referencia histórica sin romperse.
+    - Si nunca fue asociada a ningún producto, se elimina físicamente (DELETE) de la base.
+    """
+    payload, error_resp, status = verificar_token(roles_permitidos=['PROPIETARIO', 'ADMIN'])
+    if error_resp:
+        return error_resp, status
+
+    negocio_id = payload.get("negocio_id")
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Verificamos pertenencia al negocio (aislamiento multi-tenant)
+        cur.execute(
+            "SELECT id FROM productos.categorias WHERE id = %s AND emprendimiento_id = %s",
+            (categoria_id, negocio_id)
+        )
+        if not cur.fetchone():
+            return jsonify({"status": "error", "mensaje": "Categoría no encontrada"}), 404
+
+        # Consultamos si algún artículo en productos.productos tiene asignada esta categoría
+        cur.execute(
+            "SELECT COUNT(*) AS total FROM productos.productos WHERE categoria_id = %s AND emprendimiento_id = %s",
+            (categoria_id, negocio_id)
+        )
+        en_uso = cur.fetchone()['total'] > 0
+
+        if en_uso:
+            # Borrado lógico: mantiene intacta la referencia en productos existentes
+            cur.execute("UPDATE productos.categorias SET activo = FALSE WHERE id = %s", (categoria_id,))
+        else:
+            # Borrado físico: limpia el registro sin uso de la tabla
+            cur.execute("DELETE FROM productos.categorias WHERE id = %s", (categoria_id,))
+
+        conn.commit()
+        return jsonify({"status": "ok", "mensaje": "Categoría eliminada exitosamente"}), 200
+    finally:
+        cur.close()
+        conn.close()
+
 # GESTIÓN DE GASTOS OPERATIVOS (finanzas.gastos_operativos)
 @app.route('/api/gastos', methods=['GET'])
 def listar_gastos():
@@ -641,7 +886,8 @@ def eliminar_gasto(gasto_id):
 def listar_bienes_uso():
     """
     Lista todos los bienes de uso (activos y ocultos) para permitir el filtro 'Ver ocultos' en Front.
-    Calcula valorTotal dinámico (cantidad * precio_compra) y suma al patrimonio solo los activos.
+    Regla SM (CU-18): Ocultar un bien de uso lo quita de la vista activa pero sigue sumando al patrimonio;
+    solo al eliminarlo definitivamente deja de sumar.
     """
     payload, error_resp, status = verificar_token(roles_permitidos=['PROPIETARIO', 'ADMIN'])
     if error_resp:
@@ -653,11 +899,11 @@ def listar_bienes_uso():
 
     try:
         # Ejecuta una consulta SQL relacional con dos LEFT JOIN hacia productos.proveedores y productos.categorias.
-        # Aplica tres filtros concurrentes:
+        # Aplica dos filtros concurrentes:
         # p.emprendimiento_id = %s: asegura aislamiento multi-tenant (solo trae bienes del comercio en sesión).   
         # p.tipo_producto = 'BIEN_DE_USO': discrimina los activos fijos de la mercadería y de los consumibles.   
-        # p.activo = TRUE: excluye los bienes que fueron dados de baja u ocultados lógicamente.  
-        # CAMBIO: Quitamos 'AND p.activo = TRUE' del WHERE para devolver activos y ocultos con su bandera correspondiente
+        # No se filtra por p.activo = TRUE en el SQL para devolver tanto los activos como los ocultos,
+        # permitiendo que la pantalla alterne entre ambos estados con el botón 'Ver ocultos'.
         cur.execute(
             """SELECT p.id, p.nombre, p.precio_compra, p.cantidad, p.stock_minimo,
                       p.iva_alicuota, p.activo, p.proveedor_id, pr.nombre AS proveedor_nombre,
@@ -684,11 +930,12 @@ def listar_bienes_uso():
             # calcula el valor patrimonial actual de esa maquinaria o herramienta en particular (cantidad X costo de adquisición). 
             subtotal = round(qty * costo, 2)
 
-            # El resumen patrimonial suma únicamente los bienes activos (activo = TRUE)
+            # Regla oficial de Reportes (CU-18): todos los bienes no eliminados (activos y ocultos)
+            # continúan sumando en la inversión patrimonial; solo dejan de sumar si se borran con DELETE.
+            patrimonio_total += subtotal
+
+            # El contador físico de equipos vigentes solo contabiliza los que están visibles (activo = TRUE).
             if esta_activo:
-                # actúa como acumulador contable sumando en vivo el valor monetario de todos los activos fijos del negocio.
-                patrimonio_total += subtotal
-                # acumula el volumen físico de unidades operativas.
                 cantidad_activos += qty
 
             fecha_iso = formatear_utc_z(f['creado_en'])
@@ -736,7 +983,8 @@ def listar_bienes_uso():
 def crear_bien_uso():
     """
     Alta de un nuevo bien de uso en productos.productos.
-    Reglas: tipo_producto = 'BIEN_DE_USO', unidad_medida = 'unidades', precio_venta = 0.
+    Reglas SM (CU-18): tipo_producto = 'BIEN_DE_USO', unidad_medida = 'unidades', precio_venta = 0,
+    cantidad > 0, costo > 0 y fecha de adquisición no futura.
     Acepta opcionalmente 'fecha_adquisicion' (YYYY-MM-DD) y la almacena en 'creado_en'.
     """
     payload, error_resp, status = verificar_token(roles_permitidos=['PROPIETARIO', 'ADMIN'])
@@ -764,16 +1012,27 @@ def crear_bien_uso():
     except (ValueError, TypeError):
         return jsonify({"status": "error", "mensaje": "Datos numéricos inválidos (cantidad y stock deben ser enteros)"}), 400
 
-    if not nombre or not proveedor_id:
-        return jsonify({"status": "error", "mensaje": "Nombre y proveedor son obligatorios"}), 400
-    if precio_compra <= 0 or cantidad < 0 or stock_minimo < 0:
-        return jsonify({"status": "error", "mensaje": "El costo debe ser mayor a cero y las cantidades no pueden ser negativas"}), 400
+    if not nombre:
+        return jsonify({
+            "status": "error",
+            "mensaje": "El nombre es obligatorio",
+            "errores": {"nombre": "El nombre es obligatorio."}
+        }), 400
+    if precio_compra <= 0 or cantidad <= 0 or stock_minimo < 0:
+        return jsonify({"status": "error", "mensaje": "El costo y la cantidad deben ser mayores a cero"}), 400
 
-    # Si envían fecha_adquisicion (YYYY-MM-DD), la convertimos a timestamp; si no, usa CURRENT_TIMESTAMP
+    # Validación de fecha de adquisición: si envían fecha_adquisicion (YYYY-MM-DD), verifica que no sea futura
+    # respecto a la hora oficial de Argentina y la convierte a timestamp; si no viene, COALESCE usa CURRENT_TIMESTAMP.
     fecha_registro_dt = None
     if fecha_adq_str:
         try:
             fecha_solo = datetime.date.fromisoformat(fecha_adq_str[:10])
+            if fecha_solo > hoy_argentina():
+                return jsonify({
+                    "status": "error",
+                    "mensaje": "La fecha de adquisición no puede ser futura",
+                    "errores": {"fecha_adquisicion": "La fecha de adquisición no puede ser futura."}
+                }), 400
             fecha_registro_dt = datetime.datetime.combine(fecha_solo, datetime.time(12, 0), tzinfo=TZ_ARGENTINA)
         except ValueError:
             return jsonify({"status": "error", "mensaje": "Formato de fecha_adquisicion inválido (use YYYY-MM-DD)"}), 400
@@ -781,13 +1040,24 @@ def crear_bien_uso():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
+        # Si el formulario del Frontend no envía proveedor_id (porque su diseño no incluye selector),
+        # buscamos automáticamente el primer proveedor activo del negocio en sesión para cumplir la clave foránea.
+        if not proveedor_id:
+            cur.execute(
+                "SELECT id FROM productos.proveedores WHERE emprendimiento_id = %s AND activo = TRUE ORDER BY id ASC LIMIT 1",
+                (negocio_id,)
+            )
+            prov = cur.fetchone()
+            if not prov:
+                return jsonify({"status": "error", "mensaje": "Debe registrar al menos un proveedor antes de cargar bienes de uso"}), 400
+            proveedor_id = prov['id']
+
         #Ejecuta el INSERT INTO productos.productos asignando valores fijos obligatorios por modelo de negocio:
         # tipo_producto = 'BIEN_DE_USO' (clasificación patrimonial).   
         # precio_venta = 0.00 y rentabilidad = 0.00 (las máquinas no son mercadería para venta minorista).   
         # unidad_medida = 'unidades' (regla de enteros).   
         # creado_por = creador (auditoría automática extraída del token). 
-
-        #Usa la cláusula RETURNING id, nombre, precio_compra, cantidad, creado_en para capturar en un solo paso los valores finales asignados por PostgreSQL.
+        #Usa la cláusula RETURNING id, nombre, precio_compra, cantidad, activo, creado_en para capturar en un solo paso los valores finales asignados por PostgreSQL.
         cur.execute(
             """INSERT INTO productos.productos 
                (emprendimiento_id, proveedor_id, categoria_id, tipo_producto, nombre,
@@ -817,6 +1087,88 @@ def crear_bien_uso():
         cur.close()
         conn.close()
 
+
+# EDICIÓN DE BIEN DE USO (PUT /api/bienes-uso/<id>)
+@app.route('/api/bienes-uso/<int:id>', methods=['PUT'])
+@app.route('/api/finanzas/bienes-uso/<int:id>', methods=['PUT'])
+def actualizar_bien_uso(id):
+    """
+    Edita los datos de un bien de uso existente (nombre, valor unitario, cantidad y fecha_adquisicion).
+    Cumple con CU-18: valida fecha no futura, recalcula el valor total y deja registro de auditoría
+    (modificado_por y modificado_en) porque el cambio impacta en los indicadores patrimoniales.
+    """
+    payload, error_resp, status = verificar_token(roles_permitidos=['PROPIETARIO', 'ADMIN'])
+    if error_resp:
+        return error_resp, status
+
+    negocio_id = payload.get("negocio_id")
+    usuario = payload.get("usuario", "admin")
+    datos = request.get_json(silent=True) or {}
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Comprobamos que el equipo exista y pertenezca al negocio del token (aislamiento multi-tenant)
+        cur.execute(
+            "SELECT * FROM productos.productos WHERE id = %s AND emprendimiento_id = %s AND tipo_producto = 'BIEN_DE_USO'",
+            (id, negocio_id)
+        )
+        actual = cur.fetchone()
+        if not actual:
+            return jsonify({"status": "error", "mensaje": "Bien de uso no encontrado"}), 404
+
+        # Si algún campo no viene en el JSON (ej. el modal de edición no pide cantidad), conserva el valor actual
+        nombre = (datos.get('nombre') if 'nombre' in datos else actual['nombre'] or '').strip()
+        try:
+            precio_raw = datos.get('precio_compra') if 'precio_compra' in datos else actual['precio_compra']
+            precio_compra = float(precio_raw or 0)
+            cant_raw = datos.get('cantidad') if 'cantidad' in datos else actual['cantidad']
+            cantidad = int(cant_raw or 0)
+        except (ValueError, TypeError):
+            return jsonify({"status": "error", "mensaje": "Datos numéricos inválidos"}), 400
+
+        if not nombre:
+            return jsonify({"status": "error", "mensaje": "El nombre es obligatorio"}), 400
+        if precio_compra <= 0 or cantidad <= 0:
+            return jsonify({"status": "error", "mensaje": "El valor y la cantidad deben ser mayores a cero"}), 400
+
+        creado_en = actual['creado_en']
+        fecha_adq_str = (datos.get('fecha_adquisicion') or '').strip()
+        if fecha_adq_str:
+            try:
+                fecha_solo = datetime.date.fromisoformat(fecha_adq_str[:10])
+                if fecha_solo > hoy_argentina():
+                    return jsonify({"status": "error", "mensaje": "La fecha de adquisición no puede ser futura"}), 400
+                creado_en = datetime.datetime.combine(fecha_solo, datetime.time(12, 0), tzinfo=TZ_ARGENTINA)
+            except ValueError:
+                return jsonify({"status": "error", "mensaje": "Formato de fecha_adquisicion inválido (use YYYY-MM-DD)"}), 400
+
+        cur.execute(
+            """UPDATE productos.productos
+               SET nombre = %s, precio_compra = %s, cantidad = %s, creado_en = %s,
+                   modificado_por = %s, modificado_en = CURRENT_TIMESTAMP
+               WHERE id = %s AND emprendimiento_id = %s
+               RETURNING id, nombre, precio_compra, cantidad, activo, creado_en""",
+            (nombre, precio_compra, cantidad, creado_en, usuario, id, negocio_id)
+        )
+        editado = cur.fetchone()
+        conn.commit()
+
+        fecha_iso = formatear_utc_z(editado['creado_en'])
+        editado['costo_adquisicion'] = float(editado.pop('precio_compra'))
+        editado['cantidad'] = int(editado['cantidad'])
+        editado['activo'] = bool(editado['activo'])
+        editado['oculto'] = not editado['activo']
+        editado['fecha_adquisicion'] = fecha_iso
+        editado['creado_en'] = fecha_iso
+        editado['valor_total'] = round(editado['cantidad'] * editado['costo_adquisicion'], 2)
+
+        return jsonify({"status": "ok", "mensaje": "Bien de uso actualizado", "bien_uso": editado}), 200
+    finally:
+        cur.close()
+        conn.close()
+
+
 @app.route('/api/bienes-uso/<int:id>/ocultar', methods=['PATCH'])
 @app.route('/api/finanzas/bienes-uso/<int:id>/ocultar', methods=['PATCH'])
 def ocultar_bien_uso(id):
@@ -844,6 +1196,39 @@ def ocultar_bien_uso(id):
         cur.close()
         conn.close()
 
+
+# RESTAURAR BIEN DE USO OCULTO (PATCH /api/bienes-uso/<id>/restaurar)
+@app.route('/api/bienes-uso/<int:id>/restaurar', methods=['PATCH'])
+@app.route('/api/finanzas/bienes-uso/<int:id>/restaurar', methods=['PATCH'])
+def restaurar_bien_uso(id):
+    """
+    Revierte el ocultamiento lógico (activo = TRUE) de un bien de uso para que vuelva
+    a mostrarse en la tabla principal y deja asentada la auditoría de quién lo restauró.
+    """
+    payload, error_resp, status = verificar_token(roles_permitidos=['PROPIETARIO', 'ADMIN'])
+    if error_resp:
+        return error_resp, status
+
+    negocio_id = payload.get("negocio_id")
+    usuario = payload.get("usuario", "admin")
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """UPDATE productos.productos 
+               SET activo = TRUE, modificado_por = %s, modificado_en = CURRENT_TIMESTAMP
+               WHERE id = %s AND emprendimiento_id = %s AND tipo_producto = 'BIEN_DE_USO'""",
+            (usuario, id, negocio_id)
+        )
+        if cur.rowcount == 0:
+            return jsonify({"status": "error", "mensaje": "Bien de uso no encontrado"}), 404
+        conn.commit()
+        return jsonify({"status": "ok", "mensaje": "Bien de uso restaurado exitosamente"}), 200
+    finally:
+        cur.close()
+        conn.close()
+
+
 @app.route('/api/bienes-uso/<int:id>', methods=['DELETE'])
 @app.route('/api/finanzas/bienes-uso/<int:id>', methods=['DELETE'])
 def eliminar_bien_uso(id):
@@ -862,7 +1247,6 @@ def eliminar_bien_uso(id):
     # Implementa una política de borrado físico protegido con validación de integridad contable. 
     # Antes de emitir una orden de destrucción de datos, comprueba sistemáticamente que el registro no tenga historial operativo asociado.
     try:
-        # Implementa una política de borrado físico protegido con validación de integridad contable. Antes de emitir una orden de destrucción de datos, comprueba sistemáticamente que el registro no tenga historial operativo asociado.
         cur.execute("SELECT id FROM productos.productos WHERE id = %s AND emprendimiento_id = %s AND tipo_producto = 'BIEN_DE_USO'", (id, negocio_id))
         if not cur.fetchone():
             return jsonify({"status": "error", "mensaje": "Bien de uso no encontrado"}), 404
@@ -889,6 +1273,7 @@ def eliminar_bien_uso(id):
         cur.close()
         conn.close()
 
+
 # BIENES DE GASTO E INSUMOS OPERATIVOS (tipo_producto = 'BIEN_DE_GASTO')
 # LISTAR BIENES DE GASTO / INSUMOS (GET)
 @app.route('/api/bienes-gasto', methods=['GET'])
@@ -899,8 +1284,7 @@ def listar_bienes_gasto():
     Recupera el inventario de bienes de gasto (consumibles operativos) del comercio.
     - Aplica aislamiento multi-tenant por emprendimiento_id.
     - Filtra estrictamente por tipo_producto = 'BIEN_DE_GASTO'.
-    - Excluye registros desactivados (activo = TRUE).
-    - Computa en tiempo de ejecución el valor total del inventario consumible.
+    - Computa en tiempo de ejecución el valor total del inventario consumible activo.
     - Devuelve 'fecha', 'creado_en', 'activo' y 'oculto' para soportar el botón 'Ver ocultos' en Front.
     """
     # Verificación de credenciales JWT (Administrador o Propietario)
@@ -913,11 +1297,13 @@ def listar_bienes_gasto():
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
-        # Consulta relacional vinculando proveedor y categoría asignada
-        # CAMBIO: Se incluyo p.creado_en y quitamos 'AND p.activo = TRUE' para que la pantalla pueda filtrar ocultos
+        # Consulta relacional vinculando proveedor y categoría asignada.
+        # Incluye p.creado_en y devuelve tanto registros activos como ocultos (sin filtrar p.activo = TRUE en el WHERE)
+        # para que la interfaz pueda filtrarlos con el botón 'Ver ocultos'.
         cur.execute(
             """SELECT p.id, p.nombre, p.precio_compra, p.cantidad, p.stock_minimo,
-                      p.iva_alicuota, p.activo, p.creado_en, p.proveedor_id, pr.nombre AS proveedor_nombre,
+                      p.iva_alicuota, p.activo, p.creado_por, p.creado_en,
+                      p.proveedor_id, pr.nombre AS proveedor_nombre,
                       p.categoria_id, c.nombre AS categoria_nombre
                FROM productos.productos p
                LEFT JOIN productos.proveedores pr ON p.proveedor_id = pr.id
@@ -939,6 +1325,7 @@ def listar_bienes_gasto():
             costo = float(f['precio_compra'])
             subtotal = round(qty * costo, 2)
 
+            # Solo los insumos activos suman al valor de existencias vigentes en pantalla
             if esta_activo:
                 valor_stock_acumulado += subtotal
 
@@ -955,6 +1342,7 @@ def listar_bienes_gasto():
                 "oculto": not esta_activo,
                 "fecha": fecha_iso,
                 "creado_en": fecha_iso,
+                "creado_por": f['creado_por'],
                 "proveedor_id": f['proveedor_id'],
                 "proveedor_nombre": f['proveedor_nombre'],
                 "categoria_id": f['categoria_id'],
@@ -982,11 +1370,12 @@ def listar_bienes_gasto():
 @app.route('/api/finanzas/bienes-gasto', methods=['POST'])
 def crear_bien_gasto():
     """
-    Registra un nuevo artículo consumible en el catálogo unificado.
+    Registra un nuevo artículo consumible en el catálogo unificado (CU-19).
     Reglas de negocio:
     - tipo_producto fijado en 'BIEN_DE_GASTO'.
     - precio_venta = 0.00 y rentabilidad = 0.00 (no están destinados a la reventa).
     - unidad_medida fijada en 'unidades' según restricciones de integridad de la base.
+    - Exige nombre, proveedor, costo > 0, cantidad > 0 y fecha opcional no futura.
     """
     payload, error_resp, status = verificar_token(roles_permitidos=['PROPIETARIO', 'ADMIN'])
     if error_resp:
@@ -999,6 +1388,7 @@ def crear_bien_gasto():
     nombre = (datos.get('nombre') or '').strip()
     proveedor_id = datos.get('proveedor_id')
     categoria_id = datos.get('categoria_id')
+    fecha_str = (datos.get('fecha') or '').strip()
 
     # Validación de tipos de datos numéricos
     try:
@@ -1009,11 +1399,22 @@ def crear_bien_gasto():
     except (ValueError, TypeError):
         return jsonify({"status": "error", "mensaje": "Las cantidades y costos deben contener valores numéricos válidos"}), 400
 
-    # Validaciones obligatorias de campos
+    # Validaciones obligatorias de campos según CU-19 (costo > 0 y cantidad inicial > 0)
     if not nombre or not proveedor_id:
         return jsonify({"status": "error", "mensaje": "El nombre y el proveedor son obligatorios"}), 400
-    if precio_compra <= 0 or cantidad < 0 or stock_minimo < 0:
-        return jsonify({"status": "error", "mensaje": "El costo debe ser positivo y las cantidades no pueden ser negativas"}), 400
+    if precio_compra <= 0 or cantidad <= 0 or stock_minimo < 0:
+        return jsonify({"status": "error", "mensaje": "El costo y la cantidad inicial deben ser mayores a cero"}), 400
+
+    # Si el frontend envía una fecha específica (YYYY-MM-DD), validamos que no sea futura
+    fecha_registro_dt = None
+    if fecha_str:
+        try:
+            fecha_solo = datetime.date.fromisoformat(fecha_str[:10])
+            if fecha_solo > hoy_argentina():
+                return jsonify({"status": "error", "mensaje": "La fecha no puede ser futura"}), 400
+            fecha_registro_dt = datetime.datetime.combine(fecha_solo, datetime.time(12, 0), tzinfo=TZ_ARGENTINA)
+        except ValueError:
+            return jsonify({"status": "error", "mensaje": "Formato de fecha inválido (use YYYY-MM-DD)"}), 400
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -1023,19 +1424,23 @@ def crear_bien_gasto():
             """INSERT INTO productos.productos 
                (emprendimiento_id, proveedor_id, categoria_id, tipo_producto, nombre,
                 precio_compra, iva_alicuota, rentabilidad, precio_venta, cantidad, stock_minimo,
-                unidad_medida, activo, creado_por)
-               VALUES (%s, %s, %s, 'BIEN_DE_GASTO', %s, %s, %s, 0.00, 0.00, %s, %s, 'unidades', TRUE, %s)
-               RETURNING id, nombre, precio_compra, cantidad, stock_minimo, creado_en""",
-            (negocio_id, proveedor_id, categoria_id, nombre, precio_compra, iva_alicuota, cantidad, stock_minimo, creador)
+                unidad_medida, activo, creado_por, creado_en)
+               VALUES (%s, %s, %s, 'BIEN_DE_GASTO', %s, %s, %s, 0.00, 0.00, %s, %s, 'unidades', TRUE, %s, COALESCE(%s, CURRENT_TIMESTAMP))
+               RETURNING id, nombre, precio_compra, cantidad, stock_minimo, activo, creado_en""",
+            (negocio_id, proveedor_id, categoria_id, nombre, precio_compra, iva_alicuota, cantidad, stock_minimo, creador, fecha_registro_dt)
         )
         nuevo_item = cur.fetchone()
         conn.commit()
 
         # Formateo de respuesta
+        fecha_iso = formatear_utc_z(nuevo_item['creado_en'])
         nuevo_item['costo_unitario'] = float(nuevo_item.pop('precio_compra'))
         nuevo_item['cantidad'] = int(nuevo_item['cantidad'])
         nuevo_item['stock_minimo'] = int(nuevo_item['stock_minimo'])
-        nuevo_item['creado_en'] = formatear_utc_z(nuevo_item['creado_en'])
+        nuevo_item['activo'] = bool(nuevo_item['activo'])
+        nuevo_item['oculto'] = not nuevo_item['activo']
+        nuevo_item['fecha'] = fecha_iso
+        nuevo_item['creado_en'] = fecha_iso
 
         return jsonify({
             "status": "ok", 
@@ -1051,16 +1456,95 @@ def crear_bien_gasto():
         conn.close()
 
 
+# EDICIÓN DE BIEN DE GASTO / INSUMO (PUT /api/bienes-gasto/<id>)
+@app.route('/api/bienes-gasto/<int:id>', methods=['PUT'])
+@app.route('/api/insumos/<int:id>', methods=['PUT'])
+@app.route('/api/finanzas/bienes-gasto/<int:id>', methods=['PUT'])
+def actualizar_bien_gasto(id):
+    """
+    Edita los datos maestros de un insumo existente (nombre, proveedor, costo unitario,
+    stock mínimo, alícuota de IVA y fecha), registrando auditoría (modificado_por y modificado_en).
+    """
+    payload, error_resp, status = verificar_token(roles_permitidos=['PROPIETARIO', 'ADMIN'])
+    if error_resp:
+        return error_resp, status
+
+    negocio_id = payload.get("negocio_id")
+    usuario = payload.get("usuario", "admin")
+    datos = request.get_json(silent=True) or {}
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute(
+            "SELECT * FROM productos.productos WHERE id = %s AND emprendimiento_id = %s AND tipo_producto = 'BIEN_DE_GASTO'",
+            (id, negocio_id)
+        )
+        actual = cur.fetchone()
+        if not actual:
+            return jsonify({"status": "error", "mensaje": "Bien de gasto no encontrado"}), 404
+
+        nombre = (datos.get('nombre') if 'nombre' in datos else actual['nombre'] or '').strip()
+        proveedor_id = datos.get('proveedor_id') if 'proveedor_id' in datos else actual['proveedor_id']
+        try:
+            precio_raw = (datos.get('precio_compra') or datos.get('costo')) if ('precio_compra' in datos or 'costo' in datos) else actual['precio_compra']
+            precio_compra = float(precio_raw or 0)
+            stock_min = int(datos.get('stock_minimo') if 'stock_minimo' in datos else actual['stock_minimo'])
+            iva_alic = float(datos.get('iva_alicuota') if 'iva_alicuota' in datos else actual['iva_alicuota'])
+        except (ValueError, TypeError):
+            return jsonify({"status": "error", "mensaje": "Valores numéricos inválidos"}), 400
+
+        if not nombre or precio_compra <= 0 or stock_min < 0:
+            return jsonify({"status": "error", "mensaje": "Nombre obligatorio, costo mayor a cero y stock mínimo no negativo"}), 400
+
+        creado_en = actual['creado_en']
+        fecha_str = (datos.get('fecha') or '').strip()
+        if fecha_str:
+            try:
+                fecha_solo = datetime.date.fromisoformat(fecha_str[:10])
+                if fecha_solo > hoy_argentina():
+                    return jsonify({"status": "error", "mensaje": "La fecha no puede ser futura"}), 400
+                creado_en = datetime.datetime.combine(fecha_solo, datetime.time(12, 0), tzinfo=TZ_ARGENTINA)
+            except ValueError:
+                return jsonify({"status": "error", "mensaje": "Formato de fecha inválido (use YYYY-MM-DD)"}), 400
+
+        cur.execute(
+            """UPDATE productos.productos
+               SET nombre = %s, proveedor_id = %s, precio_compra = %s, stock_minimo = %s,
+                   iva_alicuota = %s, creado_en = %s, modificado_por = %s, modificado_en = CURRENT_TIMESTAMP
+               WHERE id = %s AND emprendimiento_id = %s
+               RETURNING id, nombre, precio_compra, cantidad, stock_minimo, activo, creado_en""",
+            (nombre, proveedor_id, precio_compra, stock_min, iva_alic, creado_en, usuario, id, negocio_id)
+        )
+        editado = cur.fetchone()
+        conn.commit()
+
+        fecha_iso = formatear_utc_z(editado['creado_en'])
+        editado['costo_unitario'] = float(editado.pop('precio_compra'))
+        editado['cantidad'] = int(editado['cantidad'])
+        editado['stock_minimo'] = int(editado['stock_minimo'])
+        editado['activo'] = bool(editado['activo'])
+        editado['oculto'] = not editado['activo']
+        editado['fecha'] = fecha_iso
+        editado['creado_en'] = fecha_iso
+
+        return jsonify({"status": "ok", "mensaje": "Bien de gasto actualizado", "bien_gasto": editado}), 200
+    finally:
+        cur.close()
+        conn.close()
+
+
 # REPOSICIÓN DE STOCK DE BIEN DE GASTO (POST)
 @app.route('/api/bienes-gasto/<int:id>/reposicion', methods=['POST'])
 @app.route('/api/insumos/<int:id>/reposicion', methods=['POST'])
 def reponer_bien_gasto(id):
     """
-    Abastecimiento de existencias para bienes consumibles:
+    Abastecimiento de existencias para bienes consumibles (CU-20):
     1. Resuelve la condición tributaria negocio-proveedor (discriminación de IVA).
-    2. Inserta la compra en productos.reposiciones.
-    3. Suma el stock e impacta el nuevo costo en productos.productos.
-    4. Asienta la entrada en el Kardex (productos.movimientos_stock) con tipo 'REPOSICION'.
+    2. Valida que la fecha de adquisición (opcional, por defecto hoy) no sea futura.
+    3. Inserta la compra en productos.reposiciones.
+    4. Suma el stock e impacta el nuevo costo en productos.productos.
+    5. Asienta la entrada en el Kardex (productos.movimientos_stock) con tipo 'REPOSICION'.
     Nota contable: La reposición NO computa como pérdida operativa hasta que no se consuma.
     """
     payload, error_resp, status = verificar_token(roles_permitidos=['PROPIETARIO', 'ADMIN'])
@@ -1071,6 +1555,7 @@ def reponer_bien_gasto(id):
     usuario = payload.get("usuario", "admin")
     datos = request.get_json(silent=True) or {}
     proveedor_id = datos.get('proveedor_id')
+    fecha_str = (datos.get('fecha') or datos.get('fecha_adquisicion') or '').strip()
 
     try:
         cantidad = int(datos.get('cantidad', 0))
@@ -1080,6 +1565,16 @@ def reponer_bien_gasto(id):
 
     if cantidad <= 0 or monto_total <= 0 or not proveedor_id:
         return jsonify({"status": "error", "mensaje": "Cantidad (>0), monto total (>0) y proveedor_id son obligatorios"}), 400
+
+    # Si envían fecha de compra, validamos que no sea futura; si no, usamos la fecha de hoy en Argentina
+    fecha_repo = hoy_argentina()
+    if fecha_str:
+        try:
+            fecha_repo = datetime.date.fromisoformat(fecha_str[:10])
+            if fecha_repo > hoy_argentina():
+                return jsonify({"status": "error", "mensaje": "La fecha de reposición no puede ser futura"}), 400
+        except ValueError:
+            return jsonify({"status": "error", "mensaje": "Formato de fecha inválido (use YYYY-MM-DD)"}), 400
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -1112,13 +1607,13 @@ def reponer_bien_gasto(id):
         costo_unitario_real = round(costo_neto_total / cantidad, 4)
         nuevo_stock = int(item['cantidad']) + cantidad
 
-        # Registro en tabla de compras
+        # Registro en tabla de compras con la fecha de adquisición validada
         cur.execute(
             """INSERT INTO productos.reposiciones 
                (emprendimiento_id, producto_id, proveedor_id, cantidad, monto_total, costo_unitario_real, fecha_adquisicion, estado, creado_por)
-               VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, 'ACTIVA', %s)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, 'ACTIVA', %s)
                RETURNING id""",
-            (negocio_id, id, proveedor_id, cantidad, monto_total, costo_unitario_real, usuario)
+            (negocio_id, id, proveedor_id, cantidad, monto_total, costo_unitario_real, fecha_repo, usuario)
         )
         repo_id = cur.fetchone()['id']
 
@@ -1160,9 +1655,10 @@ def reponer_bien_gasto(id):
 @app.route('/api/insumos/<int:id>/consumo', methods=['POST'])
 def registrar_consumo_bien_gasto(id):
     """
-    Registra el consumo interno de un bien de gasto:
+    Registra el consumo interno de un bien de gasto (CU-21):
     - Descuenta las existencias físicas en productos.productos.
     - Bloquea la transacción si la cantidad a consumir supera el stock disponible.
+    - Valida que la fecha de consumo (opcional, por defecto hoy) no sea futura.
     - Asienta un movimiento tipo 'CONSUMO' en Kardex con cantidad negativa.
     - Este consumo devengado sí afecta la Ganancia Neta Operativa del negocio.
     """
@@ -1174,6 +1670,7 @@ def registrar_consumo_bien_gasto(id):
     usuario = payload.get("usuario", "admin")
     datos = request.get_json(silent=True) or {}
     motivo = (datos.get('motivo') or 'Consumo operativo interno').strip()
+    fecha_str = (datos.get('fecha') or '').strip()
 
     try:
         cantidad_consumo = int(datos.get('cantidad', 0))
@@ -1182,6 +1679,17 @@ def registrar_consumo_bien_gasto(id):
 
     if cantidad_consumo <= 0:
         return jsonify({"status": "error", "mensaje": "La cantidad a consumir debe ser mayor a cero"}), 400
+
+    # Si envían fecha de consumo (YYYY-MM-DD), validamos que no sea futura
+    fecha_consumo_dt = None
+    if fecha_str:
+        try:
+            fecha_solo = datetime.date.fromisoformat(fecha_str[:10])
+            if fecha_solo > hoy_argentina():
+                return jsonify({"status": "error", "mensaje": "La fecha de consumo no puede ser futura"}), 400
+            fecha_consumo_dt = datetime.datetime.combine(fecha_solo, datetime.time(12, 0), tzinfo=TZ_ARGENTINA)
+        except ValueError:
+            return jsonify({"status": "error", "mensaje": "Formato de fecha inválido (use YYYY-MM-DD)"}), 400
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -1212,12 +1720,12 @@ def registrar_consumo_bien_gasto(id):
             (nuevo_stock, usuario, id)
         )
 
-        # Salida por consumo en Kardex
+        # Salida por consumo en Kardex (con fecha personalizada si vino en el body, o timestamp actual)
         cur.execute(
             """INSERT INTO productos.movimientos_stock 
-               (emprendimiento_id, producto_id, tipo, cantidad_movimiento, stock_resultante, motivo, usuario)
-               VALUES (%s, %s, 'CONSUMO', %s, %s, %s, %s)""",
-            (negocio_id, id, -cantidad_consumo, nuevo_stock, motivo, usuario)
+               (emprendimiento_id, producto_id, tipo, cantidad_movimiento, stock_resultante, motivo, usuario, fecha)
+               VALUES (%s, %s, 'CONSUMO', %s, %s, %s, %s, COALESCE(%s, CURRENT_TIMESTAMP))""",
+            (negocio_id, id, -cantidad_consumo, nuevo_stock, motivo, usuario, fecha_consumo_dt)
         )
 
         conn.commit()
@@ -1285,7 +1793,8 @@ def resumen_consumos_periodo():
         costo_total_acumulado = sum(float(m['costo_total']) for m in movimientos)
 
         for m in movimientos:
-            m['fecha'] = m['fecha'].isoformat()
+            # Serializamos en formato ISO 8601 UTC terminado en 'Z' para conversión exacta en el navegador
+            m['fecha'] = formatear_utc_z(m['fecha'])
             m['cantidad'] = int(m['cantidad'])
             m['costo_unitario'] = float(m['costo_unitario'])
             m['costo_total'] = float(m['costo_total'])
@@ -1329,6 +1838,39 @@ def ocultar_bien_gasto(id):
             return jsonify({"status": "error", "mensaje": "Bien de gasto no encontrado"}), 404
         conn.commit()
         return jsonify({"status": "ok", "mensaje": "Bien de gasto ocultado correctamente"}), 200
+    finally:
+        cur.close()
+        conn.close()
+
+
+# RESTAURAR BIEN DE GASTO OCULTO (PATCH /api/bienes-gasto/<id>/restaurar)
+@app.route('/api/bienes-gasto/<int:id>/restaurar', methods=['PATCH'])
+@app.route('/api/insumos/<int:id>/restaurar', methods=['PATCH'])
+def restaurar_bien_gasto(id):
+    """
+    Revierte el ocultamiento lógico (activo = TRUE) de un insumo para devolverlo
+    al listado principal de existencias activas y asienta la auditoría de modificación.
+    """
+    payload, error_resp, status = verificar_token(roles_permitidos=['PROPIETARIO', 'ADMIN'])
+    if error_resp:
+        return error_resp, status
+
+    negocio_id = payload.get("negocio_id")
+    usuario = payload.get("usuario", "admin")
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(
+            """UPDATE productos.productos 
+               SET activo = TRUE, modificado_por = %s, modificado_en = CURRENT_TIMESTAMP
+               WHERE id = %s AND emprendimiento_id = %s AND tipo_producto = 'BIEN_DE_GASTO'""",
+            (usuario, id, negocio_id)
+        )
+        if cur.rowcount == 0:
+            return jsonify({"status": "error", "mensaje": "Bien de gasto no encontrado"}), 404
+        conn.commit()
+        return jsonify({"status": "ok", "mensaje": "Bien de gasto restaurado correctamente"}), 200
     finally:
         cur.close()
         conn.close()
