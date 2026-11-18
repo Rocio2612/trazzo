@@ -33,6 +33,8 @@ ORIGENES_PERMITIDOS = [
     "http://localhost:5500",
     # 5. Computadora principal (servidor central) en la red Wi-Fi local
     "http://192.168.1.43:5000" 
+    "http://127.0.0.1:5501",
+    "http://localhost:5501"
 ]
 
 CORS(
@@ -71,18 +73,22 @@ def formatear_utc_z(dt):
 def get_db_connection():
     """
     Abre una conexión TCP física contra PostgreSQL.
-    Configura search_path a nivel de protocolo (options) para que todas las consultas
-    encuentren el esquema 'auth' sin fallar.
+    Captura errores de codificación de Windows (latin-1) para mostrar el motivo real en consola.
     """
-    conn = psycopg2.connect(
-        host=os.getenv("DB_HOST"), 
-        database=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER", "postgres"),
-        password=os.getenv("DB_PASSWORD"),
-        port=os.getenv("DB_PORT", "5432"),
-        options="-c search_path=auth,public"
-    )
-    return conn
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST", "127.0.0.1"),
+            database=os.getenv("DB_NAME", "trazzo"),
+            user=os.getenv("DB_USER", "postgres"),
+            password=os.getenv("DB_PASSWORD"),
+            port=os.getenv("DB_PORT", "5432"),
+            options="-c search_path=auth,public"
+        )
+        return conn
+    except UnicodeDecodeError as e:
+        mensaje_windows = e.object.decode("latin-1", errors="replace")
+        print(f"[ERROR POSTGRESQL]: {mensaje_windows}")
+        raise RuntimeError(f"Error de conexión a PostgreSQL: {mensaje_windows}")
 
 def token_esta_bloqueado(jti):
     """

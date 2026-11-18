@@ -24,7 +24,7 @@ SERVICES = {
     "auth": os.getenv("AUTH_URL", "http://127.0.0.1:5001"),
     "productos": os.getenv("PRODUCTOS_URL", "http://127.0.0.1:5002"),
     "reposiciones": os.getenv("PRODUCTOS_URL", "http://127.0.0.1:5002"),
-    "categorias": os.getenv("PRODUCTOS_URL", "http://127.0.0.1:5002"),
+    "categorias": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
     "proveedores": os.getenv("PRODUCTOS_URL", "http://127.0.0.1:5002"),
     "transacciones": os.getenv("TRANSACCIONES_URL", "http://127.0.0.1:5003"),
     "finanzas": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
