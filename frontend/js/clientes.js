@@ -1,5 +1,4 @@
 // Trazzo - Módulo 7: Clientes
-import { fetchAPI } from "./api.js";
 import { formatearMoneda } from "./utils/productosUtils.js"; // Reutilizamos formateador del Sprint 2
 import { rolDesdeToken, esRolAdmin } from "./utils/productosUtils.js"; // O roles.js si lo tienen ahí
 
@@ -392,7 +391,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   cargarClientes();
 
-  $("btn-nuevo-cliente").addEventListener("click", abrirModalNuevo);
+  $("btn-nuevo-cliente").addEventListener("click", () =>
+    window.abrirModalNuevo(),
+  );
 
   $("buscador").addEventListener("input", (e) => {
     const texto = e.target.value.toLowerCase();
