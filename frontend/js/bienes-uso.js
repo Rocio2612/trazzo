@@ -28,6 +28,17 @@ let resumenData = { patrimonio_total: 0 };
 let verOcultos = false;
 let refrescarUI = null;
 
+// NUEVA FUNCIÓN: Trae los proveedores reales del backend
+const obtenerProveedores = async () => {
+    try {
+        const res = await fetchAPI("/api/proveedores");
+        return res.items || []; // Lee la propiedad "items" que devuelve tu backend
+    } catch (error) {
+        console.error("Error al cargar proveedores:", error);
+        return [];
+    }
+};
+
 const abrirModal = ({ titulo, cuerpo, onGuardar }) => {
     const fondo = h("div", { class: "gastos-modal-fondo" });
     const btnGuardar = h("button", { class: "btn btn-primario", text: "Guardar" });
@@ -73,7 +84,6 @@ const iniciarPantalla = () => {
         const filas = filtrados.map(bien => {
             const valorTotal = bien.cantidad * bien.precio_compra;
             
-            // CONECTAMOS LOS BOTONES AL BACKEND
             const acciones = bien.oculto 
                 ? h("div", { class: "gastos-acciones-fila" }, 
                     h("button", { class: "btn btn-outline gastos-btn-chico gastos-btn-icono gastos-btn-icono-texto", onclick: async () => {
@@ -156,12 +166,22 @@ const cargarDatos = async () => {
     }
 };
 
-const crear = () => {
+const crear = async () => {
+    const proveedores = await obtenerProveedores(); // Trae los proveedores reales
+
     const form = h("div", {},
         h("div", { class: "gastos-campo" }, h("label", { text: "Nombre *" }), h("input", { id: "m-nombre", class: "gastos-entrada" })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Valor de Adquisición (Unitario) *" }), h("input", { id: "m-valor", type: "number", class: "gastos-entrada" })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Fecha de Adquisición *" }), h("input", { id: "m-fecha", type: "text", class: "gastos-entrada", placeholder: "dd-mm-aaaa" })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Cantidad Total *" }), h("input", { id: "m-cant", type: "number", step: "1", class: "gastos-entrada", value: "1" }))
+        h("div", { class: "gastos-campo" }, h("label", { text: "Cantidad Total *" }), h("input", { id: "m-cant", type: "number", step: "1", class: "gastos-entrada", value: "1" })),
+        
+        // NUEVO SELECT DE PROVEEDOR OBLIGATORIO
+        h("div", { class: "gastos-campo" }, h("label", { text: "Proveedor *" }), 
+            h("select", { id: "m-prov", class: "gastos-entrada" }, 
+                h("option", { value: "", text: "Seleccione un proveedor" }),
+                ...proveedores.map(p => h("option", { value: p.id, text: p.nombre }))
+            )
+        )
     );
     
     abrirModal({
@@ -171,29 +191,44 @@ const crear = () => {
             const valor = parseFloat(document.getElementById("m-valor").value);
             const cant = parseInt(document.getElementById("m-cant").value);
             const fecha = document.getElementById("m-fecha").value;
+            const provId = document.getElementById("m-prov").value;
 
             if (!nombre) throw new Error("El nombre es obligatorio.");
             if (isNaN(valor) || valor < 0) throw new Error("Ingrese un valor de adquisición válido.");
             if (isNaN(cant) || cant <= 0) throw new Error("La cantidad debe ser mayor a 0.");
+            if (!provId) throw new Error("Debe seleccionar un proveedor.");
             
             const fechaFormateada = fechaParaEnviar(fecha);
             if (!fecha || !fechaFormateada) throw new Error("La fecha es obligatoria y debe tener el formato dd-mm-aaaa.");
 
             await servicioEquipamiento.crear({
                 nombre: nombre, precio_compra: valor, cantidad: cant, stock_minimo: 0, 
-                proveedor_id: 1, fecha_adquisicion: fechaFormateada, iva_alicuota: 21.00
+                proveedor_id: parseInt(provId), // ENVÍA EL ID REAL
+                fecha_adquisicion: fechaFormateada, iva_alicuota: 21.00
             });
             await cargarDatos();
         }
     });
 };
 
-// NUEVO MODAL DE EDITAR
-const editar = (bien) => {
+const editar = async (bien) => {
+    const proveedores = await obtenerProveedores(); 
+
     const form = h("div", {},
         h("div", { class: "gastos-campo" }, h("label", { text: "Nombre *" }), h("input", { id: "e-nombre", class: "gastos-entrada", value: bien.nombre })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Valor de Adquisición (Unitario) *" }), h("input", { id: "e-valor", type: "number", class: "gastos-entrada", value: bien.precio_compra })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Fecha de Adquisición *" }), h("input", { id: "e-fecha", type: "text", class: "gastos-entrada", placeholder: "dd-mm-aaaa", value: fechaDeMarcaParaMostrar(bien.fecha) }))
+        h("div", { class: "gastos-campo" }, h("label", { text: "Fecha de Adquisición *" }), h("input", { id: "e-fecha", type: "text", class: "gastos-entrada", placeholder: "dd-mm-aaaa", value: fechaDeMarcaParaMostrar(bien.fecha) })),
+        
+        // NUEVO CAMPO CANTIDAD EN EDITAR (Pedido por QA)
+        h("div", { class: "gastos-campo" }, h("label", { text: "Cantidad Total *" }), h("input", { id: "e-cant", type: "number", step: "1", class: "gastos-entrada", value: bien.cantidad })),
+        
+        // SELECT DE PROVEEDOR EN EDITAR
+        h("div", { class: "gastos-campo" }, h("label", { text: "Proveedor *" }), 
+            h("select", { id: "e-prov", class: "gastos-entrada" }, 
+                h("option", { value: "", text: "Seleccione un proveedor" }),
+                ...proveedores.map(p => h("option", { value: p.id, text: p.nombre }))
+            )
+        )
     );
     
     abrirModal({
@@ -201,16 +236,24 @@ const editar = (bien) => {
         onGuardar: async () => {
             const nombre = document.getElementById("e-nombre").value.trim();
             const valor = parseFloat(document.getElementById("e-valor").value);
+            const cant = parseInt(document.getElementById("e-cant").value);
             const fecha = document.getElementById("e-fecha").value;
+            const provId = document.getElementById("e-prov").value;
 
             if (!nombre) throw new Error("El nombre es obligatorio.");
             if (isNaN(valor) || valor < 0) throw new Error("Ingrese un valor de adquisición válido.");
+            if (isNaN(cant) || cant <= 0) throw new Error("La cantidad debe ser mayor a 0.");
+            if (!provId) throw new Error("Debe seleccionar un proveedor.");
             
             const fechaFormateada = fechaParaEnviar(fecha);
             if (!fecha || !fechaFormateada) throw new Error("La fecha es obligatoria y debe tener el formato dd-mm-aaaa.");
 
             await servicioEquipamiento.editar(bien.id, {
-                nombre: nombre, precio_compra: valor, fecha_adquisicion: fechaFormateada
+                nombre: nombre, 
+                precio_compra: valor, 
+                cantidad: cant, // ENVÍA LA CANTIDAD
+                proveedor_id: parseInt(provId),
+                fecha_adquisicion: fechaFormateada
             });
             await cargarDatos();
         }

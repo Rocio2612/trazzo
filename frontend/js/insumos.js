@@ -28,6 +28,17 @@ let resumenData = { valor_inventario_total: 0 };
 let verOcultos = false;
 let refrescarUI = null; 
 
+// NUEVA FUNCIÓN: Trae los proveedores reales
+const obtenerProveedores = async () => {
+    try {
+        const res = await fetchAPI("/api/proveedores");
+        return res.items || []; // Lee "items"
+    } catch (error) {
+        console.error("Error al cargar proveedores:", error);
+        return [];
+    }
+};
+
 const abrirModal = ({ titulo, cuerpo, onGuardar }) => {
     const fondo = h("div", { class: "gastos-modal-fondo" });
     const btnGuardar = h("button", { class: "btn btn-primario", text: "Guardar" });
@@ -70,7 +81,6 @@ const iniciarPantalla = () => {
         const filtrados = insumos.filter(i => i.nombre.toLowerCase().includes(texto) && (verOcultos ? i.oculto : !i.oculto));
 
         const filas = filtrados.map(insumo => {
-            // CONECTAMOS LOS BOTONES AL BACKEND
             const acciones = insumo.oculto 
                 ? h("div", { class: "gastos-acciones-fila" }, 
                     h("button", { class: "btn btn-outline gastos-btn-chico gastos-btn-icono gastos-btn-icono-texto", onclick: async () => {
@@ -80,7 +90,7 @@ const iniciarPantalla = () => {
                     h("button", { class: "btn btn-outline gastos-btn-chico gastos-btn-icono gastos-btn-eliminar", title: "Eliminar", onclick: async () => { 
                         if (confirm("¿Eliminar definitivamente este insumo?")) { 
                             try { await servicioInsumos.eliminar(insumo.id); await cargarDatos(); }
-                            catch (e) { alert(e.message || "Error al eliminar"); }
+                            catch (e) { alert(e.message || "Error al eliminar: puede que tenga reposiciones o consumos asociados."); }
                         } 
                     }}, crearSvg(ICONO_ELIMINAR))
                   )
@@ -159,14 +169,23 @@ const cargarDatos = async () => {
     }
 };
 
-const crear = () => {
+const crear = async () => {
+    const proveedores = await obtenerProveedores(); 
+
     const form = h("div", {},
         h("div", { class: "gastos-campo" }, h("label", { text: "Nombre *" }), h("input", { id: "m-nombre", class: "gastos-entrada" })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Costo unitario *" }), h("input", { id: "m-costo", type: "number", class: "gastos-entrada" })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Cantidad *" }), h("input", { id: "m-cant", type: "number", step: "1", class: "gastos-entrada" })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Fecha *" }), h("input", { id: "m-fecha", type: "text", class: "gastos-entrada", placeholder: "dd-mm-aaaa" })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Proveedor registrado (opcional)" }), h("select", { id: "m-prov-select", class: "gastos-entrada" }, h("option", { value: "", text: "Sin proveedor" }), h("option", { value: "1", text: "Distribuidora Norte" }))),
-        h("div", { class: "gastos-campo" }, h("label", { text: "O escribir un proveedor" }), h("input", { id: "m-prov-input", class: "gastos-entrada", placeholder: "Nombre o razón social" })),
+        
+        // NUEVO SELECT OBLIGATORIO
+        h("div", { class: "gastos-campo" }, h("label", { text: "Proveedor *" }), 
+            h("select", { id: "m-prov", class: "gastos-entrada" }, 
+                h("option", { value: "", text: "Seleccione un proveedor" }),
+                ...proveedores.map(p => h("option", { value: p.id, text: p.nombre }))
+            )
+        ),
+        
         h("div", { class: "gastos-campo" }, h("label", { text: "Costo total" }), h("input", { id: "m-total", class: "gastos-entrada", readonly: true, style: "background:#f8f9fa;", placeholder: "Se calcula automáticamente" }), h("p", { class: "gastos-ayuda", text: "Costo unitario × cantidad. Lo calcula el sistema." }))
     );
     
@@ -177,17 +196,20 @@ const crear = () => {
             const costo = parseFloat(document.getElementById("m-costo").value);
             const cant = parseInt(document.getElementById("m-cant").value);
             const fecha = document.getElementById("m-fecha").value;
+            const provId = document.getElementById("m-prov").value;
 
             if (!nombre) throw new Error("El nombre es obligatorio.");
             if (isNaN(costo) || costo < 0) throw new Error("Ingrese un costo unitario válido.");
             if (isNaN(cant) || cant <= 0) throw new Error("La cantidad debe ser mayor a 0.");
+            if (!provId) throw new Error("Debe seleccionar un proveedor.");
             
             const fechaFormateada = fechaParaEnviar(fecha);
             if (!fecha || !fechaFormateada) throw new Error("La fecha es obligatoria y debe tener el formato dd-mm-aaaa.");
 
             await servicioInsumos.crear({
                 nombre: nombre, precio_compra: costo, cantidad: cant, stock_minimo: 0, 
-                proveedor_id: 1, iva_alicuota: 21.00, fecha: fechaFormateada 
+                proveedor_id: parseInt(provId), // ENVÍA EL ID REAL
+                iva_alicuota: 21.00, fecha: fechaFormateada 
             });
             await cargarDatos();
         }
@@ -202,41 +224,24 @@ const crear = () => {
     }, 50);
 };
 
-// NUEVO MODAL DE EDITAR
-const editar = (insumo) => {
-    const form = h("div", {},
-        h("div", { class: "gastos-campo" }, h("label", { text: "Nombre *" }), h("input", { id: "e-nombre", class: "gastos-entrada", value: insumo.nombre })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Costo unitario *" }), h("input", { id: "e-costo", type: "number", class: "gastos-entrada", value: insumo.precio_compra })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Fecha *" }), h("input", { id: "e-fecha", type: "text", class: "gastos-entrada", placeholder: "dd-mm-aaaa", value: fechaDeMarcaParaMostrar(insumo.fecha) }))
-    );
+const editar = (insumo) => alert("La API de edición para insumos aún no está documentada.");
+
+const reponer = async (insumo) => {
+    const proveedores = await obtenerProveedores();
     
-    abrirModal({
-        titulo: "Editar insumo", cuerpo: form,
-        onGuardar: async () => {
-            const nombre = document.getElementById("e-nombre").value.trim();
-            const costo = parseFloat(document.getElementById("e-costo").value);
-            const fecha = document.getElementById("e-fecha").value;
-
-            if (!nombre) throw new Error("El nombre es obligatorio.");
-            if (isNaN(costo) || costo < 0) throw new Error("Ingrese un costo unitario válido.");
-            
-            const fechaFormateada = fechaParaEnviar(fecha);
-            if (!fecha || !fechaFormateada) throw new Error("La fecha es obligatoria y debe tener el formato dd-mm-aaaa.");
-
-            await servicioInsumos.editar(insumo.id, {
-                nombre: nombre, precio_compra: costo, fecha: fechaFormateada
-            });
-            await cargarDatos();
-        }
-    });
-};
-
-const reponer = (insumo) => {
     const form = h("div", {},
         h("p", { text: `Reponiendo stock de: ${insumo.nombre}`, style: "margin-bottom:1rem; font-weight:bold;" }),
         h("div", { class: "gastos-campo" }, h("label", { text: "Cantidad a reponer *" }), h("input", { id: "m-cant", type: "number", step: "1", class: "gastos-entrada" })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Monto total invertido *" }), h("input", { id: "m-monto", type: "number", class: "gastos-entrada" })),
-        h("div", { class: "gastos-campo" }, h("label", { text: "Fecha *" }), h("input", { id: "m-fecha", type: "text", class: "gastos-entrada", placeholder: "dd-mm-aaaa" }))
+        h("div", { class: "gastos-campo" }, h("label", { text: "Monto total invertido *" }), h("input", { id: "m-monto", type: "number", class: "gastos-entrada", placeholder: "Se calcula automáticamente" })),
+        h("div", { class: "gastos-campo" }, h("label", { text: "Fecha *" }), h("input", { id: "m-fecha", type: "text", class: "gastos-entrada", placeholder: "dd-mm-aaaa" })),
+        
+        // SELECT DE PROVEEDOR EN REPONER
+        h("div", { class: "gastos-campo" }, h("label", { text: "Proveedor *" }), 
+            h("select", { id: "m-prov", class: "gastos-entrada" }, 
+                h("option", { value: "", text: "Seleccione un proveedor" }),
+                ...proveedores.map(p => h("option", { value: p.id, text: p.nombre }))
+            )
+        )
     );
     abrirModal({
         titulo: "Reponer stock", cuerpo: form,
@@ -244,19 +249,31 @@ const reponer = (insumo) => {
             const cant = parseInt(document.getElementById("m-cant").value);
             const monto = parseFloat(document.getElementById("m-monto").value);
             const fecha = document.getElementById("m-fecha").value;
+            const provId = document.getElementById("m-prov").value;
 
             if (isNaN(cant) || cant <= 0) throw new Error("La cantidad debe ser mayor a 0.");
             if (isNaN(monto) || monto <= 0) throw new Error("El monto debe ser mayor a 0.");
+            if (!provId) throw new Error("Debe seleccionar un proveedor.");
             
             const fechaFormateada = fechaParaEnviar(fecha);
             if (!fecha || !fechaFormateada) throw new Error("La fecha es obligatoria y debe tener el formato dd-mm-aaaa.");
 
             await servicioInsumos.reponer(insumo.id, { 
-                proveedor_id: 1, cantidad: cant, monto_total: monto, fecha: fechaFormateada 
+                proveedor_id: parseInt(provId), cantidad: cant, monto_total: monto, fecha: fechaFormateada 
             });
             await cargarDatos();
         }
     });
+
+    setTimeout(() => {
+        const iCant = document.getElementById("m-cant");
+        const iMonto = document.getElementById("m-monto");
+        const calcularMonto = () => {
+            const cant = parseInt(iCant.value) || 0;
+            iMonto.value = cant > 0 ? (cant * insumo.precio_compra).toFixed(2) : '';
+        };
+        iCant.addEventListener("input", calcularMonto);
+    }, 50);
 };
 
 const consumir = (insumo) => {
