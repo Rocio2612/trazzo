@@ -4,6 +4,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 from flask_cors import CORS
+import requests
 
 load_dotenv()
 app = Flask(__name__)
@@ -22,43 +23,7 @@ def calcular_costo_real(monto, iva, cat_negocio, cat_proveedor):
     return round(monto / (1 + (iva / 100)), 4)
 
 # --- FUNCIÓN DE ALERTAS ---
-def evaluar_alerta_stock(producto_id, nombre_producto, stock_actual, stock_minimo, emprendimiento_id):
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    try:
-        cur.execute("""
-            SELECT id FROM notificaciones.alertas_stock 
-            WHERE producto_id = %s AND estado = 'ACTIVA' AND emprendimiento_id = %s
-        """, (producto_id, emprendimiento_id))
-        alerta = cur.fetchone()
 
-        if float(stock_actual) <= float(stock_minimo):
-            mensaje = f"Quedan {stock_actual} unidades de {nombre_producto}"
-            if alerta:
-                cur.execute("""
-                    UPDATE notificaciones.alertas_stock 
-                    SET stock_actual = %s, mensaje = %s, actualizado_en = CURRENT_TIMESTAMP 
-                    WHERE id = %s
-                """, (stock_actual, mensaje, alerta['id']))
-            else:
-                cur.execute("""
-                    INSERT INTO notificaciones.alertas_stock 
-                    (emprendimiento_id, producto_id, producto_nombre, stock_actual, stock_minimo, mensaje, estado)
-                    VALUES (%s, %s, %s, %s, %s, %s, 'ACTIVA')
-                """, (emprendimiento_id, producto_id, nombre_producto, stock_actual, stock_minimo, mensaje))
-        else:
-            if alerta:
-                cur.execute("""
-                    UPDATE notificaciones.alertas_stock 
-                    SET estado = 'RESUELTA', actualizado_en = CURRENT_TIMESTAMP 
-                    WHERE id = %s
-                """, (alerta['id'],))
-        conn.commit()
-    except Exception as e:
-        print(f"Error en alerta: {e}")
-    finally:
-        cur.close()
-        conn.close()
 
 # --- CRUD PRODUCTOS ---
 @app.route('/api/productos', methods=['POST'])
@@ -106,6 +71,19 @@ def listar_productos():
         cur.close()
         conn.close()
 
+def avisar_a_notificaciones(producto_id, nombre, stock, minimo, emp_id):
+    url = "http://127.0.0.1:5006/internal/alertas/evaluar"
+    payload = {
+        "producto_id": producto_id, "nombre_producto": nombre,
+        "stock_actual": stock, "stock_minimo": minimo, "emprendimiento_id": emp_id
+    }
+    try:
+        # Hacemos la petición al otro servidor
+        requests.post(url, json=payload, timeout=2)
+    except Exception as e:
+        # Si el servicio está apagado, no rompemos la venta/baja
+        print(f"No se pudo avisar a notificaciones: {e}")
+
 # --- REPOSICIÓN ---
 @app.route('/api/productos/<int:id>/reposicion', methods=['POST'])
 def reponer_stock(id):
@@ -135,7 +113,7 @@ def reponer_stock(id):
         cur.execute("UPDATE productos.productos SET cantidad = %s, precio_compra = %s, modificado_por = %s WHERE id = %s", (nuevo_stock, costo_real / float(datos['cantidad']), usuario, id))
         cur.execute("INSERT INTO productos.movimientos_stock (emprendimiento_id, producto_id, reposicion_id, tipo, cantidad_movimiento, stock_resultante, usuario) VALUES (%s, %s, %s, 'REPOSICION', %s, %s, %s)", (emprendimiento_id, id, reposicion_id, datos['cantidad'], nuevo_stock, usuario))
         
-        evaluar_alerta_stock(id, producto['nombre'], nuevo_stock, producto['stock_minimo'], emprendimiento_id)
+        avisar_a_notificaciones(id, producto['nombre'], nuevo_stock, producto['stock_minimo'], emprendimiento_id)        
         
         conn.commit()
         return jsonify({"status": "ok", "mensaje": "Reposición registrada", "costo_real": costo_real, "nuevo_stock": nuevo_stock}), 201
@@ -175,8 +153,8 @@ def registrar_baja(id):
             VALUES (%s, %s, 'BAJA', %s, %s, %s, %s)
         """, (emprendimiento_id, id, -cantidad_baja, nuevo_stock, datos['motivo'], usuario))
 
-        evaluar_alerta_stock(id, producto['nombre'], nuevo_stock, producto['stock_minimo'], emprendimiento_id)
-        
+        avisar_a_notificaciones(id, producto['nombre'], nuevo_stock, producto['stock_minimo'], emprendimiento_id)
+
         conn.commit()
         return jsonify({"status": "ok", "mensaje": "Baja registrada", "nuevo_stock": nuevo_stock}), 201
     except Exception as e:
