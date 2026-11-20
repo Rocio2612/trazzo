@@ -55,26 +55,25 @@ def formatear_utc_z(dt):
     return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
-def get_db_connection():
+def get_db_connection(db_name=None):
     """
-    Abre una conexión TCP física contra PostgreSQL.
-    Configura search_path en finanzas, productos, auth y public para resolver tablas entre esquemas.
+    Abre una conexión TCP física contra la base de datos específica del emprendimiento en sesión.
     """
+    base_destino = db_name or os.getenv("DB_NAME")
     return psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        database=os.getenv("DB_NAME"),
+        host=os.getenv("DB_HOST", "127.0.0.1"),
+        database=base_destino,
         user=os.getenv("DB_USER", "postgres"),
         password=os.getenv("DB_PASSWORD"),
         port=os.getenv("DB_PORT", "5432"),
-        options="-c search_path=finanzas,productos,auth,public"
-        # Le indica a PostgreSQL a qué esquema debe apuntar por defecto en cada consulta de esta conexión. 
+        options="-c search_path=finanzas,productos,public"
     )
 
 # Validación de Identidad y Roles (verificar_token)
 def verificar_token(roles_permitidos=None):
     """
     Valida el token JWT simétrico de la cabecera Authorization.
-    Aisla la operación recuperando el 'negocio_id' y aplica RBAC según el rol.
+    Aisla la operación recuperando el 'negocio_id' y 'db_name' del token,y aplica RBAC según el rol.
     """
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
@@ -83,10 +82,15 @@ def verificar_token(roles_permitidos=None):
     token = auth_header.split(" ")[1]
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        # Verificamos que el token contenga la base de datos física asignada al negocio
+        if not payload.get("db_name"):
+            return None, jsonify({"status": "error", "mensaje": "Token sin base de datos asignada. Inicie sesión nuevamente."}), 401
+
         rol = payload.get("rol")
         if roles_permitidos and rol not in roles_permitidos:
             return None, jsonify({"status": "error", "mensaje": "Acceso denegado para su rol"}), 403
         return payload, None, 200
+    
     except jwt.ExpiredSignatureError:
         return None, jsonify({"status": "error", "mensaje": "Sesión expirada"}), 401
     except jwt.InvalidTokenError:
@@ -115,7 +119,7 @@ def listar_medios_pago():
         return error_resp, status
 
     negocio_id = payload.get("negocio_id")
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         # Verificamos primero por la bandera es_predeterminado = TRUE. De este modo, si el usuario le renombró
@@ -179,7 +183,7 @@ def crear_medio_pago():
             "errores": {"nombre": "El nombre no puede superar los 50 caracteres."}
         }), 400
 
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         # Buscamos si existe en la tabla (activo o desactivado) por la restricción uq_medio_pago_nombre_tenant
@@ -261,7 +265,7 @@ def actualizar_medio_pago(medio_id):
             "errores": {"nombre": "El nombre no puede superar los 50 caracteres."}
         }), 400
 
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         # Comprobamos si el nuevo nombre choca con otro registro (activo o desactivado) de este comercio
@@ -319,7 +323,7 @@ def eliminar_medio_pago(medio_id):
         return error_resp, status
 
     negocio_id = payload.get("negocio_id")
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         cur.execute("SELECT id, es_predeterminado FROM finanzas.medios_pago WHERE id = %s AND emprendimiento_id = %s", (medio_id, negocio_id))
@@ -368,7 +372,7 @@ def listar_categorias():
         return error_resp, status
 
     negocio_id = payload.get("negocio_id")
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         # Filtra estrictamente por emprendimiento_id (aislamiento multi-tenant) y activo = TRUE
@@ -419,7 +423,7 @@ def crear_categoria():
             "errores": {"nombre": "El nombre no puede superar los 50 caracteres."}
         }), 400
 
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         # Comprobamos si ya existe en la tabla (activa o desactivada) dentro del mismo comercio
@@ -503,7 +507,7 @@ def actualizar_categoria(categoria_id):
             "errores": {"nombre": "El nombre no puede superar los 50 caracteres."}
         }), 400
 
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         # Verificamos si otro registro del mismo comercio ya utiliza ese nombre
@@ -566,7 +570,7 @@ def eliminar_categoria(categoria_id):
         return error_resp, status
 
     negocio_id = payload.get("negocio_id")
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         # Verificamos pertenencia al negocio (aislamiento multi-tenant)
@@ -614,7 +618,7 @@ def listar_gastos():
     fecha_hasta = request.args.get('hasta')
     busqueda_q = (request.args.get('q') or '').strip()
 
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         # LEFT JOIN con Medios de Pago: Vincula el nombre del medio utilizado sin filtrar por activo = TRUE,
@@ -723,7 +727,7 @@ def registrar_gasto():
             "errores": errores
         }), 400
 
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         # Usamos una CTE (WITH insertado) para insertar y devolver inmediatamente el nombre del medio de pago
@@ -771,7 +775,7 @@ def actualizar_gasto(gasto_id):
     editor = payload.get("usuario", "admin")
     datos = request.get_json(silent=True) or {}
 
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         # Verificamos que el gasto exista y pertenezca al comercio del token
@@ -864,7 +868,7 @@ def eliminar_gasto(gasto_id):
         return error_resp, status
 
     negocio_id = payload.get("negocio_id")
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor()
     try:
         # La cláusula AND emprendimiento_id = %s asegura que ningún usuario pueda eliminar registros de otro comercio modificando el ID en la URL. 
@@ -894,7 +898,7 @@ def listar_bienes_uso():
         return error_resp, status
 
     negocio_id = payload.get("negocio_id")
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
@@ -1037,7 +1041,7 @@ def crear_bien_uso():
         except ValueError:
             return jsonify({"status": "error", "mensaje": "Formato de fecha_adquisicion inválido (use YYYY-MM-DD)"}), 400
 
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         # Si el formulario del Frontend no envía proveedor_id (porque su diseño no incluye selector),
@@ -1105,7 +1109,7 @@ def actualizar_bien_uso(id):
     usuario = payload.get("usuario", "admin")
     datos = request.get_json(silent=True) or {}
 
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         # Comprobamos que el equipo exista y pertenezca al negocio del token (aislamiento multi-tenant)
@@ -1179,7 +1183,7 @@ def ocultar_bien_uso(id):
 
     negocio_id = payload.get("negocio_id")
     usuario = payload.get("usuario", "admin")
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor()
     try:
         cur.execute(
@@ -1211,7 +1215,7 @@ def restaurar_bien_uso(id):
 
     negocio_id = payload.get("negocio_id")
     usuario = payload.get("usuario", "admin")
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor()
     try:
         cur.execute(
@@ -1241,7 +1245,7 @@ def eliminar_bien_uso(id):
         return error_resp, status
 
     negocio_id = payload.get("negocio_id")
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     # Implementa una política de borrado físico protegido con validación de integridad contable. 
@@ -1293,7 +1297,7 @@ def listar_bienes_gasto():
         return error_resp, status
 
     negocio_id = payload.get("negocio_id")
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
@@ -1416,7 +1420,7 @@ def crear_bien_gasto():
         except ValueError:
             return jsonify({"status": "error", "mensaje": "Formato de fecha inválido (use YYYY-MM-DD)"}), 400
 
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
@@ -1473,7 +1477,7 @@ def actualizar_bien_gasto(id):
     usuario = payload.get("usuario", "admin")
     datos = request.get_json(silent=True) or {}
 
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         cur.execute(
@@ -1576,7 +1580,7 @@ def reponer_bien_gasto(id):
         except ValueError:
             return jsonify({"status": "error", "mensaje": "Formato de fecha inválido (use YYYY-MM-DD)"}), 400
 
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
@@ -1691,7 +1695,7 @@ def registrar_consumo_bien_gasto(id):
         except ValueError:
             return jsonify({"status": "error", "mensaje": "Formato de fecha inválido (use YYYY-MM-DD)"}), 400
 
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
@@ -1762,7 +1766,7 @@ def resumen_consumos_periodo():
     fecha_desde = request.args.get('desde')
     fecha_hasta = request.args.get('hasta')
 
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
@@ -1824,7 +1828,7 @@ def ocultar_bien_gasto(id):
 
     negocio_id = payload.get("negocio_id")
     usuario = payload.get("usuario", "admin")
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor()
 
     try:
@@ -1857,7 +1861,7 @@ def restaurar_bien_gasto(id):
 
     negocio_id = payload.get("negocio_id")
     usuario = payload.get("usuario", "admin")
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor()
 
     try:
@@ -1889,7 +1893,7 @@ def eliminar_bien_gasto(id):
         return error_resp, status
 
     negocio_id = payload.get("negocio_id")
-    conn = get_db_connection()
+    conn = get_db_connection(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
