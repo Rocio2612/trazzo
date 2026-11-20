@@ -1,11 +1,11 @@
 // Trazzo - Sprint 2 - Módulo 5: Productos
 // fetchAPI (api.js) y API_URL (config.js) son globales: los usa js/servicios/productos.js.
-// En productos.js, línea 3:
 import {
   calcularPrecioVenta,
   precioMenorAlCosto,
   calcularMontoReposicion,
   formatearMoneda,
+  formatearFecha,
   estadoStock,
   escaparHTML as esc,
   rolDesdeToken,
@@ -23,6 +23,11 @@ import {
 const esAdmin = esRolAdmin(
   rolDesdeToken(localStorage.getItem("trazzo_access_token")) || "CAJERO",
 );
+
+// Columnas visibles: admin ve auditoría + acciones admin; cajero no.
+// Base: Nombre, Categoría, Costo, Precio, Stock, Mínimo, Proveedor, Acciones = 8
+// Admin: + Creado por = 9
+const COLUMNAS = esAdmin ? 9 : 8;
 
 const $ = (id) => document.getElementById(id);
 
@@ -72,7 +77,25 @@ const boton = (accion, titulo, id) =>
 // ---------- tabla ----------
 const mensajeEnTabla = (texto, esError = false) => {
   $("productos-tbody").innerHTML =
-    `<tr class="fila-mensaje${esError ? " error" : ""}"><td colspan="8">${esc(texto)}</td></tr>`;
+    `<tr class="fila-mensaje${esError ? " error" : ""}"><td colspan="${COLUMNAS}">${esc(texto)}</td></tr>`;
+};
+
+// Normaliza la fecha de auditoría (puede venir ISO con Z) a hora local.
+const formatearFechaHora = (valor) => {
+  if (!valor) return "—";
+  try {
+    const d = new Date(valor);
+    if (isNaN(d.getTime())) return esc(valor);
+    return d.toLocaleString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return esc(valor);
+  }
 };
 
 const renderizarTabla = (productos) => {
@@ -97,28 +120,42 @@ const renderizarTabla = (productos) => {
             : "";
       const oculto = prod.activo === false;
 
+      // Acciones base (todos los roles autenticados)
       let acciones = boton("reponer", "Reponer stock", prod.id);
       acciones += boton("baja", "Dar de baja", prod.id);
 
-      // TODO: Cuando el back implemente PUT, PATCH y DELETE, descomentar esto.
-      /*
+      // Acciones exclusivas de Admin/Propietario
       if (esAdmin) {
         acciones += boton("editar", "Editar", prod.id);
-        acciones += boton("ocultar", "Ocultar", prod.id);
+        if (!oculto) acciones += boton("ocultar", "Ocultar", prod.id);
         acciones += boton("eliminar", "Eliminar", prod.id);
       }
-      */
 
-      // Como el back actual no hace JOIN, mostramos guiones en cat y prov.
+      // Categoría y proveedor: usar lo que devuelva el backend.
+      // Si no viene, mostramos guión.
+      const categoria = prod.categoria_nombre
+        ? esc(prod.categoria_nombre)
+        : "—";
+      const proveedor = prod.proveedor_nombre
+        ? esc(prod.proveedor_nombre)
+        : "—";
+
+      // Celda de auditoría: solo se renderiza para admin.
+      // El Cajero no recibe el dato ni ve la columna.
+      const celdaAuditoria = esAdmin
+        ? `<td>${formatearFechaHora(prod.creado_en)}<br /><span class="auditoria-autor">${esc(prod.creado_por) || "—"}</span></td>`
+        : "";
+
       return `
         <tr class="${oculto ? "fila-oculta" : ""}" data-id="${esc(prod.id)}">
           <td>${esc(prod.nombre)}${oculto ? '<span class="badge badge-gris">Oculto</span>' : ""}</td>
-          <td>—</td> <!-- categoria_nombre -->
+          <td>${categoria}</td>
           <td>${formatearMoneda(prod.precio_compra)}</td>
           <td>${formatearMoneda(prod.precio_venta)}</td>
           <td>${cantidad}${insignia}</td>
           <td>${minimo}</td>
-          <td>—</td> <!-- proveedor_nombre -->
+          <td>${proveedor}</td>
+          ${celdaAuditoria}
           <td><div class="acciones-flex">${acciones}</div></td>
         </tr>`;
     })
@@ -147,13 +184,24 @@ const cargarProductos = async () => {
 };
 
 const cargarListaProveedores = async () => {
-  estado.proveedores = await cargarProveedores();
-  llenarSelectProveedores($("proveedor_id"), estado.proveedores, {
-    valor: $("proveedor_id").value,
-  });
-  llenarSelectProveedores($("proveedor_id_repo"), estado.proveedores, {
-    valor: $("proveedor_id_repo").value,
-  });
+  try {
+    estado.proveedores = await cargarProveedores();
+    llenarSelectProveedores($("proveedor_id"), estado.proveedores, {
+      valor: $("proveedor_id").value,
+    });
+    llenarSelectProveedores($("proveedor_id_repo"), estado.proveedores, {
+      valor: $("proveedor_id_repo").value,
+    });
+  } catch (error) {
+    console.error(error);
+    mostrarToast(
+      mensajeDeError(
+        error,
+        "No se pudieron cargar los proveedores. Verificá que existan.",
+      ),
+      true,
+    );
+  }
 };
 
 // ---------- modal nuevo / editar ----------
@@ -179,9 +227,26 @@ const sugerirPrecio = () => {
   validarAvisoPrecio();
 };
 
+const limpiarErrorNombre = () => {
+  const input = $("nombre");
+  const error = $("error-nombre");
+  input.classList.remove("input-error");
+  error.classList.add("hidden");
+  error.textContent = "";
+};
+
+const mostrarErrorNombre = (mensaje) => {
+  const input = $("nombre");
+  const error = $("error-nombre");
+  input.classList.add("input-error");
+  error.textContent = mensaje;
+  error.classList.remove("hidden");
+};
+
 const abrirModalProducto = (prod = null) => {
   estado.productoEnEdicion = prod;
   $("form-producto").reset();
+  limpiarErrorNombre();
   llenarSelectProveedores($("proveedor_id"), estado.proveedores, {
     valor: prod?.proveedor_id ?? "",
   });
@@ -215,8 +280,22 @@ const guardarProducto = async (e) => {
   const btn = e.target.querySelector('button[type="submit"]');
   const editando = estado.productoEnEdicion !== null;
 
+  limpiarErrorNombre();
+
+  const nombre = $("nombre").value.trim();
+  if (!nombre) {
+    mostrarErrorNombre("Rellene el nombre del producto.");
+    $("nombre").focus();
+    return;
+  }
+  if (nombre.length > 120) {
+    mostrarErrorNombre("El nombre no puede superar los 120 caracteres.");
+    $("nombre").focus();
+    return;
+  }
+
   const datos = {
-    nombre: $("nombre").value.trim(),
+    nombre,
     iva_alicuota: parseFloat($("iva_alicuota").value),
     rentabilidad: parseFloat($("rentabilidad").value) || 0,
     precio_venta: parseFloat($("precio_venta").value),
@@ -230,8 +309,6 @@ const guardarProducto = async (e) => {
     datos.cantidad = parseFloat($("cantidad").value);
   }
 
-  if (!datos.nombre)
-    return mostrarToast("Ingresá el nombre del producto.", true);
   if (!editando && !(datos.precio_compra > 0))
     return mostrarToast("Ingresá un precio de compra mayor a 0.", true);
   if (!(datos.precio_venta > 0))
@@ -257,10 +334,17 @@ const guardarProducto = async (e) => {
     mostrarToast(editando ? "Producto actualizado" : "Producto creado");
     cargarProductos();
   } catch (error) {
-    mostrarToast(
-      mensajeDeError(error, "No se pudo guardar el producto."),
-      true,
-    );
+    // 409 por nombre duplicado, etc.
+    if (error?.status === 409) {
+      mostrarErrorNombre(
+        mensajeDeError(error, "Ya existe un producto con ese nombre."),
+      );
+    } else {
+      mostrarToast(
+        mensajeDeError(error, "No se pudo guardar el producto."),
+        true,
+      );
+    }
   } finally {
     btn.disabled = false;
   }
@@ -450,7 +534,13 @@ const configurarEventos = () => {
     acciones[btn.dataset.accion]?.();
   });
 
-  $("btn-nuevo-producto").addEventListener("click", () => abrirModalProducto());
+  // Solo Admin/Propietario puede abrir el modal de nuevo producto.
+  const btnNuevo = $("btn-nuevo-producto");
+  if (esAdmin) {
+    btnNuevo.classList.remove("hidden");
+    btnNuevo.addEventListener("click", () => abrirModalProducto());
+  }
+
   ["precio_compra", "rentabilidad", "iva_alicuota"].forEach((id) =>
     $(id).addEventListener("input", sugerirPrecio),
   );
@@ -458,6 +548,9 @@ const configurarEventos = () => {
   $("precio_venta").addEventListener("input", () => {
     estado.precioManual = true;
     validarAvisoPrecio();
+  });
+  $("nombre").addEventListener("input", () => {
+    if ($("nombre").value.trim()) limpiarErrorNombre();
   });
   $("form-producto").addEventListener("submit", guardarProducto);
 
@@ -476,6 +569,12 @@ const configurarEventos = () => {
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
+  // Mostrar la columna de auditoría solo para Admin/Propietario.
+  if (esAdmin) {
+    document
+      .querySelectorAll(".col-auditoria")
+      .forEach((el) => el.classList.remove("hidden"));
+  }
   configurarEventos();
   cargarListaProveedores();
   cargarProductos();

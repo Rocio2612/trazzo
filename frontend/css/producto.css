@@ -288,3 +288,22 @@ tr:hover td {
     grid-template-columns: 1fr;
   }
 }
+.col-auditoria {
+  white-space: nowrap;
+}
+
+.auditoria-autor {
+  font-size: 0.75rem;
+  color: #8c8c8c;
+}
+
+.input-error {
+  border-color: #dc3545 !important;
+  box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.15);
+}
+
+.error-campo {
+  color: #dc3545;
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}
