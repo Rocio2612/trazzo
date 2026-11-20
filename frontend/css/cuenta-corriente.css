@@ -1,0 +1,96 @@
+/* --- ESTRUCTURA GENERAL --- */
+.cc-pagina { padding: 1.5rem 2rem 3rem; font-family: 'Inter', sans-serif; color: #212529; line-height: 1.5; background-color: #f8f9fa; min-height: 100vh; }
+.cc-header h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 1.25rem 0; }
+
+/* --- PESTAÑAS Y BOTÓN --- */
+.cc-tabs-container { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1rem; }
+.cc-tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid #dee2e6; flex-grow: 1; }
+.cc-tab { background: none; border: none; padding: 0.6rem 1rem; font-size: 0.92rem; font-weight: 500; color: #8c8c8c; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.cc-tab:hover { color: #212529; }
+.cc-tab.activa { color: #0056b3; border-bottom: 2px solid #0056b3; }
+.cc-btn-primario { background: #0056b3; color: #fff; border: none; border-radius: 6px; padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem; transition: opacity 0.2s; }
+.cc-btn-primario:hover { opacity: 0.9; }
+.cc-btn-primario:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* --- BARRA DE HERRAMIENTAS --- */
+.cc-barra { display: flex; gap: 0.3rem; margin-bottom: 1rem; }
+.cc-buscador { flex-grow: 1; min-width: 200px; padding: 0.5rem 0.75rem 0.5rem 2.25rem; border: 1px solid #dee2e6; border-radius: 6px; font-size: 0.9rem; background: #fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%238c8c8c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>') no-repeat 0.75rem center; outline: none; }
+.cc-buscador:focus { border-color: #0056b3; }
+.cc-filtro { padding: 0.5rem; border: 1px solid #dee2e6; border-radius: 6px; font-size: 0.9rem; background: #fff; min-width: 150px; outline: none; }
+.cc-chip { padding: 0.45rem 0.8rem; border: 1px solid #dee2e6; border-radius: 999px; background: #fff; cursor: pointer; font-size: 0.85rem; font-weight: 500; }
+.cc-chip.activo { background: #111; color: #fff; border-color: #111; }
+
+/* --- TABLA --- */
+.cc-tabla-tarjeta { background: #fff; border: 1px solid #dee2e6; border-radius: 10px; overflow: hidden; }
+.cc-tabla-contenedor { max-height: calc(100vh - 320px); min-height: 200px; overflow-y: auto; overflow-x: auto; }
+.cc-tabla { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
+.cc-tabla th { position: sticky; top: 0; background: #fff; padding: 0.7rem 0.55rem; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: #8c8c8c; border-bottom: 1px solid #dee2e6; letter-spacing: 0.05em; z-index: 1; }
+.cc-tabla td { padding: 0.6rem 0.55rem; border-bottom: 1px solid #eeeeee; }
+.cc-tabla tr:last-child td { border-bottom: none; }
+.cc-tabla tr:hover { background-color: #fafafa; }
+.text-right { text-align: right; font-variant-numeric: tabular-nums; }
+.col-acciones { text-align: right; }
+
+/* --- BADGES / CARTELITOS --- */
+.cc-badge { padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid; font-size: 0.7rem; font-weight: 600; text-transform: capitalize; display: inline-block; }
+.bg-pendiente { color: #6b4f00; background: #fbf3dc; border-color: #ecd9a0; }
+.bg-saldada { color: #495057; background: #eef0f2; border-color: #d5d9dd; }
+.bg-anulada { color: #9a3a42; background: #f8e9ea; border-color: #e9c4c7; }
+
+/* --- SALDOS --- */
+.saldo-celda { display: flex; flex-direction: column; align-items: flex-end; }
+.saldo-monto { font-weight: 600; }
+.saldo-label { font-size: 0.72rem; color: inherit; }
+.saldo-deuda { color: #b02a37; }
+.saldo-favor { color: #146c43; }
+.saldo-neutro { color: #212529; }
+.texto-tachado { text-decoration: line-through; color: #8c8c8c; }
+
+/* --- BOTONES DE ACCIÓN --- */
+.cc-btn-accion { background: none; border: 1px solid #dee2e6; border-radius: 6px; padding: 0.2rem 0.5rem; cursor: pointer; color: #212529; display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.78rem; font-weight: 500; transition: background 0.2s; }
+.cc-btn-accion:hover { background: #f8f9fa; }
+.cc-btn-accion.peligro { color: #dc3545; border-color: #f5c2c7; }
+.cc-btn-accion.peligro:hover { background: #fdecee; }
+.cc-btn-accion.solo-icono { padding: 0.25rem 0.45rem; }
+.cc-btn-accion:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* --- MODALES --- */
+.cc-modal-fondo { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.cc-modal { background: #fff; border-radius: 12px; border: 1px solid #dee2e6; width: 100%; max-width: 540px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+.cc-modal.ancho { max-width: 720px; }
+.cc-modal.chico { max-width: 440px; }
+.cc-modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center; }
+.cc-modal-header h2 { font-size: 1.1rem; font-weight: 600; margin: 0; }
+.cc-modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #8c8c8c; }
+.cc-modal-body { padding: 1.25rem; overflow-y: auto; max-height: 70vh; }
+.cc-modal-footer { padding: 1rem 1.25rem; border-top: 1px solid #dee2e6; display: flex; justify-content: flex-end; gap: 0.6rem; }
+
+/* --- FORMULARIOS --- */
+.cc-grupo { margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.cc-grupo label { font-size: 0.85rem; font-weight: 500; }
+.cc-input, .cc-select { padding: 0.5rem 0.75rem; border: 1px solid #dee2e6; border-radius: 6px; font-size: 0.9rem; font-family: inherit; }
+.cc-input:focus, .cc-select:focus { outline: none; border-color: #0056b3; }
+.cc-input.error { border-color: #dc3545; }
+.cc-ayuda { font-size: 0.78rem; color: #8c8c8c; }
+.cc-error-msg { font-size: 0.8rem; color: #dc3545; margin-top: 0.2rem; display: none; }
+.cc-fila-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+/* --- AVISOS Y ALERTAS EN MODAL --- */
+.cc-aviso { padding: 0.7rem 0.9rem; border-radius: 8px; border: 1px solid; border-left-width: 4px; font-size: 0.85rem; margin-bottom: 1rem; display: none; }
+.cc-aviso.error { background: #fdecee; border-color: #f5c2c7; border-left-color: #dc3545; color: #b02a37; }
+.cc-aviso.alerta { background: #fff7e0; border-color: #f3d68a; border-left-color: #e8a200; color: #7a5200; }
+
+/* --- DETALLE DE VENTA --- */
+.detalle-cabecera { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.detalle-cliente label { font-size: 0.72rem; color: #8c8c8c; text-transform: uppercase; }
+.detalle-cliente h3 { margin: 0.2rem 0 0 0; font-size: 1.2rem; font-weight: 600; }
+.detalle-seccion { border-top: 1px solid #dee2e6; padding: 1rem 0; }
+.detalle-seccion h4 { margin: 0 0 0.8rem 0; font-size: 0.9rem; font-weight: 600; }
+.detalle-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.detalle-cuadro { border: 1px solid #dee2e6; border-radius: 8px; padding: 0.6rem 0.8rem; }
+.detalle-cuadro label { display: block; font-size: 0.7rem; color: #8c8c8c; text-transform: uppercase; margin-bottom: 0.2rem; }
+.detalle-cuadro span { font-weight: 600; }
+
+/* --- RESPONSIVE --- */
+@media (max-width: 768px) { .cc-pagina { padding: 1rem; } }
+@media (max-width: 520px) { .cc-fila-2 { grid-template-columns: 1fr; } .cc-modal { width: 100%; height: 100%; border-radius: 0; } }
