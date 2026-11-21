@@ -32,7 +32,7 @@ ORIGENES_PERMITIDOS = [
     # 4. Frontend abierto con 'Live Server' por nombre de host (puerto 5500)
     "http://localhost:5500",
     # 5. Computadora principal (servidor central) en la red Wi-Fi local
-    "http://192.168.1.43:5000" 
+    "http://192.168.1.43:5000",
     "http://127.0.0.1:5501",
     "http://localhost:5501"
 ]
@@ -78,7 +78,7 @@ def get_db_connection():
     try:
         conn = psycopg2.connect(
             host=os.getenv("DB_HOST", "127.0.0.1"),
-            database=os.getenv("DB_NAME", "trazzo"),
+            database=os.getenv("DB_NAME"),
             user=os.getenv("DB_USER", "postgres"),
             password=os.getenv("DB_PASSWORD"),
             port=os.getenv("DB_PORT", "5432"),
@@ -89,6 +89,53 @@ def get_db_connection():
         mensaje_windows = e.object.decode("latin-1", errors="replace")
         print(f"[ERROR POSTGRESQL]: {mensaje_windows}")
         raise RuntimeError(f"Error de conexión a PostgreSQL: {mensaje_windows}")
+
+def crear_base_emprendimiento(nombre_bd, emprendimiento_id):
+    """
+    Crea automáticamente la base de datos física del emprendimiento clonando 'trazzo_plantilla'.
+    - Si la base ya fue creada previamente a mano (ej. en una simulación), la reutiliza sin error.
+    - Usa autocommit = True porque PostgreSQL prohíbe ejecutar CREATE DATABASE dentro de una transacción.
+    """
+    conn_admin = psycopg2.connect(
+        host=os.getenv("DB_HOST", "127.0.0.1"),
+        database="postgres",
+        user=os.getenv("DB_USER", "postgres"),
+        password=os.getenv("DB_PASSWORD"),
+        port=os.getenv("DB_PORT", "5432")
+    )
+    conn_admin.autocommit = True
+    cur_admin = conn_admin.cursor()
+    try:
+        cur_admin.execute("SELECT 1 FROM pg_database WHERE datname = %s", (nombre_bd,))
+        if not cur_admin.fetchone():
+            # Cierra cualquier sesión residual de pgAdmin sobre trazzo_plantilla antes de clonar
+            cur_admin.execute("""
+                SELECT pg_terminate_backend(pid)
+                FROM pg_stat_activity
+                WHERE datname = 'trazzo_plantilla'
+                  AND pid <> pg_backend_pid()
+            """)
+            # Clonación atómica en PostgreSQL desde trazzo_plantilla
+            cur_admin.execute(f'CREATE DATABASE "{nombre_bd}" TEMPLATE trazzo_plantilla')
+    finally:
+        cur_admin.close()
+        conn_admin.close()
+
+    # Actualizamos el emprendimiento_id en la sucursal principal ('Casa Central') de la nueva base
+    conn_tenant = psycopg2.connect(
+        host=os.getenv("DB_HOST", "127.0.0.1"),
+        database=nombre_bd,
+        user=os.getenv("DB_USER", "postgres"),
+        password=os.getenv("DB_PASSWORD"),
+        port=os.getenv("DB_PORT", "5432")
+    )
+    cur_tenant = conn_tenant.cursor()
+    try:
+        cur_tenant.execute("UPDATE comercio.sucursales SET emprendimiento_id = %s WHERE id = 1", (emprendimiento_id,))
+        conn_tenant.commit()
+    finally:
+        cur_tenant.close()
+        conn_tenant.close()
 
 def token_esta_bloqueado(jti):
     """
@@ -134,16 +181,17 @@ def registro():
     if not id_negocio or not usuario or not password or not correo:
         return jsonify({"status": "error", "mensaje": "Faltan datos obligatorios"}), 400
 
+    nombre_bd = f"trazzo_{id_negocio.lower().strip()}"
     password_hash = generate_password_hash(password)
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
-        # Inserta el negocio con esquema explícito
+        # Inserta el negocio con esquema explícito (5 columnas = 5 %s)
         cur.execute(
-            """INSERT INTO auth.emprendimientos (identificador, nombre_comercial, rubro, categoria_impositiva) 
-               VALUES (%s, %s, %s, %s) RETURNING id, categoria_impositiva""",
-            (id_negocio.lower().strip(), nombre_comercial.strip(), rubro.strip(), categoria_impositiva)
+            """INSERT INTO auth.emprendimientos (identificador, nombre_bd, nombre_comercial, rubro, categoria_impositiva) 
+               VALUES (%s, %s, %s, %s, %s) RETURNING id, nombre_bd, categoria_impositiva""",
+            (id_negocio.lower().strip(), nombre_bd, nombre_comercial.strip(), rubro.strip(), categoria_impositiva)
         )
         emp = cur.fetchone()
         emprendimiento_id = emp['id']
@@ -158,6 +206,13 @@ def registro():
         usuario_id = cur.fetchone()['id']
         conn.commit()
 
+        cur.execute(
+            "INSERT INTO auth.usuario_sucursales (usuario_id, sucursal_id, es_predeterminada, activo) VALUES (%s, 1, TRUE, TRUE)",
+            (usuario_id,)
+        )
+        conn.commit()
+        crear_base_emprendimiento(nombre_bd, emprendimiento_id)
+
         # Generación de identificadores únicos para los tokens (jti)
         access_jti = str(uuid.uuid4())
         refresh_jti = str(uuid.uuid4())
@@ -171,6 +226,8 @@ def registro():
             "negocio_id": emprendimiento_id,
             #agregado
             "categoria_impositiva": emp_categoria,
+            "db_name": nombre_bd,
+            "sucursal_id": 1,
             "rol": "PROPIETARIO",
             "jti": access_jti,
             "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=15)
@@ -218,10 +275,17 @@ def login():
 
     try:
         cur.execute(
-            """SELECT u.*, e.identificador AS negocio, e.categoria_impositiva 
-               FROM usuarios u JOIN emprendimientos e ON u.emprendimiento_id = e.id 
+            """SELECT u.*, e.identificador AS negocio, e.nombre_bd, e.categoria_impositiva,
+                      COALESCE(
+                          (SELECT sucursal_id FROM auth.usuario_sucursales 
+                           WHERE usuario_id = u.id AND activo = TRUE 
+                           ORDER BY es_predeterminada DESC, id ASC LIMIT 1), 
+                          1
+                      ) AS sucursal_id
+               FROM auth.usuarios u 
+               JOIN auth.emprendimientos e ON u.emprendimiento_id = e.id 
                WHERE lower(e.identificador) = %s AND lower(u.usuario) = %s AND u.activo = TRUE""",
-            (id_negocio, usuario)
+            (id_negocio.lower().strip(), usuario.lower().strip())
         )
         usuario_bd = cur.fetchone()
 
@@ -235,6 +299,8 @@ def login():
                 "negocio_id": usuario_bd['emprendimiento_id'],
                 #agregado
                 "categoria_impositiva": usuario_bd['categoria_impositiva'],
+                "db_name": usuario_bd['nombre_bd'],
+                "sucursal_id": usuario_bd['sucursal_id'],
                 "rol": usuario_bd['rol'],
                 "jti": access_jti,
                 "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=15)
@@ -338,7 +404,33 @@ def logout():
 
     except jwt.ExpiredSignatureError:
         # Si el token ya expiró cronológicamente, no representa peligro
+        # Aunque el access_token de 15 min ya venció, revocamos el refresh_token (7 días) si vino en el body
+        body = request.get_json(silent=True) or {}
+        refresh_token_raw = body.get("refresh_token")
+        if refresh_token_raw:
+            try:
+                payload_ref = jwt.decode(refresh_token_raw, SECRET_KEY, algorithms=["HS256"])
+                ref_jti = payload_ref.get("jti")
+                ref_uid = payload_ref.get("usuario_id")
+                ref_exp = datetime.datetime.fromtimestamp(payload_ref.get("exp"), tz=datetime.timezone.utc)
+                if ref_jti:
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+                    try:
+                        cur.execute(
+                            """INSERT INTO auth.tokens_bloqueados (jti, usuario_id, fecha_expiracion)
+                               VALUES (%s, %s, %s)
+                               ON CONFLICT (jti) DO NOTHING""",
+                            (ref_jti, ref_uid, ref_exp)
+                        )
+                        conn.commit()
+                    finally:
+                        cur.close()
+                        conn.close()
+            except (jwt.InvalidTokenError, jwt.ExpiredSignatureError):
+                pass
         return jsonify({"status": "ok", "mensaje": "Sesión expirada previamente"}), 200
+        
     except jwt.InvalidTokenError:
         #por si envian una cadena corrupta, responde con 401
         return jsonify({"status": "error", "mensaje": "Token inválido"}), 401
@@ -443,9 +535,16 @@ def refresh():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(
-            """SELECT u.id, u.usuario, u.rol, u.activo, u.emprendimiento_id, e.categoria_impositiva 
-               FROM usuarios u 
-               JOIN emprendimientos e ON u.emprendimiento_id = e.id 
+            """SELECT u.id, u.usuario, u.rol, u.activo, u.emprendimiento_id, 
+                      e.nombre_bd, e.categoria_impositiva,
+                      COALESCE(
+                          (SELECT sucursal_id FROM auth.usuario_sucursales 
+                           WHERE usuario_id = u.id AND activo = TRUE 
+                           ORDER BY es_predeterminada DESC, id ASC LIMIT 1), 
+                          1
+                      ) AS sucursal_id
+               FROM auth.usuarios u 
+               JOIN auth.emprendimientos e ON u.emprendimiento_id = e.id 
                WHERE u.id = %s""",
             (usuario_id,)
         )
@@ -465,8 +564,9 @@ def refresh():
             "usuario_id": usuario['id'],
             "usuario": usuario['usuario'],
             "negocio_id": usuario['emprendimiento_id'],
-            #agregado
             "categoria_impositiva": usuario['categoria_impositiva'],
+            "db_name": usuario['nombre_bd'],
+            "sucursal_id": usuario['sucursal_id'],
             "rol": usuario['rol'],
             "jti": nuevo_access_jti,
             "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=15)
@@ -959,6 +1059,11 @@ def crear_personal():
             (negocio_id, usuario, correo, password_hash, nombre, apellido, dni, rol)
         )
         nuevo_usuario = cur.fetchone()
+
+        cur.execute(
+            "INSERT INTO auth.usuario_sucursales (usuario_id, sucursal_id, es_predeterminada, activo) VALUES (%s, 1, TRUE, TRUE)",
+            (nuevo_usuario['id'],)
+        )
         conn.commit()
 
         return jsonify({
