@@ -131,7 +131,7 @@ def crear_base_emprendimiento(nombre_bd, emprendimiento_id):
     )
     cur_tenant = conn_tenant.cursor()
     try:
-        cur_tenant.execute("UPDATE public.sucursales SET emprendimiento_id = %s WHERE id = 1", (emprendimiento_id,))
+        cur_tenant.execute("UPDATE comercio.sucursales SET emprendimiento_id = %s WHERE id = 1", (emprendimiento_id,))
         conn_tenant.commit()
     finally:
         cur_tenant.close()
