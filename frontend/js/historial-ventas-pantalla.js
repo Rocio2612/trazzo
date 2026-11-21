@@ -16,7 +16,6 @@ const ICONO_DETALLE = '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 
 const ICONO_ANULAR = '<circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>';
 const ICONO_OCULTAR = '<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/>';
 const ICONO_RESTAURAR = '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>';
-const ICONO_DESCARGAR = '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>';
 
 const MODULO = "ventas";
 const el = (id) => document.getElementById(id);
@@ -62,23 +61,11 @@ const iniciarPantalla = () => {
   const filas = el("ventas-filas");
   const COLUMNAS = 7;
 
-  const descargarTicket = async (venta) => {
-    try {
-      await servicioVentas.descargarTicket(venta.id, venta.numero);
-      avisar(`Ticket de la venta ${venta.numero} descargado`);
-    } catch (error) {
-      avisar(mensajeDeError(error, "No se pudo descargar el ticket."));
-    }
-  };
-
   // --- Detalle --------------------------------------------------------------------------------------
   const detalle = (venta) => {
     const dato = (etiqueta, valor) => h("div", {}, h("dt", { text: etiqueta }), h("dd", {}, valor || sinDato()));
     const seccion = (titulo, ...hijos) => h("section", { class: "ventas-seccion" }, h("h4", { class: "ventas-seccion-titulo", text: titulo }), hijos);
     const cerrar = boton("Cerrar", "btn-outline", { "data-testid": "modal-cancelar" });
-    // En una venta anulada no se ofrece el ticket.
-    const ticket = venta.anulada ? null : boton("", "btn-primario gastos-btn-con-icono", { "data-testid": "ventas-detalle-ticket", "data-modulo": MODULO, "data-accion": "ticket" });
-    ticket?.append(crearSvg(ICONO_DESCARGAR), h("span", { text: "Descargar ticket" }));
     const credito = Number(venta.credito_aplicado) || 0;
     const modal = abrirModal({
       titulo: `Venta ${venta.numero}`,
@@ -113,11 +100,10 @@ const iniciarPantalla = () => {
           venta.anulada && h("div", { class: "gastos-banner ventas-banner-rojo", text: "Venta anulada: se devolvió el stock, se anularon sus pagos y no cuenta en los reportes. Conserva su número." }),
         ),
       ],
-      pie: [cerrar, ticket],
+      pie: [cerrar],
     });
     modal.fondo.querySelector(".gastos-modal").classList.add("ventas-modal-ancho");
     cerrar.addEventListener("click", modal.cerrar);
-    ticket?.addEventListener("click", () => descargarTicket(venta));
   };
 
   // --- Anular y ocultar ---------------------------------------------------------------------------------
@@ -171,7 +157,7 @@ const iniciarPantalla = () => {
 
   // --- Tabla --------------------------------------------------------------------------------------------
   // Los botones llevan data-modulo y data-accion para que roles.js los oculte según el rol: el Cajero no ve "ocultar"
-  // pero sí "anular" y "ticket". No hay editar ni eliminar.
+  // pero sí "anular". No hay editar ni eliminar.
   const botonesDeFila = (venta) => {
     const datos = (accion, rol = accion) => ({ "data-op": accion, "data-id": venta.id, "data-testid": `ventas-${accion}-${venta.id}`, "data-modulo": MODULO, "data-accion": rol });
     const acciones = venta.oculto

@@ -30,7 +30,6 @@ import {
 
 // Íconos de trazo (24x24). Son textos fijos del código, nunca datos del usuario.
 const ICONO_ELIMINAR = '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>';
-const ICONO_DESCARGAR = '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>';
 const ICONO_HISTORIAL = '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>';
 
 const MENSAJE_SIN_MEDIOS = "Sin medios de pago. Creá uno en Configuración > Medios de pago";
@@ -417,20 +416,10 @@ const iniciarPantalla = () => {
           esContado ? h("div", { class: "gastos-banner ventas-banner-verde", text: "Se registró el cobro y el pago se generó automáticamente." }) : h("div", { class: "gastos-banner gastos-banner-ambar", text: "La venta quedó en cuenta corriente: el saldo se cobra desde Cuenta corriente." }),
         ),
       );
-      const ticket = h("button", { type: "button", class: "btn btn-outline gastos-btn-con-icono", "data-testid": "venta-ticket", "data-modulo": "ventas", "data-accion": "ticket" });
-      ticket.append(crearSvg(ICONO_DESCARGAR), h("span", { text: "Descargar ticket" }));
       const historial = h("a", { href: "historial-ventas.html", class: "btn btn-outline gastos-btn-con-icono", "data-testid": "venta-ver-historial", style: "text-decoration:none" });
       historial.append(crearSvg(ICONO_HISTORIAL), h("span", { text: "Ver historial" }));
       const otra = boton("Nueva venta", "btn-primario", { "data-testid": "venta-otra" });
-      modal.fondo.querySelector(".gastos-modal-pie").replaceChildren(ticket, historial, otra);
-      ticket.addEventListener("click", async () => {
-        try {
-          await servicioVentas.descargarTicket(venta.id, venta.numero);
-          avisar(`Ticket de la venta ${venta.numero} descargado`);
-        } catch (error) {
-          avisar(mensajeDeError(error, "No se pudo descargar el ticket."));
-        }
-      });
+      modal.fondo.querySelector(".gastos-modal-pie").replaceChildren(historial, otra);
       otra.addEventListener("click", modal.cerrar);
       otra.focus();
     };
