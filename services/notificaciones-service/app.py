@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import os
+import jwt
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
@@ -9,24 +10,50 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-def get_db():
+SECRET_KEY = os.getenv("JWT_SECRET")
+
+def get_db(db_name=None):
+    if not db_name:
+        raise ValueError("No se especificó la base de datos del emprendimiento (db_name faltante)")
     return psycopg2.connect(
-        host=os.getenv("DB_HOST"), database=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD"), port=os.getenv("DB_PORT")
+        host=os.getenv("DB_HOST"), database=db_name,
+        user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD"),
+        port=os.getenv("DB_PORT")
     )
 
-# 1. Endpoint INTERNO que usa el servicio de Productos
+def verificar_token():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None, jsonify({"status": "error", "mensaje": "Token no proporcionado"}), 401
+
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        if not payload.get("db_name"):
+            return None, jsonify({"status": "error", "mensaje": "Token sin base de datos asignada"}), 401
+        return payload, None, 200
+    except jwt.ExpiredSignatureError:
+        return None, jsonify({"status": "error", "mensaje": "Sesión expirada"}), 401
+    except jwt.InvalidTokenError:
+        return None, jsonify({"status": "error", "mensaje": "Token inválido"}), 401
+
+# --- ENDPOINT INTERNO (Productos avisa acá) ---
 @app.route('/internal/alertas/evaluar', methods=['POST'])
 def evaluar_alerta():
     datos = request.get_json()
+    db_name = datos.get('db_name')
     emprendimiento_id = datos.get('emprendimiento_id')
     producto_id = datos.get('producto_id')
     nombre_producto = datos.get('nombre_producto')
     stock_actual = datos.get('stock_actual')
     stock_minimo = datos.get('stock_minimo')
 
-    conn = get_db()
+    if not db_name:
+        return jsonify({"status": "error", "mensaje": "Falta db_name en llamada interna"}), 400
+
+    conn = get_db(db_name)
     cur = conn.cursor(cursor_factory=RealDictCursor)
+
     try:
         cur.execute("""
             SELECT id FROM notificaciones.alertas_stock 
@@ -64,13 +91,16 @@ def evaluar_alerta():
         cur.close()
         conn.close()
 
-# 2. Endpoints PARA EL FRONTEND (La campanita)
+# --- ENDPOINTS PÚBLICOS (Para la campanita del Frontend) ---
 @app.route('/api/notificaciones', methods=['GET'])
 def listar_alertas():
-    # Simulamos emprendimiento y usuario (luego vendrán del JWT)
-    emprendimiento_id = 1
-    usuario_id = 1 
-    conn = get_db()
+    payload, error_resp, status = verificar_token()
+    if error_resp:
+        return error_resp, status
+
+    emprendimiento_id = payload.get("negocio_id")
+    usuario_id = payload.get("usuario_id")
+    conn = get_db(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         cur.execute("""
@@ -78,6 +108,7 @@ def listar_alertas():
             FROM notificaciones.alertas_stock a
             LEFT JOIN notificaciones.alertas_descartes d ON a.id = d.alerta_id AND d.usuario_id = %s
             WHERE a.emprendimiento_id = %s AND a.estado = 'ACTIVA' AND d.id IS NULL
+            ORDER BY a.actualizado_en DESC
         """, (usuario_id, emprendimiento_id))
         return jsonify({"status": "ok", "items": cur.fetchall()}), 200
     except Exception as e:
@@ -88,9 +119,13 @@ def listar_alertas():
 
 @app.route('/api/notificaciones/contador', methods=['GET'])
 def contador_alertas():
-    emprendimiento_id = 1
-    usuario_id = 1
-    conn = get_db()
+    payload, error_resp, status = verificar_token()
+    if error_resp:
+        return error_resp, status
+
+    emprendimiento_id = payload.get("negocio_id")
+    usuario_id = payload.get("usuario_id")
+    conn = get_db(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         cur.execute("""
@@ -109,15 +144,20 @@ def contador_alertas():
 
 @app.route('/api/notificaciones/<int:id>/descartar', methods=['PATCH'])
 def descartar_alerta(id):
-    usuario_id = 1
-    conn = get_db()
+    payload, error_resp, status = verificar_token()
+    if error_resp:
+        return error_resp, status
+
+    emprendimiento_id = payload.get("negocio_id")
+    usuario_id = payload.get("usuario_id")
+    conn = get_db(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         cur.execute("""
             INSERT INTO notificaciones.alertas_descartes (alerta_id, usuario_id, emprendimiento_id)
-            VALUES (%s, %s, 1)
+            VALUES (%s, %s, %s)
             ON CONFLICT (alerta_id, usuario_id) DO NOTHING
-        """, (id, usuario_id))
+        """, (id, usuario_id, emprendimiento_id))
         conn.commit()
         return jsonify({"status": "ok", "mensaje": "Alerta descartada"}), 200
     except Exception as e:
