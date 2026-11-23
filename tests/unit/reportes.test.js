@@ -5,12 +5,17 @@ import {
   estaCaido,
   INDICADORES_ESTADO,
   INDICADORES_PRINCIPALES,
+  MENSAJE_DESGLOSE_CAIDO,
+  MENSAJE_SIN_DESGLOSE,
+  NOTA_DESGLOSE,
+  PERIODO_INICIAL,
   PERIODOS,
   SERVICIOS,
   serviciosCaidos,
   textoAvisoParcial,
   textoDePeriodo,
   textoVentasPorSaldar,
+  TITULO_DESGLOSE,
   totalDelDesglose,
 } from "../../frontend/js/reportes.js";
 
@@ -215,5 +220,26 @@ describe("datos de ejemplo de Reportes (simulan GET /reportes)", () => {
     expect(d.servicios_caidos).toEqual(["productos"]);
     expect(d.inventario_actual).toBeNull();
     expect(d.desglose_inversion).toBeNull();
+  });
+});
+
+// --- Casos que faltaban: constantes de la pantalla ---
+
+describe("constantes de Reportes", () => {
+  it("la pantalla abre en el período 'Este mes', que es uno de los períodos disponibles", () => {
+    expect(PERIODO_INICIAL).toBe("mes");
+    expect(PERIODOS.map((p) => p.valor)).toContain(PERIODO_INICIAL);
+  });
+
+  it("el desglose tiene título y aclara que el monto no es una pérdida", () => {
+    expect(TITULO_DESGLOSE).toBe("Desglose de inversión por producto");
+    expect(NOTA_DESGLOSE).toContain("no es una pérdida");
+    expect(NOTA_DESGLOSE).toContain("CMV");
+  });
+
+  it("el desglose vacío y el desglose caído tienen cada uno su mensaje", () => {
+    expect(MENSAJE_SIN_DESGLOSE).toBe("Sin inventario comprado en este período.");
+    expect(MENSAJE_DESGLOSE_CAIDO).toBe("No se pudo calcular el desglose: falla en el servicio de Productos.");
+    expect(MENSAJE_SIN_DESGLOSE).not.toBe(MENSAJE_DESGLOSE_CAIDO);
   });
 });

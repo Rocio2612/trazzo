@@ -6,6 +6,7 @@ import {
   filtrarGastos,
   resumirGastos,
   validarGasto,
+  AGRUPACIONES,
 } from "../../frontend/js/gastos.js";
 // Gastos de ejemplo con el formato de la API (dinero como texto con 2 decimales, fechas aaaa-mm-dd).
 const auditoria = (en) => ({ activo: true, creado_por: "admin1", creado_en: en, modificado_por: null, modificado_en: null });
@@ -603,5 +604,13 @@ describe("describirAuditoria", () => {
       expect(texto).toMatch(/^Creado por admin1 el \d{2}-\d{2}-2026 \d{2}:\d{2}$/);
       expect(texto).not.toMatch(/Modificado/);
     });
+  });
+});
+
+// --- Caso que faltaba: la constante AGRUPACIONES ---
+
+describe("AGRUPACIONES", () => {
+  it("el resumen se puede agrupar por día, mes o año", () => {
+    expect(AGRUPACIONES).toEqual(["dia", "mes", "anio"]);
   });
 });

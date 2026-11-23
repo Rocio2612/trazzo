@@ -6,13 +6,25 @@ import {
   cantidadValida,
   creditoMaximo,
   enPeriodo,
+  fechaLocalIso,
   filtrarVentas,
   limitarAlStock,
   LEYENDA_CREDITO_FISCAL,
+  MEDIO_SALDO_A_FAVOR,
+  MENSAJE_CANTIDAD,
+  MENSAJE_CANTIDADES,
+  MENSAJE_SIN_PRODUCTOS,
+  NOMBRES_DE_CAMPOS,
+  nombreCliente,
+  OPCIONES_PERIODO,
+  redondear,
   resumenDeErrores,
   subtotalDeItem,
+  TASA_IVA,
   textoEstado,
+  textoStockLimitado,
   textoTipo,
+  TIPOS,
   totalDelCarrito,
   validarCobro,
   validarCreditoAUsar,
@@ -204,5 +216,100 @@ describe("historial", () => {
     expect(enPeriodo("2025-12-31T15:00:00", "anio", hoy)).toBe(false);
     expect(enPeriodo("no es una fecha", "mes", hoy)).toBe(false);
     expect(enPeriodo("2020-01-01T00:00:00", "todas", hoy)).toBe(true);
+  });
+});
+
+// --- Casos que faltaban: funciones y constantes que no tenían ningún test ---
+
+describe("redondear", () => {
+  it("redondea a dos decimales por defecto", () => {
+    expect(redondear(1.234)).toBe(1.23);
+    expect(redondear(1.236)).toBe(1.24);
+  });
+
+  it("no arrastra el error de los decimales", () => {
+    expect(redondear(0.1 + 0.2)).toBe(0.3);
+  });
+
+  it("acepta otra cantidad de decimales", () => {
+    expect(redondear(10.456, 1)).toBe(10.5);
+    expect(redondear(5.5, 0)).toBe(6);
+  });
+
+  it("un entero queda igual", () => {
+    expect(redondear(7)).toBe(7);
+  });
+});
+
+describe("textoStockLimitado", () => {
+  it("con una unidad habla en singular", () => {
+    expect(textoStockLimitado(1)).toBe("Solo queda 1 en stock");
+  });
+
+  it("con más unidades habla en plural", () => {
+    expect(textoStockLimitado(5)).toBe("Solo quedan 5 en stock");
+    expect(textoStockLimitado(0)).toBe("Solo quedan 0 en stock");
+  });
+
+  it("acepta el stock como texto", () => {
+    expect(textoStockLimitado("1")).toBe("Solo queda 1 en stock");
+    expect(textoStockLimitado("12")).toBe("Solo quedan 12 en stock");
+  });
+});
+
+describe("nombreCliente", () => {
+  it("muestra el nombre del cliente de la venta", () => {
+    expect(nombreCliente({ cliente_nombre: "Ana Pérez" })).toBe("Ana Pérez");
+  });
+
+  it("sin cliente dice Consumidor final", () => {
+    expect(nombreCliente({})).toBe("Consumidor final");
+    expect(nombreCliente({ cliente_nombre: null })).toBe("Consumidor final");
+    expect(nombreCliente({ cliente_nombre: "" })).toBe("Consumidor final");
+  });
+});
+
+describe("fechaLocalIso", () => {
+  it("devuelve el día en formato aaaa-mm-dd", () => {
+    expect(fechaLocalIso(new Date(2026, 10, 5, 12, 0).toISOString())).toBe("2026-11-05");
+  });
+
+  it("usa el día local de quien mira, aunque sea de noche o de madrugada", () => {
+    expect(fechaLocalIso(new Date(2026, 10, 5, 23, 30).toISOString())).toBe("2026-11-05");
+    expect(fechaLocalIso(new Date(2026, 10, 5, 0, 30).toISOString())).toBe("2026-11-05");
+  });
+
+  it("una fecha inválida o vacía devuelve texto vacío", () => {
+    expect(fechaLocalIso("no es una fecha")).toBe("");
+    expect(fechaLocalIso(undefined)).toBe("");
+  });
+});
+
+describe("constantes de Ventas", () => {
+  it("la tasa de IVA es 21 %", () => {
+    expect(TASA_IVA).toBe(0.21);
+  });
+
+  it("el medio de pago del saldo a favor se llama 'Saldo a favor'", () => {
+    expect(MEDIO_SALDO_A_FAVOR).toBe("Saldo a favor");
+  });
+
+  it("los tipos de venta son Contado y Cuenta corriente", () => {
+    expect(TIPOS).toEqual({ CONTADO: "Contado", CUENTA_CORRIENTE: "Cuenta corriente" });
+  });
+
+  it("los períodos del historial son Todas, Hoy, Este mes y Este año", () => {
+    expect(OPCIONES_PERIODO.map((o) => o.valor)).toEqual(["todas", "hoy", "mes", "anio"]);
+    expect(OPCIONES_PERIODO.map((o) => o.texto)).toEqual(["Todas las ventas", "Hoy", "Este mes", "Este año"]);
+  });
+
+  it("los mensajes del carrito están redactados", () => {
+    expect(MENSAJE_CANTIDAD).toBe("Cantidad obligatoria: un número entero mayor a 0.");
+    expect(MENSAJE_SIN_PRODUCTOS).toBe("No seleccionaste ningún producto. Agregá al menos uno para cobrar la venta.");
+    expect(MENSAJE_CANTIDADES).toBe("Revisá las cantidades: cada producto necesita una cantidad entera mayor a 0.");
+  });
+
+  it("cada campo con error tiene su nombre para el resumen", () => {
+    expect(NOMBRES_DE_CAMPOS).toEqual({ cliente: "cliente", medio_pago: "medio de pago", credito: "saldo a favor a usar" });
   });
 });
