@@ -11,6 +11,7 @@ async function completarRegistro(page) {
   await page.locator("#usuario").fill("usuario1");
   await page.locator("#email").fill("admin@correo.com");
   await page.locator("#password").fill("Password123!");
+  await page.locator("#categoria_impositiva").selectOption("MONOTRIBUTISTA");
   await page.getByRole("button", { name: "Registrarse" }).click();
 }
 
@@ -54,6 +55,62 @@ test.describe("Errores del Backend junto a cada campo", () => {
     await completarRegistro(page);
 
     await expect(page.locator("#error-negocio")).toHaveText("Ya está en uso");
+  });
+
+  const porTexto = [
+    ["El negocio ya existe", "#error-negocio"],
+    ["El usuario ya existe en este negocio", "#error-negocio"],
+    ["El usuario ya existe", "#error-usuario"],
+    ["El correo ya está registrado", "#error-email"],
+    ["Email duplicado", "#error-email"],
+  ];
+
+  for (const [mensaje, selector] of porTexto) {
+    test(`registro: sin campo indicado, deduce dónde mostrar "${mensaje}" por el texto`, async ({ page }) => {
+      await simularApi(page, {
+        "POST /auth/registro": { status: 400, body: { status: "error", mensaje } },
+      });
+      await page.goto("/registro.html");
+      await completarRegistro(page);
+      await expect(page.locator(selector)).toHaveText(mensaje);
+    });
+  }
+
+  test("registro: si el campo indicado no existe en la pantalla, deduce por el texto del mensaje", async ({ page }) => {
+    await simularApi(page, {
+      "POST /auth/registro": {
+        status: 400,
+        body: { status: "error", mensaje: "El usuario ya existe", campo: "campo_inexistente" },
+      },
+    });
+    await page.goto("/registro.html");
+    await completarRegistro(page);
+    await expect(page.locator("#error-usuario")).toHaveText("El usuario ya existe");
+  });
+
+  test("registro: un error sin campo ni pista en el texto se muestra en una ventana emergente", async ({ page }) => {
+    await simularApi(page, {
+      "POST /auth/registro": { status: 500, body: { status: "error", mensaje: "Error interno del servidor" } },
+    });
+    const aviso = page.waitForEvent("dialog");
+    await page.goto("/registro.html");
+    await completarRegistro(page);
+    const dialog = await aviso;
+    expect(dialog.message()).toBe("Error interno del servidor");
+    await dialog.accept();
+    await expect(page).toHaveURL(/registro\.html$/);
+  });
+
+  test("registro: errores con un campo que no existe en la pantalla caen a la ventana emergente", async ({ page }) => {
+    await simularApi(page, {
+      "POST /auth/registro": { status: 400, body: { errores: { campo_inexistente: "Valor inválido" } } },
+    });
+    const aviso = page.waitForEvent("dialog");
+    await page.goto("/registro.html");
+    await completarRegistro(page);
+    const dialog = await aviso;
+    expect(dialog.message()).toBe("Valor inválido");
+    await dialog.accept();
   });
 
   test("recuperar: el error del correo aparece junto al campo, sin ventana emergente", async ({ page }) => {
@@ -123,6 +180,30 @@ test.describe("Login: demasiados intentos (429)", () => {
     );
   });
 
+  test("con exactamente un minuto lo dice en singular", async ({ page }) => {
+    await simularApi(page, {
+      "POST /auth/login": { status: 429, headers: { "retry-after": "60" }, body: { status: "error", mensaje: "Demasiados intentos" } },
+    });
+    await page.goto("/login.html");
+    await completarLogin(page);
+
+    await expect(page.locator("#error-password")).toHaveText(
+      "Demasiados intentos fallidos. Esperá 1 minuto antes de volver a intentar.",
+    );
+  });
+
+  test("un tiempo que no es múltiplo de 60 se redondea hacia arriba", async ({ page }) => {
+    await simularApi(page, {
+      "POST /auth/login": { status: 429, headers: { "retry-after": "61" }, body: { status: "error", mensaje: "Demasiados intentos" } },
+    });
+    await page.goto("/login.html");
+    await completarLogin(page);
+
+    await expect(page.locator("#error-password")).toHaveText(
+      "Demasiados intentos fallidos. Esperá 2 minutos antes de volver a intentar.",
+    );
+  });
+
   test("si el Backend no indica el tiempo, da un mensaje general", async ({ page }) => {
     await simularApi(page, {
       "POST /auth/login": { status: 429, body: { status: "error", mensaje: "Demasiados intentos" } },
@@ -167,6 +248,7 @@ test.describe("Botón de envío mientras se procesa", () => {
     await page.locator("#usuario").fill("usuario1");
     await page.locator("#email").fill("admin@correo.com");
     await page.locator("#password").fill("Password123!");
+    await page.locator("#categoria_impositiva").selectOption("MONOTRIBUTISTA");
 
     const boton = page.getByRole("button", { name: "Registrarse" });
     await boton.dblclick();
@@ -216,5 +298,34 @@ test.describe("Botón de envío mientras se procesa", () => {
     await boton.click();
     await expect(boton).toBeDisabled();
     await expect(page).toHaveURL(/login\.html$/);
+  });
+
+  test("recuperar: vuelve a habilitarse si la API falla", async ({ page }) => {
+    await simularApi(page, {
+      "POST /auth/recuperar": { status: 500, demora: 300, body: { status: "error", mensaje: "Error interno" } },
+    });
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.goto("/recuperar.html");
+    await page.locator("#email").fill("admin@correo.com");
+    const boton = page.getByRole("button", { name: "Enviar Enlace" });
+    await boton.click();
+    await expect(boton).toBeDisabled();
+    await expect(boton).toBeEnabled();
+    await expect(page).toHaveURL(/recuperar\.html$/);
+  });
+
+  test("restablecer: vuelve a habilitarse si el token ya no sirve", async ({ page }) => {
+    await simularApi(page, {
+      "POST /auth/restablecer": { status: 400, demora: 300, body: { status: "error", mensaje: "Token inválido" } },
+    });
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.goto("/restablecer.html?token=abc123");
+    await page.locator("#password").fill("NuevaPassword123!");
+    await page.locator("#password-confirm").fill("NuevaPassword123!");
+    const boton = page.getByRole("button", { name: "Guardar Nueva Contraseña" });
+    await boton.click();
+    await expect(boton).toBeDisabled();
+    await expect(boton).toBeEnabled();
+    await expect(page).toHaveURL(/restablecer\.html/);
   });
 });

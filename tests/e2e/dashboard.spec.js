@@ -23,6 +23,9 @@ const logoutOk = {
   },
 };
 
+// Confirma el modal de "Cerrar Sesión" (botón de confirmar, no el del encabezado).
+const confirmarCierre = (page) => page.getByTestId("modal-confirmar-accion").click();
+
 // Los textos de módulos del cuerpo del dashboard (no los de la barra lateral).
 const modulo = (page, nombre) => page.locator(`.menu-modulos [data-modulo="${nombre}"]`);
 
@@ -261,18 +264,27 @@ test.describe("Barra lateral", () => {
     ["reportes", "reportes.html", "Reportes"],
   ];
 
-  // Pantallas que ya tienen contenido: no muestran el cartel "En construcción" y su título puede ser otro.
-  const TITULO_DE_PANTALLA = { ventas: "Nueva venta", productos: "Productos", proveedores: "Proveedores", gastos: "Gastos operativos", reportes: "Reportes" };
+  // Título (h1) de cada pantalla: a veces es distinto del nombre que lleva el menú.
+  const TITULO_DE_PANTALLA = {
+    ventas: "Nueva venta",
+    clientes: "Clientes",
+    productos: "Productos",
+    proveedores: "Proveedores",
+    insumos: "Insumos",
+    bienes_uso: "Equipamiento",
+    gastos: "Gastos operativos",
+    reportes: "Reportes",
+    cuentas_corrientes: "Cuenta corriente",
+  };
 
   for (const [modulo, archivo, titulo] of PANTALLAS) {
-    const terminada = modulo in TITULO_DE_PANTALLA;
-    test(`el menú abre ${titulo} y la pantalla ${terminada ? "tiene su contenido" : "dice En construcción"}`, async ({ page }) => {
+    test(`el menú abre ${titulo} y la pantalla muestra su título`, async ({ page }) => {
       await iniciarSesionComo(page, "ADMIN");
       await page.goto("/dashboard.html");
       await page.getByTestId(`menu-${modulo}`).click();
       await expect(page).toHaveURL(new RegExp(`${archivo}$`));
-      await expect(page.getByRole("heading", { name: TITULO_DE_PANTALLA[modulo] ?? titulo, exact: true })).toBeVisible();
-      if (!terminada) await expect(page.getByText("En construcción")).toBeVisible();
+      await expect(page.getByRole("heading", { name: TITULO_DE_PANTALLA[modulo], exact: true })).toBeVisible();
+      await expect(page.getByText("En construcción")).toHaveCount(0);
       await expect(page.getByTestId(`menu-${modulo}`)).toHaveAttribute("aria-current", "page");
       await expect(page.getByTestId("btn-cerrar-sesion")).toBeVisible();
     });
@@ -284,10 +296,8 @@ test.describe("Barra lateral", () => {
     for (const [modulo, archivo] of [["ventas", "ventas.html"], ["cuentas_corrientes", "cuenta-corriente.html"], ["productos", "productos.html"]]) {
       await page.getByTestId(`menu-${modulo}`).click();
       await expect(page).toHaveURL(new RegExp(`${archivo}$`));
-      // Ventas y Productos ya tienen su pantalla; las otras todavía muestran el cartel.
-      if (modulo === "ventas") await expect(page.getByRole("heading", { name: "Nueva venta", exact: true })).toBeVisible();
-      else if (modulo === "productos") await expect(page.getByRole("heading", { name: "Productos", exact: true })).toBeVisible();
-      else await expect(page.getByText("En construcción")).toBeVisible();
+      const titulo = { ventas: "Nueva venta", cuentas_corrientes: "Cuenta corriente", productos: "Productos" }[modulo];
+      await expect(page.getByRole("heading", { name: titulo, exact: true })).toBeVisible();
     }
   });
 
@@ -335,15 +345,15 @@ test.describe("Cierre de sesión", () => {
     const { access } = await tokensGuardados(page);
     await page.goto("/dashboard.html");
 
-    let tipoDialogo = "";
-    page.once("dialog", (dialog) => {
-      tipoDialogo = dialog.type();
-      dialog.accept();
-    });
-    await page.getByRole("button", { name: "Cerrar Sesión" }).click();
+    await page.getByTestId("btn-cerrar-sesion").click();
+    // Pide confirmación con un modal propio, no con la ventana del navegador.
+    const modal = page.getByRole("alertdialog");
+    await expect(modal).toBeVisible();
+    await expect(modal).toContainText("¿Estás seguro/a que querés cerrar sesión?");
+    expect(llamadasA(llamadas, "/auth/logout")).toHaveLength(0);
+    await confirmarCierre(page);
 
     await expect(page).toHaveURL(/login\.html$/);
-    expect(tipoDialogo).toBe("confirm");
     const logout = llamadasA(llamadas, "/auth/logout");
     expect(logout).toHaveLength(1);
     expect(logout[0].metodo).toBe("POST");
@@ -358,9 +368,11 @@ test.describe("Cierre de sesión", () => {
     await iniciarSesionComo(page, "ADMIN");
     await page.goto("/dashboard.html");
 
-    page.once("dialog", (dialog) => dialog.dismiss());
-    await page.getByRole("button", { name: "Cerrar Sesión" }).click();
+    await page.getByTestId("btn-cerrar-sesion").click();
+    await expect(page.getByRole("alertdialog")).toBeVisible();
+    await page.getByRole("button", { name: "Cancelar" }).click();
 
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
     await expect(page).toHaveURL(/dashboard\.html$/);
     expect(llamadasA(llamadas, "/auth/logout")).toHaveLength(0);
     expect((await tokensGuardados(page)).access).not.toBeNull();
@@ -376,8 +388,8 @@ test.describe("Cierre de sesión", () => {
     await iniciarSesionComo(page, "ADMIN");
     await page.goto("/dashboard.html");
 
-    page.once("dialog", (dialog) => dialog.accept());
-    await page.getByRole("button", { name: "Cerrar Sesión" }).click();
+    await page.getByTestId("btn-cerrar-sesion").click();
+    await confirmarCierre(page);
 
     await expect(page).toHaveURL(/login\.html$/);
     expect(await tokensGuardados(page)).toEqual({ access: null, refresh: null });
@@ -388,8 +400,8 @@ test.describe("Cierre de sesión", () => {
     await iniciarSesionComo(page, "ADMIN");
     await page.goto("/dashboard.html");
 
-    page.once("dialog", (dialog) => dialog.accept());
-    await page.getByRole("button", { name: "Cerrar Sesión" }).click();
+    await page.getByTestId("btn-cerrar-sesion").click();
+    await confirmarCierre(page);
 
     await expect(page).toHaveURL(/login\.html$/);
     expect(await tokensGuardados(page)).toEqual({ access: null, refresh: null });
@@ -400,8 +412,8 @@ test.describe("Cierre de sesión", () => {
     await iniciarSesionComo(page, "ADMIN");
     await page.goto("/dashboard.html");
 
-    page.once("dialog", (dialog) => dialog.accept());
-    await page.getByRole("button", { name: "Cerrar Sesión" }).click();
+    await page.getByTestId("btn-cerrar-sesion").click();
+    await confirmarCierre(page);
     await expect(page).toHaveURL(/login\.html$/);
 
     await page.goBack();

@@ -18,12 +18,14 @@ async function completarRegistro(page, datos = {}) {
     usuario: "usuario1",
     email: "admin@correo.com",
     password: "Password123!",
+    categoria: "MONOTRIBUTISTA",
     ...datos,
   };
   await page.locator("#negocio").fill(v.negocio);
   await page.locator("#usuario").fill(v.usuario);
   await page.locator("#email").fill(v.email);
   await page.locator("#password").fill(v.password);
+  if (v.categoria) await page.locator("#categoria_impositiva").selectOption(v.categoria);
   if (v.nombre) await page.locator("#nombre").fill(v.nombre);
   if (v.rubro) await page.locator("#rubro").selectOption(v.rubro);
   if (v.otroRubro) await page.locator("#otro-rubro").fill(v.otroRubro);
@@ -49,7 +51,7 @@ test.describe("Registro", () => {
   });
 
   test("los campos obligatorios están marcados y los opcionales no", async ({ page }) => {
-    for (const id of ["negocio", "usuario", "email", "password"]) {
+    for (const id of ["negocio", "usuario", "email", "password", "categoria_impositiva"]) {
       await expect(page.locator(`#${id}`)).toHaveAttribute("required", "");
     }
     for (const id of ["nombre", "rubro", "otro-rubro"]) {
@@ -62,7 +64,11 @@ test.describe("Registro", () => {
     ["identificador con menos de 4 caracteres", { negocio: "abc" }, "error-negocio"],
     ["identificador con símbolos", { negocio: "mi_negocio" }, "error-negocio"],
     ["usuario con más de 20 caracteres", { usuario: "a".repeat(21) }, "error-usuario"],
+    ["usuario con menos de 4 caracteres", { usuario: "abc" }, "error-usuario"],
+    ["usuario con mayúsculas", { usuario: "Usuario1" }, "error-usuario"],
     ["usuario con símbolos", { usuario: "user.name" }, "error-usuario"],
+    ["identificador con más de 20 caracteres", { negocio: "a".repeat(21) }, "error-negocio"],
+    ["contraseña sin minúscula", { password: "PASSWORD123!" }, "error-password"],
     ["correo sin dominio", { email: "correo@sinpunto" }, "error-email"],
     ["contraseña corta", { password: "Ab1!" }, "error-password"],
     ["contraseña sin mayúscula", { password: "password123!" }, "error-password"],
@@ -82,6 +88,57 @@ test.describe("Registro", () => {
     });
   }
 
+  test("correo sin arroba: el navegador bloquea el envío por type=email", async ({ page }) => {
+    const llamadas = await simularApi(page);
+    await completarRegistro(page, { email: "correo.com" });
+    await expect(page).toHaveURL(/registro\.html$/);
+    expect(llamadas).toHaveLength(0);
+  });
+
+  test("exige la categoría impositiva (validación del script)", async ({ page }) => {
+    const llamadas = await simularApi(page);
+    // Se quita la validación del navegador para llegar a la del script
+    await page.evaluate(() => document.getElementById("registro-form").setAttribute("novalidate", ""));
+    await completarRegistro(page, { categoria: "" });
+    await expect(page.locator("#error-categoria_impositiva")).toHaveText("Elegí la categoría impositiva.");
+    expect(llamadas).toHaveLength(0);
+    await expect(page).toHaveURL(/registro\.html$/);
+  });
+
+  test("sin categoría impositiva el navegador bloquea el envío por el atributo required", async ({ page }) => {
+    const llamadas = await simularApi(page);
+    await completarRegistro(page, { categoria: "" });
+    await expect(page).toHaveURL(/registro\.html$/);
+    expect(llamadas).toHaveLength(0);
+  });
+
+  for (const categoria of ["RESPONSABLE_INSCRIPTO", "MONOTRIBUTISTA", "EXENTO"]) {
+    test(`envía la categoría impositiva ${categoria}`, async ({ page }) => {
+      const llamadas = await simularApi(page, { "POST /auth/registro": respuestaOk });
+      await completarRegistro(page, { categoria });
+      await expect(page).toHaveURL(/dashboard\.html$/);
+      expect(llamadasA(llamadas, "/auth/registro")[0].body.categoria_impositiva).toBe(categoria);
+    });
+  }
+
+  const validosEnLimite = [
+    ["identificador de 4 caracteres", { negocio: "abcd" }],
+    ["identificador de 20 caracteres", { negocio: "a".repeat(20) }],
+    ["usuario de 4 caracteres", { usuario: "abcd" }],
+    ["usuario de 20 caracteres", { usuario: "a".repeat(20) }],
+    ["contraseña de 8 caracteres", { password: "Aa1!aaaa" }],
+    ["contraseña de 64 caracteres", { password: "Aa1!" + "a".repeat(60) }],
+  ];
+
+  for (const [nombre, datos] of validosEnLimite) {
+    test(`acepta ${nombre} (límite del rango)`, async ({ page }) => {
+      const llamadas = await simularApi(page, { "POST /auth/registro": respuestaOk });
+      await completarRegistro(page, datos);
+      await expect(page).toHaveURL(/dashboard\.html$/);
+      expect(llamadasA(llamadas, "/auth/registro")).toHaveLength(1);
+    });
+  }
+
   test("envía los datos con los nombres del contrato", async ({ page }) => {
     const llamadas = await simularApi(page, { "POST /auth/registro": respuestaOk });
     await completarRegistro(page, { nombre: "Trazzo Store", rubro: "indumentaria" });
@@ -95,6 +152,7 @@ test.describe("Registro", () => {
       password: "Password123!",
       nombre_negocio: "Trazzo Store",
       rubro: "indumentaria",
+      categoria_impositiva: "MONOTRIBUTISTA",
     });
   });
 

@@ -42,6 +42,40 @@ test.describe("Login", () => {
     expect(llamadas).toHaveLength(0);
   });
 
+  test("valida que el identificador no supere los 20 caracteres, sin llamar a la API", async ({ page }) => {
+    const llamadas = await simularApi(page);
+    await completarLogin(page, { negocio: "a".repeat(21) });
+    await expect(page.locator("#error-negocio")).toHaveText("Debe tener entre 4 y 20 caracteres.");
+    expect(llamadas).toHaveLength(0);
+  });
+
+  for (const negocio of ["abcd", "a".repeat(20)]) {
+    test(`acepta un identificador de ${negocio.length} caracteres (límite del rango)`, async ({ page }) => {
+      const llamadas = await simularApi(page, { "POST /auth/login": loginOk });
+      await completarLogin(page, { negocio });
+      await expect(page).toHaveURL(/dashboard\.html$/);
+      expect(llamadasA(llamadas, "/auth/login")[0].body.id_negocio).toBe(negocio);
+    });
+  }
+
+  for (const campo of ["usuario", "password"]) {
+    test(`pide completar todos los campos si falta ${campo} (validación del script)`, async ({ page }) => {
+      const llamadas = await simularApi(page);
+      // Se quita "required" para llegar a la validación propia del script, no a la del navegador
+      await page.evaluate(() => document.getElementById("login-form").setAttribute("novalidate", ""));
+      await completarLogin(page, { [campo]: "" });
+      await expect(page.locator("#error-password")).toHaveText("Completá todos los campos.");
+      expect(llamadas).toHaveLength(0);
+    });
+  }
+
+  test("usuario o contraseña vacíos: el navegador bloquea el envío por el atributo required", async ({ page }) => {
+    const llamadas = await simularApi(page);
+    await completarLogin(page, { usuario: "" });
+    await expect(page).toHaveURL(/login\.html$/);
+    expect(llamadas).toHaveLength(0);
+  });
+
   test("envía los datos con los nombres del contrato", async ({ page }) => {
     const llamadas = await simularApi(page, { "POST /auth/login": loginOk });
     await completarLogin(page);
