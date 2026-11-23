@@ -20,7 +20,8 @@ const iniciarPantalla = () => {
     { id: "categorias", texto: "Categorías", ...crearPanelLista("categorias") },
     { id: "medios-pago", texto: "Medios de pago", ...crearPanelLista("medios_pago") },
   ];
-  const cargadas = new Set();
+  const cargadas = new Set(); // pestañas cuya lista ya se cargó bien
+  const cargando = new Set(); // pestañas con una carga en curso (evita pedir dos veces si se cambia rápido de pestaña)
 
   const lista = h("div", { class: "cfg-pestanias", role: "tablist", "aria-label": "Secciones de configuración" });
   const zonaPanel = h("div", { class: "cfg-panel" });
@@ -41,9 +42,12 @@ const iniciarPantalla = () => {
     });
     if (actualizarHash) history.replaceState(null, "", `#${actual.id}`);
     zonaPanel.replaceChildren(actual.panel);
-    if (!cargadas.has(actual.id)) {
-      cargadas.add(actual.id);
-      await actual.cargar();
+    // Una pestaña se pide una sola vez, salvo que la carga haya fallado: al volver a ella se reintenta.
+    if (!cargadas.has(actual.id) && !cargando.has(actual.id)) {
+      cargando.add(actual.id);
+      const ok = await actual.cargar();
+      cargando.delete(actual.id);
+      if (ok) cargadas.add(actual.id);
     }
   };
 

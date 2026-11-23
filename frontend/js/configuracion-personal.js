@@ -91,6 +91,7 @@ export const crearPanelPersonal = () => {
       ctx.error = mensajeDeError(error, "No se pudo cargar el personal.");
     }
     refrescar();
+    return !ctx.error; // la pantalla de Configuración reintenta la pestaña si devuelve false
   };
 
   // Ejecuta una acción sobre el Backend: si falla, avisa el motivo y vuelve a pedir la lista (puede haber cambiado).

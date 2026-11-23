@@ -463,7 +463,11 @@ const iniciarPantalla = () => {
           return;
         }
         if (error.errores) {
-          mostrarErrores({ cliente: error.errores.cliente_id, medio_pago: error.errores.medio_pago_id });
+          // Solo se incluyen los campos que el Backend marcó: así el resumen nombra únicamente los que fallaron.
+          const erroresDeCampos = {};
+          if (error.errores.cliente_id) erroresDeCampos.cliente = error.errores.cliente_id;
+          if (error.errores.medio_pago_id) erroresDeCampos.medio_pago = error.errores.medio_pago_id;
+          mostrarErrores(erroresDeCampos);
           if (error.errores.items) {
             modal.cerrar();
             avisarArriba(error.errores.items, "venta-aviso");

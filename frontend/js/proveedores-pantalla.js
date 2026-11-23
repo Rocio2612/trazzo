@@ -28,9 +28,15 @@ import {
   TIPOS_DOCUMENTO,
   validarProveedor,
 } from "./proveedores.js";
+import { mensajeDeError } from "./servicios/errores.js";
 import { servicioProveedores } from "./mocks/proveedores.js";
 
 const MODULO = "proveedores";
+
+// Los errores del servidor real (con status) o de conexión pasan por mensajeDeError; los de los datos de ejemplo
+// (sin status) traen su propio mensaje.
+const textoDeError = (error, porDefecto) =>
+  error instanceof TypeError || error?.status !== undefined ? mensajeDeError(error, porDefecto) : error?.message || porDefecto;
 
 const ICONO_OCULTAR =
   '<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/>';
@@ -77,9 +83,27 @@ const iniciarPantalla = async () => {
   const ctx = { q: "", ocultos: false, proveedores: [] };
   const zonaTabla = h("div");
 
+  // Si el servidor falla se avisa en la tabla (y se conserva la lista que ya estaba) en vez de dejar la pantalla sin respuesta.
   const cargar = async () => {
-    ctx.proveedores = await servicioProveedores.listar({ q: ctx.q, ocultos: ctx.ocultos });
+    try {
+      ctx.proveedores = await servicioProveedores.listar({ q: ctx.q, ocultos: ctx.ocultos });
+      ctx.error = "";
+    } catch (error) {
+      ctx.error = textoDeError(error, "No se pudo cargar la lista de proveedores.");
+    }
     refrescar();
+  };
+
+  // Ejecuta una acción sobre el servidor: si falla, avisa el motivo y vuelve a pedir la lista (puede haber cambiado).
+  const intentar = async (accion, mensajeSiFalla) => {
+    try {
+      await accion();
+      return true;
+    } catch (error) {
+      avisar(textoDeError(error, mensajeSiFalla));
+      await cargar();
+      return false;
+    }
   };
 
   // --- Alta y edición ---
@@ -117,14 +141,14 @@ const iniciarPantalla = async () => {
       ],
       textoOk: "Ocultar",
       alAceptar: async () => {
-        await servicioProveedores.cambiarOculto(p.id, true);
+        if (!(await intentar(() => servicioProveedores.cambiarOculto(p.id, true), "No se pudo ocultar."))) return;
         await cargar();
         avisar(`"${p.nombre}" ahora está oculto`);
       },
     });
 
   const restaurar = async (p) => {
-    await servicioProveedores.cambiarOculto(p.id, false);
+    if (!(await intentar(() => servicioProveedores.cambiarOculto(p.id, false), "No se pudo restaurar."))) return;
     await cargar();
     avisar(`"${p.nombre}" se restauró`);
   };
@@ -140,13 +164,9 @@ const iniciarPantalla = async () => {
       textoOk: "Eliminar",
       claseOk: "btn-peligro",
       alAceptar: async () => {
-        try {
-          await servicioProveedores.eliminar(p.id);
-          await cargar();
-          avisar(`"${p.nombre}" se eliminó`);
-        } catch (error) {
-          avisar(error.message || "No se pudo eliminar.");
-        }
+        if (!(await intentar(() => servicioProveedores.eliminar(p.id), "No se pudo eliminar."))) return;
+        await cargar();
+        avisar(`"${p.nombre}" se eliminó`);
       },
     });
 
@@ -195,7 +215,9 @@ const iniciarPantalla = async () => {
         "div",
         { class: "gastos-tarjeta" },
         ctx.proveedores.length === 0
-          ? h("div", { class: "gastos-vacio", "data-testid": "proveedores-vacio", text: textoVacio })
+          ? ctx.error
+            ? h("div", { class: "gastos-vacio", "data-testid": "proveedores-error-carga", text: ctx.error })
+            : h("div", { class: "gastos-vacio", "data-testid": "proveedores-vacio", text: textoVacio })
           : h(
               "div",
               { class: "gastos-tabla-contenedor cfg-tabla-contenedor" },

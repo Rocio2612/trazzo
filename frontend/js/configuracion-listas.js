@@ -42,6 +42,7 @@ export const crearPanelLista = (tipo) => {
   const zonaLista = h("div");
 
   // Si el Backend no responde se avisa en la lista en vez de mostrarla vacía.
+  // Devuelve true si la lista se cargó bien (la pantalla de Configuración reintenta la pestaña si devuelve false).
   const cargar = async () => {
     try {
       ctx.elementos = await servicio.listar();
@@ -50,6 +51,7 @@ export const crearPanelLista = (tipo) => {
       ctx.error = mensajeDeError(error, `No se pudo cargar la lista de ${textos.singular}s.`);
     }
     refrescar();
+    return !ctx.error;
   };
 
   const nombresExcepto = (id) => ctx.elementos.filter((e) => e.id !== id).map((e) => e.nombre);
@@ -120,11 +122,14 @@ export const crearPanelLista = (tipo) => {
       alAceptar: async () => {
         try {
           await servicio.eliminar(elemento.id);
-          await cargar();
-          avisar(`"${elemento.nombre}" se eliminó`);
         } catch (e) {
           avisar(mensajeDeError(e, "No se pudo eliminar."));
+          // Puede haber cambiado desde otro lado (por ejemplo, otra persona ya lo eliminó): se vuelve a pedir la lista.
+          await cargar();
+          return;
         }
+        await cargar();
+        avisar(`"${elemento.nombre}" se eliminó`);
       },
     });
 
