@@ -19,22 +19,37 @@ ORIGENES_PERMITIDOS = [
 ]
 CORS(app, resources={r"/api/*": {"origins": ORIGENES_PERMITIDOS}}, supports_credentials=True)
 
-#Temporal y cambiar dependiendo del SM
+# Diccionario de enrutamiento del API Gateway:
+# Traduce el primer segmento de cada URL (/api/<recurso>) hacia el puerto del microservicio dueño de ese dominio.
 SERVICES = {
+    # --- SPRINT 1: Autenticación, Negocio y Personal (auth-service - puerto 5001) ---
     "auth": os.getenv("AUTH_URL", "http://127.0.0.1:5001"),
+
+    # --- SPRINT 2: Catálogo, Stock y Proveedores (productos-service - puerto 5002) ---
     "productos": os.getenv("PRODUCTOS_URL", "http://127.0.0.1:5002"),
     "reposiciones": os.getenv("PRODUCTOS_URL", "http://127.0.0.1:5002"),
-    "categorias": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
     "proveedores": os.getenv("PRODUCTOS_URL", "http://127.0.0.1:5002"),
-    "transacciones": os.getenv("TRANSACCIONES_URL", "http://127.0.0.1:5003"),
+
+    # --- SPRINT 2: Finanzas, Gastos y Listas Maestras (finanzas-service - puerto 5004) ---
     "finanzas": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
+    "categorias": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
     "medios-pago": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
     "gastos": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
-    "bienes-uso": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"), 
+    "bienes-uso": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
     "bienes-gasto": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
-    "insumos": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),      # Alias de compatibilidad frontend
-    "reportes": os.getenv("REPORTES_URL", "http://127.0.0.1:5005"),
-    "notificaciones": os.getenv("NOTIFICACIONES_URL", "http://127.0.0.1:5006")
+    "insumos": os.getenv("FINANZAS_URL", "http://127.0.0.1:5004"),
+
+    # --- SPRINT 2: Alertas de Stock Mínimo (notificaciones-service - puerto 5006) ---
+    "notificaciones": os.getenv("NOTIFICACIONES_URL", "http://127.0.0.1:5006"),
+
+    # --- SPRINT 3: Clientes, Ventas y Cuenta Corriente (transacciones-service - puerto 5003) ---
+    "transacciones": os.getenv("TRANSACCIONES_URL", "http://127.0.0.1:5003"), # Ruta base y /health
+    "clientes": os.getenv("TRANSACCIONES_URL", "http://127.0.0.1:5003"),      # Módulo 7: Lista de Clientes
+    "ventas": os.getenv("TRANSACCIONES_URL", "http://127.0.0.1:5003"),        # Módulo 8: Ventas
+    "pagos": os.getenv("TRANSACCIONES_URL", "http://127.0.0.1:5003"),         # Módulo 9: Cuenta Corriente
+
+    # --- SPRINT 3: Consolidado Financiero (reportes-service - puerto 5005) ---
+    "reportes": os.getenv("REPORTES_URL", "http://127.0.0.1:5005"),           # Módulo 11: Reporte General
 }
 
 # Cabeceras HTTP de transporte que no deben propagarse al cliente
