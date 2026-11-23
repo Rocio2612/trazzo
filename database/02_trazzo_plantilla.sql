@@ -1,5 +1,5 @@
 -- PROYECTO TRAZZO - BASE DE DATOS PLANTILLA OPERATIVA (trazzo_plantilla)
--- Microservicios: productos (5002), finanzas (5004), notificaciones (5006)
+-- Microservicios: productos (5002), finanzas (5004), notificaciones (5006), transacciones (5003)
 -- Nota arquitectónica: Esta base actúa como molde (TEMPLATE) para clonar una base
 -- física independiente por cada emprendimiento (ej. CREATE DATABASE trazzo_panchoria TEMPLATE trazzo_plantilla).
 -- Por esta razón, no contiene el esquema 'auth' ni claves foráneas hacia 'auth.emprendimientos'.
@@ -13,6 +13,7 @@ CREATE SCHEMA IF NOT EXISTS productos;
 CREATE SCHEMA IF NOT EXISTS finanzas;
 CREATE SCHEMA IF NOT EXISTS notificaciones;
 CREATE SCHEMA IF NOT EXISTS comercio;
+CREATE SCHEMA IF NOT EXISTS ventas;
 
 -- 1. DOMINIO ESTRUCTURAL DEL COMERCIO (Sucursales - Escalabilidad Futura)
 -- Tabla: SUCURSALES
@@ -372,6 +373,220 @@ CREATE TABLE IF NOT EXISTS notificaciones.alertas_descartes (
 -- Agiliza la exclusión de alertas descartadas al cargar la campana de notificaciones de cada usuario.
 CREATE INDEX IF NOT EXISTS idx_descartes_usuario 
     ON notificaciones.alertas_descartes (usuario_id);
+
+-- SPRINT 3
+-- 5. DOMINIO DE CLIENTES, VENTAS Y CUENTA CORRIENTE (transacciones-service)
+-- Tabla: CLIENTES (Módulo 7 - Agenda comercial y alta rápida)
+CREATE TABLE IF NOT EXISTS ventas.clientes (
+    id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    emprendimiento_id INT NOT NULL,
+    nombre_razon_social VARCHAR(150) NOT NULL,
+    -- [Campos opcionales para permitir el "alta rápida" del Cajero desde Ventas solo con el nombre]
+    tipo_documento VARCHAR(10) NULL,
+    numero_documento VARCHAR(20) NULL,
+    telefono VARCHAR(50) NULL,
+    correo VARCHAR(120) NULL,
+    domicilio VARCHAR(200) NULL,
+    -- Asume CONSUMIDOR_FINAL por defecto en altas rápidas hasta que un Administrador complete la ficha
+    categoria_impositiva VARCHAR(30) DEFAULT 'CONSUMIDOR_FINAL' NOT NULL,
+    -- Acumula dinero extra entregado por el cliente en Cuenta Corriente para descontarlo en futuras ventas
+    saldo_a_favor NUMERIC(12,2) DEFAULT 0.00 NOT NULL,
+    activo BOOLEAN DEFAULT TRUE NOT NULL,
+    creado_por VARCHAR(50) NOT NULL,
+    modificado_por VARCHAR(50) NULL,
+    creado_en TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    modificado_en TIMESTAMPTZ NULL,
+
+    -- Impide registrar clientes con nombre vacío o compuesto solo por espacios en blanco.
+    CONSTRAINT chk_cliente_nombre CHECK (btrim(nombre_razon_social) <> ''),
+    -- Limita los tipos de documento a las identificaciones legales válidas (o NULL en alta rápida).
+    CONSTRAINT chk_cliente_tipo_doc CHECK (
+        tipo_documento IS NULL OR tipo_documento IN ('DNI', 'CUIT', 'CUIL')
+    ),
+    -- Restringe la categoría impositiva a los valores admitidos para calcular el IVA en cada venta.
+    CONSTRAINT chk_cliente_categoria CHECK (
+        categoria_impositiva IN ('RESPONSABLE_INSCRIPTO', 'MONOTRIBUTISTA', 'EXENTO', 'CONSUMIDOR_FINAL')
+    ),
+    -- Regla financiera: El saldo a favor disponible nunca puede ser negativo.
+    CONSTRAINT chk_cliente_saldo_favor CHECK (saldo_a_favor >= 0),
+    -- Valida el formato del correo electrónico cuando es informado.
+    CONSTRAINT chk_cliente_correo_formato CHECK (
+        correo IS NULL OR btrim(correo) = '' OR correo ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
+    )
+);
+
+-- Índice único parcial: Impide duplicar DNI/CUIT/CUIL dentro del mismo negocio, ignorando clientes de alta rápida sin documento.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cliente_doc_tenant
+    ON ventas.clientes (emprendimiento_id, tipo_documento, numero_documento)
+    WHERE numero_documento IS NOT NULL AND btrim(numero_documento) <> '';
+
+-- Agiliza las búsquedas del directorio de clientes y el filtrado de activos/ocultos por comercio.
+CREATE INDEX IF NOT EXISTS idx_clientes_tenant
+    ON ventas.clientes (emprendimiento_id, activo);
+
+-- Secuencia atómica por negocio para generar números de venta correlativos de 8 dígitos sin colisiones en ventas simultáneas.
+CREATE SEQUENCE IF NOT EXISTS ventas.seq_numero_venta
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+-- Tabla: VENTAS (Módulo 8 - Cabecera inmutable de operaciones comerciales)
+CREATE TABLE IF NOT EXISTS ventas.ventas (
+    id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    emprendimiento_id INT NOT NULL,
+    -- Identifica la sucursal donde se realizó la operación (por defecto 1 = Casa Central)
+    sucursal_id INT DEFAULT 1 NOT NULL,
+    -- Opcional (NULL = Consumidor Final) en ventas de contado; obligatorio en ventas a cuenta corriente
+    cliente_id INT NULL,
+    numero_venta VARCHAR(20) NOT NULL,
+    tipo_venta VARCHAR(20) NOT NULL,
+    modo_iva VARCHAR(20) NOT NULL,
+    -- Guarda la leyenda legal obligatoria (Ley N° 27.618) cuando un Responsable Inscripto vende a un Monotributista
+    leyenda_iva TEXT NULL,
+    subtotal_neto NUMERIC(12,2) NOT NULL,
+    monto_iva NUMERIC(12,2) DEFAULT 0.00 NOT NULL,
+    saldo_a_favor_usado NUMERIC(12,2) DEFAULT 0.00 NOT NULL,
+    total NUMERIC(12,2) NOT NULL,
+    estado VARCHAR(20) DEFAULT 'CONFIRMADA' NOT NULL,
+    -- Permite ocultar visualmente la venta al Administrador sin excluirla de los reportes
+    oculto BOOLEAN DEFAULT FALSE NOT NULL,
+    creado_por VARCHAR(50) NOT NULL,
+    fecha_hora TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    -- [Campos de auditoría formal de anulación]
+    anulada_por VARCHAR(50) NULL,
+    anulada_en TIMESTAMPTZ NULL,
+
+    CONSTRAINT fk_ventas_sucursal
+        FOREIGN KEY (sucursal_id)
+        REFERENCES comercio.sucursales (id)
+        ON DELETE NO ACTION,
+    CONSTRAINT fk_ventas_cliente
+        FOREIGN KEY (cliente_id)
+        REFERENCES ventas.clientes (id)
+        ON DELETE NO ACTION,
+    -- Garantiza que el número de venta correlativo de 8 dígitos sea único dentro de cada comercio.
+    CONSTRAINT uq_venta_numero_tenant
+        UNIQUE (emprendimiento_id, numero_venta),
+    -- Limita la modalidad comercial únicamente a ventas de contado o a cuenta corriente.
+    CONSTRAINT chk_venta_tipo CHECK (
+        tipo_venta IN ('CONTADO', 'CUENTA_CORRIENTE')
+    ),
+    -- Regla de negocio: Toda venta a cuenta corriente exige obligatoriamente un cliente registrado asociado.
+    CONSTRAINT chk_venta_cliente_cta_cte CHECK (
+        tipo_venta = 'CONTADO' OR cliente_id IS NOT NULL
+    ),
+    -- Restringe el tratamiento fiscal a los tres modos definidos según las categorías impositivas intervinientes.
+    CONSTRAINT chk_venta_modo_iva CHECK (
+        modo_iva IN ('DISCRIMINA', 'INCLUIDO', 'NINGUNO')
+    ),
+    -- Asegura que los subtotales, impuestos, créditos aplicados y totales nunca sean negativos.
+    CONSTRAINT chk_venta_importes CHECK (
+        subtotal_neto >= 0 AND
+        monto_iva >= 0 AND
+        saldo_a_favor_usado >= 0 AND
+        total >= 0
+    ),
+    -- Define si la operación está vigente o si fue anulada (revirtiendo stock y pagos).
+    CONSTRAINT chk_venta_estado CHECK (
+        estado IN ('CONFIRMADA', 'ANULADA')
+    )
+);
+
+-- Índice compuesto fundamental: Acelera el historial de ventas y los filtros por período y sucursal en Reportes.
+CREATE INDEX IF NOT EXISTS idx_ventas_tenant_fecha
+    ON ventas.ventas (emprendimiento_id, sucursal_id, fecha_hora DESC);
+-- Optimiza la consulta de ventas asociadas a un cliente y la verificación antes de eliminarlo.
+CREATE INDEX IF NOT EXISTS idx_ventas_cliente
+    ON ventas.ventas (cliente_id);
+
+-- Tabla: VENTA_DETALLE (Entidad débil - Renglones con foto histórica de precios y costos)
+CREATE TABLE IF NOT EXISTS ventas.venta_detalle (
+    id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    venta_id INT NOT NULL,
+    producto_id INT NOT NULL,
+    cantidad INT NOT NULL,
+    -- Congelan el precio, costo y alícuota vigentes al confirmar para no alterar el CMV ni reportes históricos
+    precio_unitario_historico NUMERIC(12,2) NOT NULL,
+    costo_unitario_historico NUMERIC(12,2) NOT NULL,
+    iva_alicuota_historica NUMERIC(5,2) NOT NULL,
+    subtotal NUMERIC(12,2) NOT NULL,
+
+    CONSTRAINT fk_vdetalle_venta
+        FOREIGN KEY (venta_id)
+        REFERENCES ventas.ventas (id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_vdetalle_producto
+        FOREIGN KEY (producto_id)
+        REFERENCES productos.productos (id)
+        ON DELETE NO ACTION,
+    -- Exige cantidades enteras estrictamente positivas en cada renglón vendido.
+    CONSTRAINT chk_vdetalle_cantidad CHECK (cantidad > 0),
+    -- Impide registrar precios, costos o subtotales negativos en el detalle histórico.
+    CONSTRAINT chk_vdetalle_importes CHECK (
+        precio_unitario_historico >= 0 AND
+        costo_unitario_historico >= 0 AND
+        iva_alicuota_historica >= 0 AND
+        subtotal >= 0
+    )
+);
+
+-- Aceleran la carga del detalle de productos de una venta y el cálculo histórico de CMV.
+CREATE INDEX IF NOT EXISTS idx_vdetalle_venta
+    ON ventas.venta_detalle (venta_id);
+CREATE INDEX IF NOT EXISTS idx_vdetalle_producto
+    ON ventas.venta_detalle (producto_id);
+
+-- Tabla: PAGOS (Módulo 9 - Cuenta Corriente Comercial y cobros automáticos de contado)
+CREATE TABLE IF NOT EXISTS ventas.pagos (
+    id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    emprendimiento_id INT NOT NULL,
+    sucursal_id INT DEFAULT 1 NOT NULL,
+    venta_id INT NOT NULL,
+    -- Cada pago admite un único medio de pago registrado en finanzas.medios_pago
+    medio_pago_id INT NOT NULL,
+    monto NUMERIC(12,2) NOT NULL,
+    fecha_pago TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    estado VARCHAR(20) DEFAULT 'ACTIVO' NOT NULL,
+    -- Permite ocultar visualmente el pago al Administrador sin excluirlo del cálculo del saldo ni de Reportes
+    oculto BOOLEAN DEFAULT FALSE NOT NULL,
+    creado_por VARCHAR(50) NOT NULL,
+    modificado_por VARCHAR(50) NULL,
+    modificado_en TIMESTAMPTZ NULL,
+    -- [Campos de auditoría formal de anulación]
+    anulado_por VARCHAR(50) NULL,
+    anulado_en TIMESTAMPTZ NULL,
+
+    CONSTRAINT fk_pagos_sucursal
+        FOREIGN KEY (sucursal_id)
+        REFERENCES comercio.sucursales (id)
+        ON DELETE NO ACTION,
+    CONSTRAINT fk_pagos_venta
+        FOREIGN KEY (venta_id)
+        REFERENCES ventas.ventas (id)
+        ON DELETE NO ACTION,
+    CONSTRAINT fk_pagos_medio_pago
+        FOREIGN KEY (medio_pago_id)
+        REFERENCES finanzas.medios_pago (id)
+        ON DELETE NO ACTION,
+    -- Regla financiera: Todo cobro registrado debe ser estrictamente mayor a cero.
+    CONSTRAINT chk_pago_monto CHECK (monto > 0),
+    -- Controla si el pago computa para el saldo de la venta y los ingresos o si fue anulado.
+    CONSTRAINT chk_pago_estado CHECK (
+        estado IN ('ACTIVO', 'ANULADO')
+    )
+);
+
+-- Crítico para Cuenta Corriente: Acelera el cálculo en vivo del saldo pendiente (total - SUM(pagos activos)).
+CREATE INDEX IF NOT EXISTS idx_pagos_venta
+    ON ventas.pagos (venta_id, estado);
+-- Optimiza la sumatoria de ingresos reales por período y sucursal en el módulo de Reportes.
+CREATE INDEX IF NOT EXISTS idx_pagos_tenant_fecha
+    ON ventas.pagos (emprendimiento_id, sucursal_id, fecha_pago DESC);
+-- Impide y agiliza la verificación al intentar eliminar medios de pago con cobros asociados.
+CREATE INDEX IF NOT EXISTS idx_pagos_medio_pago
+    ON ventas.pagos (medio_pago_id);
 
 -- [Confirmación y cierre de la transacción atómica]
 COMMIT;
