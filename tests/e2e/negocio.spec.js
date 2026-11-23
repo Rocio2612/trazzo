@@ -878,6 +878,40 @@ test.describe("Mi negocio: conexión con el Backend", () => {
     await guardar(page).click();
     await expect(toast(page)).toHaveText("Categoría impositiva inválida. Debe ser RESPONSABLE_INSCRIPTO, MONOTRIBUTISTA o EXENTO");
   });
+
+  test("si falla la carga, la pantalla no ofrece formulario ni botón de guardar", async ({ page }) => {
+    await simularBackendConFalla(page, respuestaDeError(500, "Error interno del servidor"));
+    await expect(page.getByTestId("negocio-error-carga")).toHaveText("Error interno del servidor");
+    await expect(page.getByRole("heading", { name: "Mi negocio" })).toBeVisible();
+    await expect(guardar(page)).toHaveCount(0);
+    await expect(page.locator("#categoria_impositiva")).toHaveCount(0);
+    await expect(page.locator("#rubro")).toHaveCount(0);
+  });
+
+  test("un 403 al abrir (rol sin permiso que el front dejó pasar) avisa y vuelve al Panel", async ({ page }) => {
+    const mensajes = [];
+    page.on("dialog", async (dialogo) => {
+      mensajes.push(dialogo.message());
+      await dialogo.accept();
+    });
+    await simularBackendConFalla(page, respuestaDeError(403, "Acceso denegado: solo el administrador puede ver el negocio"));
+    await expect(page).toHaveURL(/dashboard\.html$/);
+    expect(mensajes).toEqual(["Acceso denegado: solo el administrador puede ver el negocio"]);
+  });
+
+  test("un 403 al guardar avisa y vuelve al Panel sin cerrar la sesión", async ({ page }) => {
+    const mensajes = [];
+    page.on("dialog", async (dialogo) => {
+      mensajes.push(dialogo.message());
+      await dialogo.accept();
+    });
+    await abrir(page, { reemplazos: [conError("Acceso denegado: solo el administrador puede editar el negocio", 403)] });
+    await page.locator("#nombre_comercial").fill("Otro nombre");
+    await guardar(page).click();
+    await expect(page).toHaveURL(/dashboard\.html$/);
+    expect(mensajes).toEqual(["Acceso denegado: solo el administrador puede editar el negocio"]);
+    expect(await page.evaluate(() => localStorage.getItem("trazzo_access_token"))).not.toBeNull();
+  });
 });
 
 // Abre la pantalla con un Backend que falla al cargar los datos del negocio.

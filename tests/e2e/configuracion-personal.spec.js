@@ -1248,3 +1248,68 @@ test.describe("Configuración > Personal: conexión con el Backend", () => {
     await expect(celda(page, 1, COL.nombre)).toContainText("propietario1");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sin permiso en el Backend y recarga que falla (casos que faltaban)
+// ---------------------------------------------------------------------------
+
+test.describe("Configuración > Personal: sin permiso en el Backend (403)", () => {
+  const mensajeDeAcceso = "Acceso denegado: solo el administrador puede gestionar el personal";
+
+  const registrarAvisos = (page) => {
+    const mensajes = [];
+    page.on("dialog", async (dialogo) => {
+      mensajes.push(dialogo.message());
+      await dialogo.accept();
+    });
+    return mensajes;
+  };
+
+  test("un 403 al abrir la lista avisa y vuelve al Panel", async ({ page }) => {
+    const mensajes = registrarAvisos(page);
+    backend = await simularBackend(page, {});
+    backend.fallar("GET /auth/personal", respuestaDeError(403, mensajeDeAcceso));
+    await iniciarSesionComo(page, "PROPIETARIO");
+    await page.goto("/configuracion.html");
+    await expect(page).toHaveURL(/dashboard\.html$/);
+    expect(mensajes).toEqual([mensajeDeAcceso]);
+  });
+
+  test("un 403 al crear avisa y vuelve al Panel sin cerrar la sesión", async ({ page }) => {
+    const mensajes = registrarAvisos(page);
+    await abrir(page, { reemplazos: [{ preparar: (b) => b.fallar("POST /auth/personal", respuestaDeError(403, mensajeDeAcceso)) }] });
+    await intentarCrear(page);
+    await expect(page).toHaveURL(/dashboard\.html$/);
+    expect(mensajes).toEqual([mensajeDeAcceso]);
+    expect(await page.evaluate(() => localStorage.getItem("trazzo_access_token"))).not.toBeNull();
+  });
+
+  test("un 403 al deshabilitar avisa y vuelve al Panel", async ({ page }) => {
+    const mensajes = registrarAvisos(page);
+    await abrir(page, { reemplazos: [{ preparar: (b) => b.fallar("PATCH /auth/personal/:id/deshabilitar", respuestaDeError(403, mensajeDeAcceso)) }] });
+    await page.getByTestId("personal-deshabilitar-3").click();
+    await page.getByTestId("modal-confirmar").click();
+    await expect(page).toHaveURL(/dashboard\.html$/);
+    expect(mensajes).toEqual([mensajeDeAcceso]);
+  });
+});
+
+test.describe("Configuración > Personal: la lista se vuelve a pedir y falla", () => {
+  test("si la recarga tras crear falla, se conserva la lista anterior sin mostrar el error de carga", async ({ page }) => {
+    await abrir(page);
+    await expect(filas(page)).toHaveCount(4);
+    backend.fallar("GET /auth/personal", respuestaDeError(500, "Error al listar el personal"), { veces: 1 });
+    await crearUsuario(page);
+    await expect(toast(page)).toHaveText("Usuario creado");
+    await expect(filas(page)).toHaveCount(4);
+    await expect(page.getByTestId("personal-error")).toHaveCount(0);
+  });
+
+  test("un error sin mensaje al cargar usa el texto por defecto", async ({ page }) => {
+    backend = await simularBackend(page, {});
+    backend.fallar("GET /auth/personal", { status: 500, body: {} });
+    await iniciarSesionComo(page, "PROPIETARIO");
+    await page.goto("/configuracion.html");
+    await expect(page.getByTestId("personal-error")).toHaveText("No se pudo cargar el personal.");
+  });
+});

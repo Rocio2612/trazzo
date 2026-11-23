@@ -873,3 +873,70 @@ test.describe("Configuración > Medios de pago: lo eliminado no se ofrece en Gas
     await expect(page.locator("#medio_pago_id option")).toHaveText(["Sin especificar", "Efectivo", "Transferencia"]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Errores del Backend al cargar y sin permiso (casos que faltaban)
+// ---------------------------------------------------------------------------
+
+test.describe("Configuración > Categorías: errores al cargar la lista", () => {
+  const ruta = "/configuracion.html#categorias";
+
+  test("si la lista no carga, la pestaña lo dice en vez de mostrar «Sin categorías»", async ({ page }) => {
+    await abrir(page, ruta, { preparar: (b) => b.fallar("GET /categorias", respuestaDeError(500, "Error al listar las categorías")) });
+    await expect(page.getByTestId("categorias-error-carga")).toHaveText("Error al listar las categorías");
+    await expect(page.getByTestId("sin-opciones-categorias")).toHaveCount(0);
+  });
+
+  test("sin conexión, la pestaña lo avisa en español", async ({ page }) => {
+    await abrir(page, ruta, { preparar: (b) => b.fallar("GET /categorias", { abortar: true }) });
+    await expect(page.getByTestId("categorias-error-carga")).toHaveText("No se pudo conectar con el servidor.");
+  });
+
+  test("un error sin mensaje usa el texto por defecto de la lista", async ({ page }) => {
+    await abrir(page, ruta, { preparar: (b) => b.fallar("GET /categorias", { status: 500, body: {} }) });
+    await expect(page.getByTestId("categorias-error-carga")).toHaveText("No se pudo cargar la lista de categorías.");
+  });
+
+  test("los campos para agregar siguen disponibles aunque la lista no haya cargado", async ({ page }) => {
+    await abrir(page, ruta, { preparar: (b) => b.fallar("GET /categorias", respuestaDeError(500, "Error al listar las categorías"), { veces: 1 }) });
+    await expect(page.getByTestId("categorias-error-carga")).toBeVisible();
+    await page.getByTestId("categorias-nombre").fill("Camperas");
+    await page.getByTestId("categorias-agregar").click();
+    await expect(toast(page)).toHaveText("Categoría creada");
+    await expect(page.getByTestId("categorias-error-carga")).toHaveCount(0);
+    await expect(items(page, "categorias").filter({ hasText: "Camperas" })).toHaveCount(1);
+  });
+});
+
+for (const l of LISTAS) {
+  test.describe(`Configuración > ${l.singular}: sin permiso en el Backend (403)`, () => {
+    const ruta = `/configuracion.html${l.hash}`;
+    const mensajeDeAcceso = "Acceso denegado: solo el administrador puede gestionar esta lista";
+
+    const registrarAvisos = (page) => {
+      const mensajes = [];
+      page.on("dialog", async (dialogo) => {
+        mensajes.push(dialogo.message());
+        await dialogo.accept();
+      });
+      return mensajes;
+    };
+
+    test("un 403 al abrir la lista avisa y vuelve al Panel", async ({ page }) => {
+      const mensajes = registrarAvisos(page);
+      await abrir(page, ruta, { preparar: (b) => b.fallar(`GET ${RUTA_API[l.tipo]}`, respuestaDeError(403, mensajeDeAcceso)) });
+      await expect(page).toHaveURL(/dashboard\.html$/);
+      expect(mensajes).toEqual([mensajeDeAcceso]);
+    });
+
+    test("un 403 al agregar avisa y vuelve al Panel sin cerrar la sesión", async ({ page }) => {
+      const mensajes = registrarAvisos(page);
+      await abrir(page, ruta, { preparar: (b) => b.fallar(`POST ${RUTA_API[l.tipo]}`, respuestaDeError(403, mensajeDeAcceso)) });
+      await page.getByTestId(`${l.tipo}-nombre`).fill("Nombre nuevo");
+      await page.getByTestId(`${l.tipo}-agregar`).click();
+      await expect(page).toHaveURL(/dashboard\.html$/);
+      expect(mensajes).toEqual([mensajeDeAcceso]);
+      expect(await page.evaluate(() => localStorage.getItem("trazzo_access_token"))).not.toBeNull();
+    });
+  });
+}
