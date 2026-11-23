@@ -16,6 +16,8 @@ import {
   validarNombreLista,
   validarPersona,
   validarUsuario,
+  CORREO_PERSONAL_VALIDO,
+  CORREO_VALIDO,
 } from "../../frontend/js/personalizacion.js";
 
 const persona = { usuario: "cajero1", password: "Clave#2026", correo: "a@b.com", nombre: "Ana", apellido: "Pérez", rol: "CAJERO" };
@@ -243,5 +245,35 @@ describe("validarNombreLista", () => {
 
   it("limita el largo a 50 caracteres", () => {
     expect(validarNombreLista("a".repeat(51))).toMatch(/50 caracteres/);
+  });
+});
+
+// --- Casos que faltaban: las dos expresiones de correo se prueban directamente ---
+
+describe("CORREO_VALIDO (correo general)", () => {
+  it.each(["ana@correo.com", "ana.perez@dominio.com.ar", "a@b.co", "ana_perez@mi-empresa.com", "ñandu@correo.com"])("acepta %s", (correo) => {
+    expect(CORREO_VALIDO.test(correo)).toBe(true);
+  });
+
+  it.each(["", "ana", "ana@", "@correo.com", "ana@correo", "ana@correo.c", "ana perez@correo.com", "ana@@correo.com", "ana..perez@correo.com", ".ana@correo.com", "ana.@correo.com", "ana@.com", "ana@correo..com"])(
+    "rechaza '%s'",
+    (correo) => {
+      expect(CORREO_VALIDO.test(correo)).toBe(false);
+    },
+  );
+});
+
+describe("CORREO_PERSONAL_VALIDO (correo del personal, más estricto)", () => {
+  it.each(["ana@correo.com", "ana.perez@dominio.com.ar", "ana+caja@correo.com", "ana_perez@mi-empresa.com", "ana-perez@correo.com"])("acepta %s", (correo) => {
+    expect(CORREO_PERSONAL_VALIDO.test(correo)).toBe(true);
+  });
+
+  it.each(["", "ana", "ana@correo", "ana@correo.c", "ana perez@correo.com", "ana..perez@correo.com", ".ana@correo.com", "ñandu@correo.com", "ana@mi_empresa.com", "ana@correo.123"])("rechaza '%s'", (correo) => {
+    expect(CORREO_PERSONAL_VALIDO.test(correo)).toBe(false);
+  });
+
+  it("no deja pasar caracteres que el general sí acepta", () => {
+    expect(CORREO_VALIDO.test("ñandu@correo.com")).toBe(true);
+    expect(CORREO_PERSONAL_VALIDO.test("ñandu@correo.com")).toBe(false);
   });
 });

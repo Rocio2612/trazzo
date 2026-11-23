@@ -4,6 +4,7 @@ import { servicioNegocio } from "../../frontend/js/servicios/negocio.js";
 import { servicioPersonal } from "../../frontend/js/servicios/personal.js";
 import { cargarMediosPago, servicioMediosPago } from "../../frontend/js/servicios/medios-pago.js";
 import { servicioGastos } from "../../frontend/js/servicios/gastos.js";
+import { servicioCategorias } from "../../frontend/js/servicios/categorias.js";
 
 // Los servicios llaman a `fetchAPI` (global de api.js): acá se reemplaza por una función simulada y se mira a qué
 // endpoint, con qué método y con qué cuerpo habla cada uno, y cómo desenvuelve la respuesta.
@@ -166,5 +167,42 @@ describe("servicioGastos", () => {
       ["/gastos/8", "PUT", datos],
       ["/gastos/8", "DELETE"],
     ]);
+  });
+});
+
+describe("servicioCategorias", () => {
+  it("listar pide GET /categorias y devuelve la lista (o vacía si no vino)", async () => {
+    fetchAPI.mockResolvedValueOnce({ status: "ok", categorias: [{ id: 1, nombre: "Bebidas" }] });
+    expect(await servicioCategorias.listar()).toEqual([{ id: 1, nombre: "Bebidas" }]);
+    fetchAPI.mockResolvedValueOnce({ status: "ok" });
+    expect(await servicioCategorias.listar()).toEqual([]);
+    expect(fetchAPI).toHaveBeenCalledWith("/categorias");
+  });
+
+  it("crear envía POST /categorias con solo el nombre y devuelve la categoría", async () => {
+    fetchAPI.mockResolvedValue({ status: "ok", categoria: { id: 5, nombre: "Limpieza" } });
+    expect(await servicioCategorias.crear("Limpieza")).toEqual({ id: 5, nombre: "Limpieza" });
+    expect(fetchAPI).toHaveBeenCalledWith("/categorias", "POST", { nombre: "Limpieza" });
+  });
+
+  it("actualizar envía PUT /categorias/<id> con solo el nombre y devuelve la categoría", async () => {
+    fetchAPI.mockResolvedValue({ status: "ok", categoria: { id: 5, nombre: "Higiene" } });
+    expect(await servicioCategorias.actualizar(5, "Higiene")).toEqual({ id: 5, nombre: "Higiene" });
+    expect(fetchAPI).toHaveBeenCalledWith("/categorias/5", "PUT", { nombre: "Higiene" });
+  });
+
+  it("eliminar va a DELETE /categorias/<id>", async () => {
+    fetchAPI.mockResolvedValue({ status: "ok" });
+    await servicioCategorias.eliminar(5);
+    expect(fetchAPI).toHaveBeenCalledWith("/categorias/5", "DELETE");
+  });
+
+  it("los errores del Backend llegan tal cual a la pantalla", async () => {
+    const error = Object.assign(new Error("Ya existe una categoría con ese nombre"), { status: 409, errores: { nombre: "Ya existe una categoría con ese nombre" } });
+    fetchAPI.mockRejectedValue(error);
+    await expect(servicioCategorias.crear("Bebidas")).rejects.toBe(error);
+    await expect(servicioCategorias.actualizar(1, "Bebidas")).rejects.toBe(error);
+    await expect(servicioCategorias.eliminar(1)).rejects.toBe(error);
+    await expect(servicioCategorias.listar()).rejects.toBe(error);
   });
 });
