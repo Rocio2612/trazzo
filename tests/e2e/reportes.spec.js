@@ -270,8 +270,158 @@ test.describe("Reportes: acceso por rol", () => {
     await expect(page.locator('[data-testid^="rep-"]')).toHaveCount(0);
   });
 
+  test("el Propietario también ve el link y entra a Reportes", async ({ page }) => {
+    await abrirReportesComoAdmin(page, { rol: "PROPIETARIO" });
+    await expect(page).toHaveURL(/reportes\.html$/);
+    await expect(page.getByTestId("menu-reportes")).toBeVisible();
+  });
+
   test("sin sesión, Reportes redirige al login", async ({ page }) => {
     await page.goto("/reportes.html");
     await expect(page).toHaveURL(/login\.html$/);
+  });
+});
+
+// Estos casos no se pueden armar con los datos de ejemplo (el simulador solo deja caer un servicio a la vez y nunca falla
+// toda la consulta). Se reemplaza el módulo de ejemplos por uno con la respuesta que haga falta, para probar solo la pantalla.
+test.describe("Reportes: respuestas especiales del servicio", () => {
+  const base = {
+    periodo: "mes",
+    servicios_caidos: [],
+    ingresos: 1000,
+    vendido_saldado: 800,
+    ventas_por_saldar: 2,
+    cmv: 300,
+    ganancia_bruta: 500,
+    gastos_operativos: 100,
+    bienes_de_uso: 50,
+    ganancia_neta: 400,
+    inventario_actual: 5000,
+    por_cobrar: 700,
+    desglose_inversion: [{ producto: "Producto X", unidades: 2, costo_unitario: 100, inversion: 200 }],
+  };
+
+  // `cuerpo` es el código de `obtener({ periodo })`; `RESPUESTA` ya trae la respuesta base.
+  const simularServicio = (page, cuerpo) =>
+    page.route("**/js/mocks/reportes.js", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/javascript",
+        body: `const RESPUESTA = ${JSON.stringify(base)};
+export const servicioReportes = { obtener: async ({ periodo = "mes" } = {}) => { ${cuerpo} } };`,
+      }),
+    );
+
+  const abrir = async (page, cuerpo, opciones) => {
+    await simularServicio(page, cuerpo);
+    await abrirReportes(page, opciones);
+  };
+
+  test("si falla toda la consulta, avisa y no muestra tarjetas (error de conexión)", async ({ page }) => {
+    await abrir(page, `throw new Error("Failed to fetch");`);
+    await expect(page.getByTestId("reportes-error")).toHaveText("No se pudo conectar con el servidor.");
+    await expect(page.getByTestId("reportes-error")).toHaveAttribute("role", "alert");
+    await expect(page.locator('[data-testid^="rep-"]')).toHaveCount(0);
+    await expect(page.getByTestId("reportes-filtro-periodo")).toBeVisible();
+  });
+
+  test("si el servidor responde con error y sin mensaje propio, usa el texto por defecto", async ({ page }) => {
+    await abrir(page, `throw Object.assign(new Error("Error en la petición"), { status: 500 });`);
+    await expect(page.getByTestId("reportes-error")).toHaveText("No se pudieron cargar los reportes. Intentá de nuevo.");
+  });
+
+  test("si el servidor responde con un mensaje propio, lo muestra", async ({ page }) => {
+    await abrir(page, `throw Object.assign(new Error("Servicio en mantenimiento"), { status: 503 });`);
+    await expect(page.getByTestId("reportes-error")).toHaveText("Servicio en mantenimiento");
+  });
+
+  test("tras un error se puede volver a consultar cambiando el período", async ({ page }) => {
+    await abrir(page, `if (periodo === "mes") throw new Error("Failed to fetch"); return { ...RESPUESTA, periodo, ingresos: 2500 };`);
+    await expect(page.getByTestId("reportes-error")).toBeVisible();
+    await page.getByTestId("reportes-filtro-periodo").selectOption("anio");
+    await expect(valor(page, "ingresos")).toHaveText(/2\.500,00/);
+    await expect(page.getByTestId("reportes-error")).toHaveCount(0);
+  });
+
+  test("sin productos comprados en el período, el desglose lo dice y las demás tarjetas siguen", async ({ page }) => {
+    await abrir(page, `return { ...RESPUESTA, desglose_inversion: [] };`);
+    await expect(page.getByTestId("rep-desglose-vacio")).toHaveText("Sin inventario comprado en este período.");
+    await expect(page.getByTestId("rep-desglose")).toHaveCount(0);
+    await expect(page.getByText("Este monto refleja capital acumulado, no es una pérdida.")).toBeVisible();
+    await expect(valor(page, "ingresos")).toHaveText(/1\.000,00/);
+  });
+
+  test("un indicador sin valor se marca como sin datos, sin aviso de falla de servicio", async ({ page }) => {
+    await abrir(page, `return { ...RESPUESTA, ingresos: null };`);
+    await expect(page.getByTestId("rep-ingresos-error")).toHaveText("No se pudo calcular");
+    await expect(page.getByTestId("rep-ingresos")).toContainText("No hay datos para este indicador.");
+    await expect(page.getByTestId("reportes-aviso-parcial")).toHaveCount(0);
+    await expect(valor(page, "cmv")).toHaveText(/300,00/);
+  });
+
+  test("con dos servicios caídos, el aviso los nombra a los dos", async ({ page }) => {
+    await abrir(
+      page,
+      `return { ...RESPUESTA, servicios_caidos: ["transacciones", "finanzas"], ingresos: null, vendido_saldado: null, ventas_por_saldar: null, cmv: null,
+        ganancia_bruta: null, gastos_operativos: null, bienes_de_uso: null, ganancia_neta: null, por_cobrar: null };`,
+    );
+    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("falla en el servicio de Transacciones y Finanzas");
+    await expect(page.getByTestId("rep-ingresos-error")).toBeVisible();
+    await expect(page.getByTestId("rep-gastos-error")).toBeVisible();
+    await expect(valor(page, "inventario")).toHaveText(/5\.000,00/);
+  });
+
+  test("con los tres servicios caídos, no queda ninguna tarjeta con valor", async ({ page }) => {
+    await abrir(
+      page,
+      `return { ...RESPUESTA, servicios_caidos: ["transacciones", "finanzas", "productos"], ingresos: null, vendido_saldado: null, ventas_por_saldar: null,
+        cmv: null, ganancia_bruta: null, gastos_operativos: null, bienes_de_uso: null, ganancia_neta: null, inventario_actual: null, por_cobrar: null,
+        desglose_inversion: null };`,
+    );
+    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("falla en el servicio de Transacciones, Finanzas y Productos");
+    await expect(page.locator('[data-testid^="rep-"][data-testid$="-error"]')).toHaveCount(10); // 9 tarjetas + el desglose
+    await expect(page.locator('[data-testid^="rep-"][data-testid$="-valor"]')).toHaveCount(0);
+  });
+
+  test("un servicio caído que la pantalla no conoce se ignora", async ({ page }) => {
+    await abrir(page, `return { ...RESPUESTA, servicios_caidos: ["servicio-nuevo"] };`);
+    await expect(page.getByTestId("reportes-aviso-parcial")).toHaveCount(0);
+    await expect(valor(page, "ingresos")).toHaveText(/1\.000,00/);
+  });
+
+  test("solo las ganancias se pintan de rojo cuando son negativas", async ({ page }) => {
+    await abrir(page, `return { ...RESPUESTA, ingresos: -5, ganancia_bruta: -100, ganancia_neta: -300 };`);
+    await expect(valor(page, "ganancia-bruta")).toHaveClass(/reportes-valor-negativo/);
+    await expect(valor(page, "ganancia-neta")).toHaveClass(/reportes-valor-negativo/);
+    await expect(valor(page, "ingresos")).not.toHaveClass(/reportes-valor-negativo/);
+    await expect(valor(page, "ganancia-bruta")).toHaveText(/^-\$\s100,00$/);
+  });
+
+  test("una ganancia en cero no se pinta de rojo", async ({ page }) => {
+    await abrir(page, `return { ...RESPUESTA, ganancia_bruta: 0, ganancia_neta: 0 };`);
+    await expect(valor(page, "ganancia-neta")).not.toHaveClass(/reportes-valor-negativo/);
+    await expect(valor(page, "ganancia-neta")).toHaveText(/^\$\s0,00$/);
+  });
+
+  test("con una sola venta por saldar el cartel va en singular", async ({ page }) => {
+    await abrir(page, `return { ...RESPUESTA, ventas_por_saldar: 1 };`);
+    await expect(page.getByTestId("rep-faltan-saldar")).toHaveText("1 venta confirmada falta por saldar");
+  });
+
+  test("si llega una respuesta vieja después de la nueva, se descarta", async ({ page }) => {
+    // "Hoy" tarda mucho más que "Este año": su respuesta llega última y no debe pisar a la que se pidió después.
+    await abrir(
+      page,
+      `await new Promise((r) => setTimeout(r, periodo === "hoy" ? 900 : 50));
+       return { ...RESPUESTA, periodo, ingresos: periodo === "hoy" ? 111 : 222 };`,
+    );
+    await expect(valor(page, "ingresos")).toHaveText(/222,00/);
+    const filtro = page.getByTestId("reportes-filtro-periodo");
+    await filtro.selectOption("hoy");
+    await filtro.selectOption("anio");
+    await expect(valor(page, "ingresos")).toHaveText(/222,00/);
+    await page.waitForTimeout(1200); // da tiempo a que llegue la respuesta vieja
+    await expect(valor(page, "ingresos")).toHaveText(/222,00/);
+    await expect(filtro).toHaveValue("anio");
   });
 });

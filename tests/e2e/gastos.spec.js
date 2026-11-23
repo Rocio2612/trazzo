@@ -1289,3 +1289,174 @@ test.describe("Gastos: medio de pago eliminado después de registrar el gasto", 
     expect((await enviados(page, "__actualizar"))[0].medio_pago_id).toBeNull();
   });
 });
+
+test.describe("Gastos: textos de ayuda del formulario", () => {
+  test("los campos muestran el formato esperado como ayuda (fecha dd-mm-aaaa)", async ({ page }) => {
+    await abrirGastos(page);
+    await page.getByTestId("gastos-nuevo").click();
+    await expect(page.locator("#fecha")).toHaveAttribute("placeholder", "dd-mm-aaaa");
+    await expect(page.locator("#concepto")).toHaveAttribute("placeholder", "Ej.: alquiler, luz, internet, flete");
+  });
+});
+
+test.describe("Gastos: cuando el Backend responde con error", () => {
+  const rechazo = (errores) => respuestaDeError(400, "Error de validación en los datos enviados", errores);
+
+  test("al crear, los errores por campo del Backend salen junto a cada campo y el modal sigue abierto", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", {
+      preparar: (b) => b.fallar("POST /gastos", rechazo({ concepto: "El concepto ya existe", monto: "El monto es demasiado alto" })),
+    });
+    await page.getByTestId("gastos-nuevo").click();
+    await completar(page, { concepto: "Luz", monto: "100" });
+    await guardar(page).click();
+
+    await expect(errorDe(page, "concepto")).toHaveText("El concepto ya existe");
+    await expect(errorDe(page, "monto")).toHaveText("El monto es demasiado alto");
+    await expect(errorDe(page, "fecha")).toBeHidden();
+    await expect(page.locator("#concepto")).toBeFocused(); // el primer campo con error
+    await expect(modal(page)).toHaveCount(1);
+    await expect(filas(page)).toHaveCount(7);
+    await expect(aviso(page)).toHaveCount(0);
+  });
+
+  test("tras un error el botón Guardar vuelve a habilitarse y se puede reintentar", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", {
+      preparar: (b) => b.fallar("POST /gastos", rechazo({ concepto: "El concepto ya existe" }), { veces: 1 }),
+    });
+    await page.getByTestId("gastos-nuevo").click();
+    await completar(page, { concepto: "Reintento", monto: "100" });
+    await guardar(page).click();
+    await expect(errorDe(page, "concepto")).toBeVisible();
+    await expect(guardar(page)).toBeEnabled();
+    await expect(guardar(page)).toHaveText("Guardar");
+
+    await guardar(page).click(); // el Backend ya no falla
+    await expect(modal(page)).toHaveCount(0);
+    await expect(aviso(page)).toHaveText("Gasto registrado");
+    await expect(page.getByTestId("gastos-total-detalle")).toHaveText("8 gastos");
+    expect(backend.enviados("POST", "/gastos")).toHaveLength(2);
+  });
+
+  test("al crear, un error del servidor sin campo se avisa con un cartel y el formulario queda abierto", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", {
+      preparar: (b) => b.fallar("POST /gastos", respuestaDeError(500, "Error interno del servidor")),
+    });
+    await page.getByTestId("gastos-nuevo").click();
+    await completar(page, { concepto: "Falla", monto: "100" });
+    await guardar(page).click();
+    await expect(aviso(page)).toHaveText("Error interno del servidor");
+    await expect(modal(page)).toHaveCount(1);
+    await expect(guardar(page)).toBeEnabled();
+    await expect(filas(page)).toHaveCount(7);
+  });
+
+  test("un error del servidor sin mensaje usa el texto por defecto", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", { preparar: (b) => b.fallar("POST /gastos", { status: 500, body: {} }) });
+    await page.getByTestId("gastos-nuevo").click();
+    await completar(page, { concepto: "Falla", monto: "100" });
+    await guardar(page).click();
+    await expect(aviso(page)).toHaveText("No se pudo guardar. Intentá de nuevo.");
+  });
+
+  test("si el Backend marca un campo que el formulario no tiene, lo avisa con un cartel", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", { preparar: (b) => b.fallar("POST /gastos", rechazo({ otro_campo: "Dato inválido" })) });
+    await page.getByTestId("gastos-nuevo").click();
+    await completar(page, { concepto: "Falla", monto: "100" });
+    await guardar(page).click();
+    await expect(aviso(page)).toHaveText("Error de validación en los datos enviados");
+    await expect(modal(page)).toHaveCount(1);
+  });
+
+  test("al editar, los errores por campo del Backend salen junto al campo y el gasto no cambia", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", {
+      preparar: (b) => b.fallar("PUT /gastos/:id", rechazo({ monto: "El monto es demasiado alto" })),
+    });
+    await page.getByTestId("gastos-editar-2").click();
+    await page.locator("#monto").fill("123");
+    await guardar(page).click();
+    await expect(errorDe(page, "monto")).toHaveText("El monto es demasiado alto");
+    await expect(page.locator("#monto")).toBeFocused();
+    await expect(modal(page)).toHaveCount(1);
+    await expect(guardar(page)).toBeEnabled();
+    await page.getByTestId("modal-cancelar").click();
+    await expect(page.getByTestId("gastos-total")).toHaveText(TOTAL_INICIAL);
+  });
+
+  test("al editar un gasto que ya no existe (404), avisa y el formulario sigue abierto", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", { preparar: (b) => b.fallar("PUT /gastos/:id", respuestaDeError(404, "Gasto no encontrado")) });
+    await page.getByTestId("gastos-editar-2").click();
+    await page.locator("#monto").fill("123");
+    await guardar(page).click();
+    await expect(aviso(page)).toHaveText("Gasto no encontrado");
+    await expect(modal(page)).toHaveCount(1);
+  });
+
+  test("si falla al eliminar, avisa, el gasto sigue en la lista y se vuelve a cargar", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", {
+      preparar: (b) => b.fallar("DELETE /gastos/:id", respuestaDeError(500, "No se pudo eliminar por un error interno")),
+    });
+    await page.getByTestId("gastos-eliminar-2").click();
+    await page.getByTestId("modal-confirmar").click();
+    await expect(aviso(page)).toHaveText("No se pudo eliminar por un error interno");
+    await expect(page.getByTestId("gastos-fila-2")).toBeVisible();
+    await expect(page.getByTestId("gastos-total-detalle")).toHaveText("7 gastos");
+  });
+
+  test("si falla al eliminar sin mensaje, usa el texto por defecto", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", { preparar: (b) => b.fallar("DELETE /gastos/:id", { status: 500, body: {} }) });
+    await page.getByTestId("gastos-eliminar-2").click();
+    await page.getByTestId("modal-confirmar").click();
+    await expect(aviso(page)).toHaveText("No se pudo eliminar el gasto.");
+  });
+
+  test("eliminar un gasto que otro ya eliminó (404) avisa y la lista se actualiza", async ({ page }) => {
+    await abrirGastos(page);
+    backend.estado.gastos.splice(backend.estado.gastos.findIndex((g) => g.id === 2), 1); // otra persona lo eliminó
+    await page.getByTestId("gastos-eliminar-2").click();
+    await page.getByTestId("modal-confirmar").click();
+    await expect(aviso(page)).toHaveText("Gasto no encontrado");
+    await expect(page.getByTestId("gastos-fila-2")).toHaveCount(0);
+    await expect(page.getByTestId("gastos-total-detalle")).toHaveText("6 gastos");
+  });
+
+  test("si no se pueden cargar los gastos, muestra el error del Backend en lugar de la tabla", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", { preparar: (b) => b.fallar("GET /gastos", respuestaDeError(500, "Error al listar los gastos")) });
+    await expect(page.getByTestId("gastos-error-carga")).toHaveText("Error al listar los gastos");
+    await expect(page.getByTestId("gastos-tabla")).toHaveCount(0);
+  });
+
+  test("si no se pueden cargar los gastos y no hay mensaje, usa el texto por defecto", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", { preparar: (b) => b.fallar("GET /gastos", { status: 500, body: {} }) });
+    await expect(page.getByTestId("gastos-error-carga")).toHaveText("No se pudieron cargar los gastos.");
+  });
+
+  test("mientras llegan los gastos muestra 'Cargando…'", async ({ page }) => {
+    await abrirGastos(page, "ADMIN", { preparar: (b) => b.demorar("GET /gastos", 700) });
+    await expect(page.getByTestId("gastos-cargando")).toHaveText("Cargando…");
+    await expect(filas(page)).toHaveCount(7);
+    await expect(page.getByTestId("gastos-cargando")).toHaveCount(0);
+  });
+
+  test("un 403 del Backend (rol sin permiso que el front dejó pasar) avisa y vuelve al Panel", async ({ page }) => {
+    const mensajes = [];
+    page.on("dialog", async (dialogo) => {
+      mensajes.push(dialogo.message());
+      await dialogo.accept();
+    });
+    await abrirGastos(page, "ADMIN", {
+      preparar: (b) => b.fallar("GET /gastos", respuestaDeError(403, "Acceso denegado: solo el administrador puede ver los gastos")),
+    });
+    await expect(page).toHaveURL(/dashboard\.html$/);
+    expect(mensajes).toEqual(["Acceso denegado: solo el administrador puede ver los gastos"]);
+  });
+
+  test("si cambia el período y la nueva consulta falla, con gastos ya cargados se sigue viendo la lista", async ({ page }) => {
+    await abrirGastos(page);
+    await expect(filas(page)).toHaveCount(7);
+    backend.fallar("GET /gastos", respuestaDeError(500, "Error al listar los gastos"));
+    await page.getByTestId("gastos-filtro-fecha").selectOption("mes");
+    await expect(page.getByTestId("gastos-total-titulo")).toHaveText("Total de este mes");
+    await expect(page.getByTestId("gastos-error-carga")).toHaveCount(0);
+    await expect(filas(page)).toHaveCount(7);
+  });
+});

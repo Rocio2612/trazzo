@@ -205,24 +205,26 @@ test.describe("Nueva venta: modal Cobrar", () => {
     await expect(page.getByTestId("venta-confirmada")).toContainText("Consumidor final");
     await expect(page.getByTestId("venta-confirmada")).toContainText("Efectivo");
     await expect(page.getByTestId("venta-confirmada")).toContainText("Se registró el cobro y el pago se generó automáticamente.");
-    await expect(page.getByTestId("venta-ticket")).toBeVisible();
+    await expect(page.getByTestId("venta-ticket")).toHaveCount(0); // ya no se descarga el ticket desde acá
     // el carrito queda vacío y el stock se actualiza
     await page.getByTestId("venta-otra").click();
     await expect(page.getByTestId("venta-items-contador")).toHaveText("0 ítems");
     await expect(page.getByTestId("venta-producto-3")).toContainText("Stock: 22");
   });
 
-  test("el botón de descargar ticket aparece solo después de confirmar", async ({ page }) => {
+  test("al confirmar no hay botón de ticket; ofrece 'Ver historial' y 'Nueva venta'", async ({ page }) => {
     await abrirVentas(page);
     await abrirCobro(page);
-    await expect(page.getByTestId("venta-ticket")).toHaveCount(0);
+    await expect(page.getByTestId("venta-ver-historial")).toHaveCount(0);
     await page.getByTestId("venta-medio-pago").selectOption("2");
     await page.getByTestId("venta-confirmar").click();
-    await expect(page.getByTestId("venta-ticket")).toBeVisible();
-    const descarga = page.waitForEvent("download");
-    await page.getByTestId("venta-ticket").click();
-    expect((await descarga).suggestedFilename()).toBe("ticket-00001-00000455.pdf");
-    expect(backend.llamadas.some((l) => l.metodo === "GET" && l.ruta === "/ventas/5/ticket")).toBe(true);
+    await expect(page.getByTestId("venta-confirmada")).toBeVisible();
+    await expect(page.getByTestId("venta-ticket")).toHaveCount(0);
+    expect(backend.llamadas.some((l) => l.ruta.endsWith("/ticket"))).toBe(false);
+    await expect(page.getByTestId("venta-otra")).toHaveText("Nueva venta");
+    await expect(page.getByTestId("venta-ver-historial")).toHaveText("Ver historial");
+    await page.getByTestId("venta-ver-historial").click();
+    await expect(page).toHaveURL(/historial-ventas\.html$/);
   });
 
   test("venta a cuenta corriente: queda con el cliente elegido y sin pago", async ({ page }) => {
@@ -457,7 +459,7 @@ test.describe("Nueva venta: rol Cajero", () => {
     await page.getByTestId("venta-medio-pago").selectOption("1");
     await page.getByTestId("venta-confirmar").click();
     await expect(page.getByTestId("venta-confirmada")).toBeVisible();
-    await expect(page.getByTestId("venta-ticket")).toBeVisible();
+    await expect(page.getByTestId("venta-ver-historial")).toBeVisible();
   });
 
   test("también puede cobrar a un cliente con saldo a favor", async ({ page }) => {
@@ -482,5 +484,214 @@ test.describe("Nueva venta: carga y navegación", () => {
     await expect(page.getByTestId("venta-historial")).toHaveText("Historial de ventas");
     await page.getByTestId("venta-historial").click();
     await expect(page).toHaveURL(/historial-ventas\.html$/);
+  });
+
+  test("mientras llegan los productos muestra 'Cargando productos…'", async ({ page }) => {
+    backend = await simularBackendVentas(page, { rol: "ADMIN" });
+    backend.demorar("GET /productos", 700);
+    await iniciarSesionComo(page, "ADMIN");
+    await page.goto("/ventas.html");
+    await expect(page.getByTestId("venta-cargando")).toHaveText("Cargando productos…");
+    await expect(page.getByTestId("venta-producto-3")).toBeVisible();
+    await expect(page.getByTestId("venta-cargando")).toHaveCount(0);
+  });
+
+  test("sin sesión, Nueva venta redirige al login", async ({ page }) => {
+    await page.goto("/ventas.html");
+    await expect(page).toHaveURL(/login\.html$/);
+  });
+});
+
+test.describe("Nueva venta: más casos del carrito y del cobro", () => {
+  test("el buscador no distingue mayúsculas de minúsculas", async ({ page }) => {
+    await abrirVentas(page);
+    await page.getByTestId("venta-buscador").fill("YERBA");
+    await expect(page.getByTestId("venta-disponibles")).toHaveText("1 disponible");
+    await page.getByTestId("venta-buscador").fill("");
+    await expect(page.getByTestId("venta-disponibles")).toHaveText("5 disponibles");
+  });
+
+  test("el botón − no baja la cantidad de 1", async ({ page }) => {
+    await abrirVentas(page);
+    await agregar(page, 3, 3, 3);
+    await expect(page.getByTestId("venta-cantidad-3")).toHaveValue("3");
+    await page.getByTestId("venta-menos-3").click();
+    await page.getByTestId("venta-menos-3").click();
+    await page.getByTestId("venta-menos-3").click();
+    await expect(page.getByTestId("venta-cantidad-3")).toHaveValue("1");
+    await expect(page.getByTestId("venta-items-contador")).toHaveText("1 ítem");
+  });
+
+  test("con un solo producto en stock el aviso va en singular", async ({ page }) => {
+    await abrirVentas(page, "ADMIN", { semilla: (estado) => (estado.productos.find((p) => p.id === 1).cantidad = 1) });
+    await agregar(page, 1, 1);
+    await expect(page.getByTestId("venta-cantidad-1")).toHaveValue("1");
+    await expect(page.getByTestId("venta-mas-1")).toBeDisabled();
+    await expect(page.getByTestId("venta-stock-insuficiente-1")).toHaveText("Solo queda 1 en stock");
+  });
+
+  test("el aviso de 'Cobrar' sin productos desaparece al agregar uno", async ({ page }) => {
+    await abrirVentas(page);
+    await page.getByTestId("venta-cobrar").click();
+    await expect(page.getByTestId("venta-aviso")).toBeVisible();
+    await agregar(page, 3);
+    await expect(page.getByTestId("venta-aviso")).toHaveCount(0);
+  });
+
+  test("'Cancelar' cierra el modal sin vender y el carrito queda como estaba", async ({ page }) => {
+    await abrirVentas(page);
+    await abrirCobro(page, [3, 4]);
+    await page.getByTestId("modal-cancelar").click();
+    await expect(page.getByTestId("venta-confirmar")).toHaveCount(0);
+    await expect(page.getByTestId("venta-items-contador")).toHaveText("2 ítems");
+    expect(backend.enviados("POST", "/ventas")).toHaveLength(0);
+    await page.getByTestId("venta-cobrar").click();
+    await expect(page.getByTestId("venta-confirmar")).toBeVisible();
+  });
+
+  test("mientras confirma, 'Cancelar' también se deshabilita", async ({ page }) => {
+    await abrirVentas(page);
+    backend.demorar("POST /ventas", 600);
+    await abrirCobro(page);
+    await page.getByTestId("venta-medio-pago").selectOption("1");
+    await page.getByTestId("venta-confirmar").click();
+    await expect(page.getByTestId("modal-cancelar")).toBeDisabled();
+    await expect(page.getByTestId("venta-confirmada")).toBeVisible();
+  });
+
+  test("las etiquetas del cliente cambian con el tipo de venta", async ({ page }) => {
+    await abrirVentas(page);
+    await abrirCobro(page);
+    await expect(page.locator("label[for=cliente]")).toHaveText("Cliente");
+    await expect(page.getByText("En una venta de contado se usa Consumidor final por defecto.")).toBeVisible();
+    await page.getByTestId("venta-tipo").selectOption("CUENTA_CORRIENTE");
+    await expect(page.locator("label[for=cliente]")).toHaveText("Cliente *");
+    await expect(page.getByText("Obligatorio: elegí un cliente ya registrado.")).toBeVisible();
+    await page.getByTestId("venta-tipo").selectOption("CONTADO");
+    await expect(page.locator("label[for=cliente]")).toHaveText("Cliente");
+  });
+
+  test("los errores del cobro se limpian al cambiar el medio de pago o el tipo de venta", async ({ page }) => {
+    await abrirVentas(page);
+    await abrirCobro(page);
+    await page.getByTestId("venta-confirmar").click();
+    await expect(page.locator("#error-medio_pago")).toBeVisible();
+    await page.getByTestId("venta-medio-pago").selectOption("1");
+    await expect(page.locator("#error-medio_pago")).toBeHidden();
+    await expect(page.getByTestId("formulario-errores")).toHaveText("");
+
+    await page.getByTestId("venta-tipo").selectOption("CUENTA_CORRIENTE");
+    await page.getByTestId("venta-confirmar").click();
+    await expect(page.locator("#error-cliente")).toBeVisible();
+    await page.getByTestId("venta-tipo").selectOption("CONTADO");
+    await expect(page.locator("#error-cliente")).toBeHidden();
+    await expect(page.getByTestId("formulario-errores")).toHaveText("");
+  });
+
+  test("sin medios de pago creados lo avisa en la lista y no deja confirmar", async ({ page }) => {
+    await abrirVentas(page, "ADMIN", { semilla: (estado) => (estado.medios = []) });
+    await abrirCobro(page);
+    await expect(page.locator("[data-testid=venta-medio-pago] option")).toHaveText(["Sin medios de pago. Creá uno en Configuración > Medios de pago"]);
+    await page.getByTestId("venta-confirmar").click();
+    await expect(page.locator("#error-medio_pago")).toHaveText("Seleccioná el medio de pago de la venta.");
+    expect(backend.enviados("POST", "/ventas")).toHaveLength(0);
+  });
+
+  test("un producto que quedó sin stock durante el cobro se marca 'Sin stock' en el carrito", async ({ page }) => {
+    await abrirVentas(page);
+    await abrirCobro(page, [3, 4]);
+    backend.estado.productos.find((p) => p.id === 3).cantidad = 0;
+    await page.getByTestId("venta-medio-pago").selectOption("1");
+    await page.getByTestId("venta-confirmar").click();
+    await expect(page.getByTestId("venta-alerta-stock")).toBeVisible();
+    await expect(page.getByTestId("venta-sin-stock-3")).toBeVisible();
+    await expect(page.getByTestId("venta-sin-stock-4")).toBeHidden();
+    await expect(page.getByTestId("venta-producto-3")).toBeDisabled();
+  });
+
+  test("el aviso de stock se borra al volver a armar la venta", async ({ page }) => {
+    await abrirVentas(page);
+    await abrirCobro(page, [3]);
+    backend.estado.productos.find((p) => p.id === 3).cantidad = 0;
+    await page.getByTestId("venta-medio-pago").selectOption("1");
+    await page.getByTestId("venta-confirmar").click();
+    await expect(page.getByTestId("venta-alerta-stock")).toBeVisible();
+    await page.getByTestId("venta-producto-4").click();
+    await expect(page.getByTestId("venta-alerta-stock")).toHaveCount(0);
+  });
+
+  test("la venta confirmada muestra el total y el tipo de venta", async ({ page }) => {
+    await abrirVentas(page);
+    await abrirCobro(page, [3, 3]);
+    await page.getByTestId("venta-medio-pago").selectOption("1");
+    await page.getByTestId("venta-confirmar").click();
+    await expect(page.getByTestId("venta-confirmada")).toContainText("Contado");
+    await expect(page.getByTestId("venta-confirmada")).toContainText(/Total.*1\.960,00/s);
+    await expect(page.getByTestId("venta-confirmada")).toContainText("Fecha y hora");
+  });
+});
+
+test.describe("Nueva venta: errores del Backend al confirmar", () => {
+  const confirmarConMedio = async (page, cliente) => {
+    await abrirCobro(page);
+    if (cliente) await page.getByTestId("venta-cliente").selectOption(cliente);
+    await page.getByTestId("venta-medio-pago").selectOption("1");
+    await page.getByTestId("venta-confirmar").click();
+  };
+
+  test("si rechaza los productos (items), cierra el modal y lo avisa arriba", async ({ page }) => {
+    await abrirVentas(page);
+    backend.fallar("POST /ventas", { status: 400, body: { status: "error", mensaje: "Error de validación", errores: { items: "Hay un producto que no existe." } } });
+    await confirmarConMedio(page);
+    await expect(page.getByTestId("venta-aviso")).toHaveText("Hay un producto que no existe.");
+    await expect(page.getByTestId("venta-confirmar")).toHaveCount(0);
+    await expect(page.getByTestId("venta-items-contador")).toHaveText("1 ítem");
+  });
+
+  test("si rechaza al cliente, el error sale junto al campo y el modal sigue abierto", async ({ page }) => {
+    await abrirVentas(page);
+    backend.fallar("POST /ventas", { status: 400, body: { status: "error", mensaje: "Error de validación", errores: { cliente_id: "El cliente no está registrado." } } });
+    await confirmarConMedio(page, "1");
+    await expect(page.locator("#error-cliente")).toHaveText("El cliente no está registrado.");
+    await expect(page.locator("#error-medio_pago")).toBeHidden();
+    await expect(page.getByTestId("venta-confirmar")).toBeEnabled();
+  });
+
+  // Falla de la pantalla: el resumen nombra también "medio de pago" aunque solo falló el cliente, porque al armar los
+  // errores se deja la clave `medio_pago` con valor vacío y el resumen cuenta todas las claves. Se activa al corregirla.
+  test.fixme("el resumen de errores nombra solo el campo que falló", async ({ page }) => {
+    await abrirVentas(page);
+    backend.fallar("POST /ventas", { status: 400, body: { status: "error", mensaje: "Error de validación", errores: { cliente_id: "El cliente no está registrado." } } });
+    await confirmarConMedio(page, "1");
+    await expect(page.getByTestId("formulario-errores")).toHaveText("Revisá estos datos: cliente.");
+  });
+
+  test("un error del servidor con mensaje propio lo muestra y deja reintentar", async ({ page }) => {
+    await abrirVentas(page);
+    backend.fallar("POST /ventas", { status: 500, body: { status: "error", mensaje: "Error interno del servidor" } });
+    await confirmarConMedio(page);
+    await expect(page.locator(".gastos-toast")).toContainText("Error interno del servidor");
+    await expect(page.getByTestId("venta-confirmar")).toBeEnabled();
+    await expect(page.getByTestId("venta-confirmar")).toHaveText("Confirmar venta");
+    await expect(page.getByTestId("modal-cancelar")).toBeEnabled();
+  });
+
+  test("un error del servidor sin mensaje usa el texto por defecto", async ({ page }) => {
+    await abrirVentas(page);
+    backend.fallar("POST /ventas", { status: 500, body: {} });
+    await confirmarConMedio(page);
+    await expect(page.locator(".gastos-toast")).toContainText("No se pudo confirmar la venta. Intentá de nuevo.");
+    expect(backend.enviados("POST", "/ventas")).toHaveLength(1);
+  });
+
+  // Si el Backend no responde al pedir los medios de pago, el modal igual abre y el desplegable avisa que no hay medios.
+  test("si no se pueden cargar los medios de pago, el modal abre y avisa que no hay medios", async ({ page }) => {
+    await abrirVentas(page);
+    backend.fallar("GET /medios-pago", { status: 500, body: { mensaje: "Error al listar los medios de pago" } });
+    await abrirCobro(page);
+    await expect(page.locator("[data-testid=venta-medio-pago] option")).toHaveText(["Sin medios de pago. Creá uno en Configuración > Medios de pago"]);
+    await page.getByTestId("venta-confirmar").click();
+    await expect(page.locator("#error-medio_pago")).toBeVisible();
+    expect(backend.enviados("POST", "/ventas")).toHaveLength(0);
   });
 });

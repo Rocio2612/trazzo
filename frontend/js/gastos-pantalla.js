@@ -51,6 +51,7 @@ const rangoDePeriodo = (periodo) => {
 };
 
 // --- Ayudantes de DOM ----------------------------------------------------------
+// Crea un elemento HTML con sus atributos e hijos (lo usa toda la pantalla).
 // h("div", { class: "x", text: "hola" }, hijo1, hijo2)
 const h = (etiqueta, propiedades = {}, ...hijos) => {
   const el = document.createElement(etiqueta);
@@ -66,9 +67,11 @@ const h = (etiqueta, propiedades = {}, ...hijos) => {
   return el;
 };
 
+// Botón con texto.
 const boton = (texto, clase = "btn-outline", extra = {}) =>
   h("button", { type: "button", class: `btn ${clase}`, text: texto, ...extra });
 
+// Convierte un ícono (texto SVG) en un elemento que se puede mostrar.
 const crearSvg = (iconoSvg) => {
   const svg = new DOMParser().parseFromString(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + iconoSvg + "</svg>",
@@ -91,6 +94,7 @@ const botonIcono = (iconoSvg, etiqueta, extra = {}, texto = "", clase = "") => {
   return el;
 };
 
+// Cartelito temporal que desaparece solo.
 const avisar = (texto) => {
   document.querySelectorAll(".gastos-toast").forEach((t) => t.remove());
   const aviso = h("div", { class: "gastos-toast", role: "status", text: texto });
@@ -98,8 +102,10 @@ const avisar = (texto) => {
   setTimeout(() => aviso.remove(), 2600);
 };
 
+// Franja amarilla de advertencia.
 const bannerAmbar = (texto) => h("div", { class: "gastos-banner gastos-banner-ambar", role: "status", text: texto });
 
+// Ventana modal base (cabecera, cuerpo y pie). Se cierra con ×, Esc o clic afuera.
 const abrirModal = ({ titulo, chico = false, cuerpo, pie, alIntentarCerrar }) => {
   const cerrarBtn = h("button", { class: "gastos-modal-cerrar", type: "button", "aria-label": "Cerrar", text: "×" });
   const fondo = h(
@@ -155,6 +161,7 @@ const CAMPOS_GASTO = [
 const abrirFormulario = ({ titulo, valores = {}, avisos, alGuardar }) => {
   const controles = {};
   const zonaAvisos = h("div");
+  // Crea cada campo del formulario: etiqueta, control y lugar para el error.
   const filas = CAMPOS_GASTO.map((spec) => {
     const sinMedios = spec.esMedioDePago && mediosDePago.length === 0;
     const opciones = spec.esMedioDePago
@@ -182,6 +189,7 @@ const abrirFormulario = ({ titulo, valores = {}, avisos, alGuardar }) => {
   const guardar = boton("Guardar", "btn-primario", { "data-testid": "modal-guardar" });
   let enviando = false;
 
+  // Arma y abre el modal con los campos y los botones.
   const modal = abrirModal({
     titulo,
     cuerpo: [zonaAvisos, filas],
@@ -219,6 +227,7 @@ const abrirFormulario = ({ titulo, valores = {}, avisos, alGuardar }) => {
     });
   });
 
+  // Guardar: valida, envía al Backend y muestra los errores si los hay.
   guardar.addEventListener("click", async () => {
     if (enviando) return;
     const datos = leer();
@@ -262,6 +271,7 @@ const iniciarPantalla = () => {
   }
   const pagina = document.getElementById("gastos-pagina");
   // gastos y resumen son los del período elegido, tal como los devuelve el Backend; el buscador filtra esa lista.
+  // Estado de la pantalla y piezas del total (título, monto y cantidad).
   const ctx = { q: "", periodo: "todas", gastos: [], resumen: { total_gastos: 0, cantidad_operaciones: 0 }, cargando: true, error: "" };
   const zonaTabla = h("div");
   const valorTotal = h("p", { class: "gastos-total-valor", "data-testid": "gastos-total", text: formatearDinero(0) });
@@ -285,6 +295,7 @@ const iniciarPantalla = () => {
     refrescar();
   };
 
+  // Abre el formulario: vacío para un gasto nuevo, con los datos para editar uno.
   const formularioGasto = async (gasto) => {
     const esNuevo = !gasto;
     await cargarMediosDePago();
@@ -295,9 +306,9 @@ const iniciarPantalla = () => {
         esNuevo
           ? []
           : [
-              bannerAmbar("Si cambiás la fecha o el monto, se recalcula el total del período."),
-              describirAuditoria(gasto) && h("p", { class: "gastos-ayuda", "data-testid": "gasto-auditoria", text: describirAuditoria(gasto) }),
-            ],
+            bannerAmbar("Si cambiás la fecha o el monto, se recalcula el total del período."),
+            describirAuditoria(gasto) && h("p", { class: "gastos-ayuda", "data-testid": "gasto-auditoria", text: describirAuditoria(gasto) }),
+          ],
       // Si el Backend rechaza el gasto, el error sale en el formulario (que sigue abierto).
       alGuardar: async (datos) => {
         if (esNuevo) await servicioGastos.crear(datos);
@@ -314,6 +325,7 @@ const iniciarPantalla = () => {
     });
   };
 
+  // Pide confirmación y elimina el gasto.
   const pedirEliminar = (gasto) =>
     confirmar({
       titulo: "Eliminar",
@@ -351,11 +363,13 @@ const iniciarPantalla = () => {
   const sinDato = () => h("span", { class: "gastos-sin-dato", text: "—" });
   const COLUMNAS = [{ titulo: "Fecha" }, { titulo: "Concepto" }, { titulo: "Monto", clase: "num" }, { titulo: "Medio de pago" }, { titulo: "Creado por" }, { titulo: "Acciones", clase: "acciones-columna" }];
 
+  // Una fila de la tabla: una celda por columna.
   const filaDeGasto = (gasto) => {
     const celdas = [fechaParaMostrar(gasto.fecha), gasto.concepto, formatearDinero(gasto.monto), gasto.medio_pago_nombre || sinDato(), gasto.creado_por ? h("span", { title: describirAuditoria(gasto) || null, text: gasto.creado_por }) : sinDato(), botonesFila(gasto)];
     return h("tr", { "data-testid": `gastos-fila-${gasto.id}` }, celdas.map((celda, i) => h("td", { class: COLUMNAS[i].clase }, celda)));
   };
 
+  // Tabla principal: según el estado muestra "Cargando", el error, "Sin gastos" o la tabla.
   const contenidoDeLaTabla = () => {
     if (ctx.cargando) return h("div", { class: "gastos-vacio", "data-testid": "gastos-cargando", text: "Cargando…" });
     if (ctx.error && ctx.gastos.length === 0) return h("div", { class: "gastos-vacio", "data-testid": "gastos-error-carga", text: ctx.error });
@@ -385,6 +399,7 @@ const iniciarPantalla = () => {
     zonaTabla.replaceChildren(h("div", { class: "gastos-tarjeta" }, contenidoDeLaTabla()));
   };
 
+  // Clic en Editar o Eliminar de una fila.
   zonaTabla.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-accion]");
     const gasto = b && ctx.gastos.find((g) => g.id === Number(b.dataset.id));
@@ -408,6 +423,7 @@ const iniciarPantalla = () => {
     cargar();
   });
 
+  // Botón "Nuevo gasto": abre el formulario vacío.
   const botonNuevo = boton("", "btn-primario gastos-btn-con-icono", { "data-testid": "gastos-nuevo", "data-modulo": MODULO, "data-accion": "crear" });
   botonNuevo.append(crearSvg(ICONO_MAS), h("span", { text: "Nuevo gasto" }));
   botonNuevo.addEventListener("click", () => formularioGasto(null));
@@ -419,6 +435,7 @@ const iniciarPantalla = () => {
     refrescar();
   });
 
+  // Arma la página (título, total, buscador, selector y tabla) y carga los datos.
   pagina.replaceChildren(
     h("div", { class: "gastos-encabezado" }, h("h1", { text: "Gastos operativos" })),
     h("div", { class: "gastos-acciones" }, zonaTotal, botonNuevo),
