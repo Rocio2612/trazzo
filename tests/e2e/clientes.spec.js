@@ -11,8 +11,7 @@ const { simularCatalogo } = require("./backend-falso-catalogo");
 //   5 Kiosco El Sol       DNI 28999111            OCULTO, con 4 ventas (no se puede eliminar)
 // Los avisos salen en el cartel #toast; ocultar y eliminar piden confirmación con confirm() del navegador.
 
-// Los tests usan una ventana alta (1000 px) porque en una de 720 px de alto el formulario de cliente queda cortado y no se
-// llega al botón Guardar (ver el test de "pantallas bajas" al final).
+// Los tests usan una ventana de 1000 px de alto; el test de "pantallas bajas" (al final) comprueba el formulario con 720 px.
 test.use({ viewport: { width: 1280, height: 1000 } });
 
 let backend;
@@ -107,15 +106,15 @@ test.describe("Clientes: la lista", () => {
 
   test("si el backend falla, avisa en la tabla", async ({ page }) => {
     await abrir(page, { preparar: (b) => b.fallar("GET /clientes", { status: 500, body: { mensaje: "Error interno del servidor" } }) });
-    await expect(page.getByText("Error al cargar clientes")).toBeVisible();
+    await expect(page.getByText("Error interno del servidor")).toBeVisible();
   });
 
   test("sin conexión también avisa en la tabla", async ({ page }) => {
     await abrir(page, { preparar: (b) => b.fallar("GET /clientes", { abortar: true }) });
-    await expect(page.getByText("Error al cargar clientes")).toBeVisible();
+    await expect(page.getByText("No se pudo conectar con el servidor.")).toBeVisible();
   });
 
-  test.fixme("un nombre con código HTML se muestra como texto y no se ejecuta", async ({ page }) => {
+  test("un nombre con código HTML se muestra como texto y no se ejecuta", async ({ page }) => {
     const peligroso = '<img src=x onerror="window.__xss=1">Collar';
     await abrir(page, { semilla: (e) => (e.clientes[0].nombre = peligroso) });
     await expect(filas(page)).toHaveCount(3);
@@ -263,7 +262,7 @@ test.describe("Clientes: ficha", () => {
     await expect(ficha(page)).toBeHidden();
   });
 
-  test.fixme("el nombre con código HTML se ve como texto también en la ficha", async ({ page }) => {
+  test("el nombre con código HTML se ve como texto también en la ficha", async ({ page }) => {
     const peligroso = '<img src=x onerror="window.__xss=1">Collar';
     await abrir(page, { semilla: (e) => (e.clientes[0].nombre = peligroso) });
     await page.locator('#clientes-tbody button[title="Ver ficha"]').first().click();
@@ -311,9 +310,7 @@ test.describe("Clientes: nuevo cliente", () => {
   ];
 
   for (const [nombre, datos, selector, mensaje] of faltantes) {
-    // Si falta el número de documento, el error se muestra como una caja vacía (sin texto): pendiente de arreglar.
-    const prueba = nombre === "el número de documento" ? test.fixme : test;
-    prueba(`si falta ${nombre}, lo avisa con un mensaje y no envía nada`, async ({ page }) => {
+    test(`si falta ${nombre}, lo avisa con un mensaje y no envía nada`, async ({ page }) => {
       await abrir(page);
       await abrirNuevo(page);
       await llenar(page, datos);
@@ -372,7 +369,7 @@ test.describe("Clientes: nuevo cliente", () => {
     await expect(ayuda).toHaveText("✓ Formato válido.");
   });
 
-  test.fixme("no envía un CUIT con el dígito verificador incorrecto", async ({ page }) => {
+  test("no envía un CUIT con el dígito verificador incorrecto", async ({ page }) => {
     await abrir(page);
     await abrirNuevo(page);
     await llenar(page, { tipo: "CUIT", numero: "20-12345678-9" });
@@ -381,7 +378,7 @@ test.describe("Clientes: nuevo cliente", () => {
     expect(backend.enviados("POST", "/clientes")).toHaveLength(0);
   });
 
-  test.fixme("no envía un DNI de menos de 7 dígitos", async ({ page }) => {
+  test("no envía un DNI de menos de 7 dígitos", async ({ page }) => {
     await abrir(page);
     await abrirNuevo(page);
     await llenar(page, { tipo: "DNI", numero: "123" });
@@ -393,13 +390,13 @@ test.describe("Clientes: nuevo cliente", () => {
   test("guarda con los datos escritos (sin espacios de más), avisa, cierra y muestra al cliente nuevo", async ({ page }) => {
     await abrir(page);
     await abrirNuevo(page);
-    await llenar(page, { nombre: "  Carlos López  ", telefono: " 11 4555-0000 ", correo: " carlos@correo.com ", domicilio: " Calle 1 123 ", tipo: "CUIT", numero: "27-23456789-0", categoria: "MONOTRIBUTISTA" });
+    await llenar(page, { nombre: "  Carlos López  ", telefono: " 11 4555-0000 ", correo: " carlos@correo.com ", domicilio: " Calle 1 123 ", tipo: "CUIT", numero: "27-23456789-1", categoria: "MONOTRIBUTISTA" });
     await guardar(page).click();
     await expect(toast(page)).toHaveText("Cliente creado");
     await expect(toast(page)).not.toHaveClass(/error/);
     await expect(modal(page)).toBeHidden();
     expect(backend.enviados("POST", "/clientes")).toEqual([
-      { nombre: "Carlos López", telefono: "11 4555-0000", correo: "carlos@correo.com", tipo_documento: "CUIT", numero_documento: "27-23456789-0", domicilio: "Calle 1 123", categoria_impositiva: "MONOTRIBUTISTA" },
+      { nombre: "Carlos López", telefono: "11 4555-0000", correo: "carlos@correo.com", tipo_documento: "CUIT", numero_documento: "27-23456789-1", domicilio: "Calle 1 123", categoria_impositiva: "MONOTRIBUTISTA" },
     ]);
     await expect(filas(page)).toHaveCount(4);
     await expect(fila(page, "Carlos López")).toContainText("MONOTRIBUTISTA");
@@ -443,7 +440,7 @@ test.describe("Clientes: nuevo cliente", () => {
     await expect(guardar(page)).toBeEnabled();
   });
 
-  test.fixme("sin conexión avisa en castellano que no se pudo conectar", async ({ page }) => {
+  test("sin conexión avisa en castellano que no se pudo conectar", async ({ page }) => {
     await abrir(page, { preparar: (b) => b.fallar("POST /clientes", { abortar: true }) });
     await abrirNuevo(page);
     await llenar(page);
@@ -640,7 +637,7 @@ test.describe("Clientes: ocultar, restaurar y eliminar", () => {
     await expect(aviso).toBeHidden();
   });
 
-  test.fixme("si el 409 viene sin mensaje, el aviso explica el motivo con el texto por defecto", async ({ page }) => {
+  test("si el 409 viene sin mensaje, el aviso explica el motivo con el texto por defecto", async ({ page }) => {
     await abrir(page, { preparar: (b) => b.fallar("DELETE /clientes/:id", { status: 409, body: {} }) });
     await verOcultos(page).click();
     await accion(page, "Kiosco El Sol", "Eliminar").click();
@@ -659,7 +656,7 @@ test.describe("Clientes: ocultar, restaurar y eliminar", () => {
 test.describe("Clientes: pantallas bajas", () => {
   test.use({ viewport: { width: 1280, height: 720 } });
 
-  test.fixme("en una pantalla de 720 px de alto, los botones Guardar y Cancelar del formulario quedan a la vista", async ({ page }) => {
+  test("en una pantalla de 720 px de alto, los botones Guardar y Cancelar del formulario quedan a la vista", async ({ page }) => {
     await abrir(page);
     await abrirNuevo(page);
     const caja = await guardar(page).boundingBox();
@@ -669,7 +666,7 @@ test.describe("Clientes: pantallas bajas", () => {
 });
 
 test.describe("Clientes: rol Cajero y acceso", () => {
-  test.fixme("el Cajero que entra por la dirección vuelve al Panel y no pide los clientes", async ({ page }) => {
+  test("el Cajero que entra por la dirección vuelve al Panel y no pide los clientes", async ({ page }) => {
     await abrir(page, { rol: "CAJERO" });
     await expect(page).toHaveURL(/dashboard\.html/);
     expect(backend.enviados("GET", "/clientes")).toHaveLength(0);
