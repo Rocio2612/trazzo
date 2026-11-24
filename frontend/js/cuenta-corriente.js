@@ -29,16 +29,14 @@ let tabActiva = 'ventas';
 let verOcultos = false;
 let esCajero = false;
 
-// Rutas de API (Ajustar cuando el back esté listo)
-const API_VENTAS = "/api/cuenta-corriente/ventas"; 
-const API_PAGOS = "/api/cuenta-corriente/pagos";
+const API_VENTAS = "/cuenta-corriente/ventas"; 
+const API_PAGOS = "/cuenta-corriente/pagos";
 
 const iniciarPantalla = () => {
     const pagina = document.getElementById("cc-pagina");
     
-    // Acá deberías usar tu función real de roles para saber si es Cajero
-    const rolUsuario = localStorage.getItem("trazzo_rol") || "Administrador"; 
-    esCajero = (rolUsuario === "Cajero");
+    // Corregido Punto 9: Usamos puedeHacer
+    esCajero = typeof puedeHacer === "function" ? !puedeHacer("cuentas_corrientes", "ocultar") : false;
 
     pagina.replaceChildren(
         h("div", { class: "cc-header" }, h("h1", { text: "Cuenta corriente" })),
@@ -239,7 +237,8 @@ const crearModalBase = (titulo, cuerpo, botones, ancho = "") => {
 const abrirModalDetalle = (venta) => {
     const saldo = venta.total - venta.pagado;
     const estado = calcularEstado(venta);
-    const productos = venta.productos || [{ nombre: "Producto de Ejemplo", precio: venta.total, cantidad: 1, subtotal: venta.total }];
+    // Corregido Punto 6: Usa los productos reales
+    const productos = venta.productos || venta.detalles || [];
     const pagosVenta = pagos.filter(p => p.nro_venta === venta.nro_venta && !p.oculto);
 
     const cuerpo = h("div", {},
@@ -256,6 +255,7 @@ const abrirModalDetalle = (venta) => {
         ),
         h("div", { class: "detalle-seccion" },
             h("h4", { text: "Productos vendidos" }),
+            productos.length === 0 ? h("div", { style: "color: #8c8c8c; font-size: 0.85rem;", text: "No hay detalle de productos disponible." }) :
             h("table", { class: "cc-tabla", style: "border: 1px solid #dee2e6; border-radius: 8px;" },
                 h("thead", {}, h("tr", {}, ["Producto", "Precio", "Cantidad", "Subtotal"].map(t => h("th", { text: t, class: t !== "Producto" ? "text-right" : "" })))),
                 h("tbody", {}, productos.map(p => h("tr", {},
@@ -320,7 +320,6 @@ const abrirModalPago = async (ventaFija = null, pagoAEditar = null) => {
     selectMedio.append(h("option", { value: "", text: "Elegí una opción" }));
     medios.forEach(m => selectMedio.append(h("option", { value: m, text: m })));
 
-    const ahora = new Date();
     const inputFecha = h("input", { type: "text", class: "cc-input", id: "cc-pago-fecha", placeholder: "dd-mm-aaaa" });
     const inputHora = h("input", { type: "text", class: "cc-input", id: "cc-pago-hora", placeholder: "hh:mm" });
 
@@ -359,18 +358,25 @@ const abrirModalPago = async (ventaFija = null, pagoAEditar = null) => {
     selectVenta.addEventListener("change", actualizarSaldoLabel);
     inputMonto.addEventListener("input", actualizarSaldoLabel);
 
+    // Corregido Puntos 7 y 8: Función pad para agregar el 0 a los días y horas
+    const pad = (n) => String(n).padStart(2, '0');
+    const hoy = new Date();
+
     if (ventaFija) {
         selectVenta.value = ventaFija.nro_venta;
         inputMonto.value = (ventaFija.total - ventaFija.pagado).toFixed(2);
+        inputFecha.value = `${pad(hoy.getDate())}-${pad(hoy.getMonth() + 1)}-${hoy.getFullYear()}`;
+        inputHora.value = `${pad(hoy.getHours())}:${pad(hoy.getMinutes())}`;
     } else if (pagoAEditar) {
+        const f = new Date(pagoAEditar.fecha);
         selectVenta.value = pagoAEditar.nro_venta;
         inputMonto.value = pagoAEditar.monto;
         selectMedio.value = pagoAEditar.medio_pago;
-        inputFecha.value = new Date(pagoAEditar.fecha).toLocaleDateString('es-AR').replace(/\//g, '-');
-        inputHora.value = new Date(pagoAEditar.fecha).toLocaleTimeString('es-AR', {hour: '2-digit', minute:'2-digit'});
+        inputFecha.value = `${pad(f.getDate())}-${pad(f.getMonth() + 1)}-${f.getFullYear()}`;
+        inputHora.value = `${pad(f.getHours())}:${pad(f.getMinutes())}`;
     } else {
-        inputFecha.value = new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
-        inputHora.value = new Date().toLocaleTimeString('es-AR', {hour: '2-digit', minute:'2-digit'});
+        inputFecha.value = `${pad(hoy.getDate())}-${pad(hoy.getMonth() + 1)}-${hoy.getFullYear()}`;
+        inputHora.value = `${pad(hoy.getHours())}:${pad(hoy.getMinutes())}`;
     }
 
     actualizarSaldoLabel();
@@ -437,7 +443,7 @@ const restaurarPago = async (pago) => {
 // --- CARGA DE DATOS (MOCK TEMPORAL) ---
 const cargarDatos = async () => {
     try {
-        // MOCK: Simulamos datos para que veas la pantalla llena
+        // MOCK
         ventas = [
             { nro_venta: "00001-0000467", cliente: "Sandra Quiroga", fecha: "2026-11-03T17:20:00Z", total: 4260.00, pagado: 0, anulada: false },
             { nro_venta: "00001-0000460", cliente: "Panadería La Espiga S.A.", fecha: "2026-10-28T14:00:00Z", total: 6500.00, pagado: 6500.00, anulada: false },

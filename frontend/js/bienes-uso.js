@@ -28,11 +28,10 @@ let resumenData = { patrimonio_total: 0 };
 let verOcultos = false;
 let refrescarUI = null;
 
-// NUEVA FUNCIÓN: Trae los proveedores reales del backend
 const obtenerProveedores = async () => {
     try {
-        const res = await fetchAPI("/api/proveedores");
-        return res.items || []; // Lee la propiedad "items" que devuelve tu backend
+        const res = await fetchAPI("/proveedores"); // Corregido Punto 1
+        return res.items || [];
     } catch (error) {
         console.error("Error al cargar proveedores:", error);
         return [];
@@ -63,6 +62,12 @@ const abrirModal = ({ titulo, cuerpo, onGuardar }) => {
 };
 
 const iniciarPantalla = () => {
+    // Corregido Punto 3
+    if (typeof puedeHacer === "function" && !puedeHacer("bienes_uso", "ver")) {
+        window.location.href = "dashboard.html";
+        return;
+    }
+
     const pagina = document.getElementById("bienes-pagina");
     const zonaTabla = h("div");
     const zonaTotal = h("div", { style: "display: flex; justify-content: space-between; align-items: center; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem;" });
@@ -156,6 +161,7 @@ const cargarDatos = async () => {
             cantidad: item.cantidad,
             valor_total: item.valor_total, 
             fecha: item.fecha_adquisicion || item.creado_en || "—", 
+            proveedor_id: item.proveedor_id, // Corregido Punto 5 (guardar id)
             creado_por: item.creado_por || "admin",
             oculto: item.activo === false || item.oculto === true || false
         }));
@@ -167,15 +173,13 @@ const cargarDatos = async () => {
 };
 
 const crear = async () => {
-    const proveedores = await obtenerProveedores(); // Trae los proveedores reales
+    const proveedores = await obtenerProveedores(); 
 
     const form = h("div", {},
         h("div", { class: "gastos-campo" }, h("label", { text: "Nombre *" }), h("input", { id: "m-nombre", class: "gastos-entrada" })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Valor de Adquisición (Unitario) *" }), h("input", { id: "m-valor", type: "number", class: "gastos-entrada" })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Fecha de Adquisición *" }), h("input", { id: "m-fecha", type: "text", class: "gastos-entrada", placeholder: "dd-mm-aaaa" })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Cantidad Total *" }), h("input", { id: "m-cant", type: "number", step: "1", class: "gastos-entrada", value: "1" })),
-        
-        // NUEVO SELECT DE PROVEEDOR OBLIGATORIO
         h("div", { class: "gastos-campo" }, h("label", { text: "Proveedor *" }), 
             h("select", { id: "m-prov", class: "gastos-entrada" }, 
                 h("option", { value: "", text: "Seleccione un proveedor" }),
@@ -194,7 +198,7 @@ const crear = async () => {
             const provId = document.getElementById("m-prov").value;
 
             if (!nombre) throw new Error("El nombre es obligatorio.");
-            if (isNaN(valor) || valor < 0) throw new Error("Ingrese un valor de adquisición válido.");
+            if (isNaN(valor) || valor <= 0) throw new Error("El valor de adquisición debe ser mayor a 0."); // Corregido Punto 2
             if (isNaN(cant) || cant <= 0) throw new Error("La cantidad debe ser mayor a 0.");
             if (!provId) throw new Error("Debe seleccionar un proveedor.");
             
@@ -203,7 +207,7 @@ const crear = async () => {
 
             await servicioEquipamiento.crear({
                 nombre: nombre, precio_compra: valor, cantidad: cant, stock_minimo: 0, 
-                proveedor_id: parseInt(provId), // ENVÍA EL ID REAL
+                proveedor_id: parseInt(provId),
                 fecha_adquisicion: fechaFormateada, iva_alicuota: 21.00
             });
             await cargarDatos();
@@ -212,21 +216,18 @@ const crear = async () => {
 };
 
 const editar = async (bien) => {
-    const proveedores = await obtenerProveedores(); 
+    const proveedores = await obtenerProveedores();
 
     const form = h("div", {},
         h("div", { class: "gastos-campo" }, h("label", { text: "Nombre *" }), h("input", { id: "e-nombre", class: "gastos-entrada", value: bien.nombre })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Valor de Adquisición (Unitario) *" }), h("input", { id: "e-valor", type: "number", class: "gastos-entrada", value: bien.precio_compra })),
         h("div", { class: "gastos-campo" }, h("label", { text: "Fecha de Adquisición *" }), h("input", { id: "e-fecha", type: "text", class: "gastos-entrada", placeholder: "dd-mm-aaaa", value: fechaDeMarcaParaMostrar(bien.fecha) })),
-        
-        // NUEVO CAMPO CANTIDAD EN EDITAR (Pedido por QA)
         h("div", { class: "gastos-campo" }, h("label", { text: "Cantidad Total *" }), h("input", { id: "e-cant", type: "number", step: "1", class: "gastos-entrada", value: bien.cantidad })),
-        
-        // SELECT DE PROVEEDOR EN EDITAR
         h("div", { class: "gastos-campo" }, h("label", { text: "Proveedor *" }), 
             h("select", { id: "e-prov", class: "gastos-entrada" }, 
                 h("option", { value: "", text: "Seleccione un proveedor" }),
-                ...proveedores.map(p => h("option", { value: p.id, text: p.nombre }))
+                // Corregido Punto 5: agregamos selected
+                ...proveedores.map(p => h("option", { value: p.id, text: p.nombre, selected: p.id === bien.proveedor_id }))
             )
         )
     );
@@ -241,7 +242,7 @@ const editar = async (bien) => {
             const provId = document.getElementById("e-prov").value;
 
             if (!nombre) throw new Error("El nombre es obligatorio.");
-            if (isNaN(valor) || valor < 0) throw new Error("Ingrese un valor de adquisición válido.");
+            if (isNaN(valor) || valor <= 0) throw new Error("El valor de adquisición debe ser mayor a 0."); // Corregido Punto 2
             if (isNaN(cant) || cant <= 0) throw new Error("La cantidad debe ser mayor a 0.");
             if (!provId) throw new Error("Debe seleccionar un proveedor.");
             
@@ -251,7 +252,7 @@ const editar = async (bien) => {
             await servicioEquipamiento.editar(bien.id, {
                 nombre: nombre, 
                 precio_compra: valor, 
-                cantidad: cant, // ENVÍA LA CANTIDAD
+                cantidad: cant,
                 proveedor_id: parseInt(provId),
                 fecha_adquisicion: fechaFormateada
             });
