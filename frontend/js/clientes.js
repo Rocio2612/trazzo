@@ -1,9 +1,10 @@
 // Trazzo - Módulo 7: Clientes
-import { formatearMoneda } from "./utils/productosUtils.js"; // Reutilizamos formateador del Sprint 2
-import { rolDesdeToken, esRolAdmin } from "./utils/productosUtils.js"; // O roles.js si lo tienen ahí
+import { formatearMoneda, escaparHTML } from "./utils/productosUtils.js";
+import { mensajeDeError } from "./servicios/errores.js";
 
-const ROL_USUARIO = localStorage.getItem("trazzo_rol") || "ADMIN"; // Fallback para pruebas
-const esAdmin = ["ADMIN", "PROPIETARIO"].includes(ROL_USUARIO.toUpperCase());
+// Leer rol correctamente
+const esAdmin =
+  typeof puedeHacer === "function" ? puedeHacer("clientes", "crear") : true;
 
 const $ = (id) => document.getElementById(id);
 let clientesData = [];
@@ -48,14 +49,20 @@ const cargarClientes = async () => {
     '<tr><td colspan="4" class="texto-vacio">Cargando...</td></tr>';
 
   try {
-    // Enviamos el flag de ocultos si es admin
     const url = `/clientes${esAdmin && modoOcultos ? "?ocultos=true" : ""}`;
     const data = await fetchAPI(url);
-    clientesData = data.items || data;
+    const listaOriginal = data.items || data;
+
+    // ARREGLO: Normalizar "activo" para que no se asuma oculto por error
+    clientesData = listaOriginal.map((c) => ({
+      ...c,
+      activo: c.activo !== false, // Si no es false explícito, es visible
+    }));
 
     renderizarTabla(clientesData);
   } catch (error) {
-    tbody.innerHTML = `<tr><td colspan="4" class="texto-vacio" style="color:#dc3545;">Error al cargar clientes</td></tr>`;
+    const msj = mensajeDeError(error, "Error al cargar clientes");
+    tbody.innerHTML = `<tr><td colspan="4" class="texto-vacio" style="color:#dc3545;">${msj}</td></tr>`;
   }
 };
 
@@ -69,7 +76,6 @@ const renderizarTabla = (lista) => {
 
   tbody.innerHTML = lista
     .map((c) => {
-      // Si es Cajero, el back solo devuelve { id, nombre }. Respetamos lo que llegue.
       const doc =
         c.tipo_documento && c.numero_documento
           ? `${c.tipo_documento} ${c.numero_documento}`
@@ -100,9 +106,11 @@ const renderizarTabla = (lista) => {
             `;
       }
 
+      const nombreSeguro = escaparHTML(c.nombre);
+
       return `
             <tr>
-                <td style="font-weight:600;">${c.nombre}</td>
+                <td style="font-weight:600;">${nombreSeguro}</td>
                 <td>${doc}</td>
                 <td>${cat !== "—" ? `<span class="badge-gris">${cat.replace(/_/g, " ")}</span>` : "—"}</td>
                 <td><div class="acciones-flex">${acciones}</div></td>
@@ -147,19 +155,27 @@ window.abrirModalEditar = (id) => {
 window.abrirFicha = async (id) => {
   try {
     const c = await fetchAPI(`/clientes/${id}`);
+    const nombreSeguro = escaparHTML(c.nombre);
+    const telSeguro = escaparHTML(c.telefono || "—");
+    const correoSeguro = escaparHTML(c.correo || "—");
+    const domSeguro = escaparHTML(c.domicilio || "—");
+    const tipoDocSeguro = escaparHTML(c.tipo_documento || "—");
+    const numDocSeguro = escaparHTML(c.numero_documento || "—");
+    const catSegura = escaparHTML(
+      (c.categoria_impositiva || "—").replace(/_/g, " "),
+    );
+
     if (!esAdmin) {
-      // CAJERO: Ficha reducida, sin datos sensibles.
       $("ficha-contenido").innerHTML = `
                 <div style="margin-bottom:1rem;">
                     <div style="font-size:0.72rem; color:#8c8c8c; text-transform:uppercase; font-weight:600;">Nombre completo o razón social</div>
-                    <div style="font-size:1.2rem; font-weight:600;">${c.nombre}</div>
+                    <div style="font-size:1.2rem; font-weight:600;">${nombreSeguro}</div>
                 </div>
                 <p style="font-size:0.8rem; color:#6c757d; border-top:1px solid #dee2e6; padding-top:1rem;">
                     Por la Ley 25.326 de Protección de Datos Personales, solo se muestran los datos necesarios para completar la operación.
                 </p>
             `;
     } else {
-      // ADMIN: Ficha completa
       const saldo = c.saldo_cuenta_corriente || 0;
       const colorSaldo =
         saldo > 0 ? "#b02a37" : saldo < 0 ? "#146c43" : "#212529";
@@ -167,22 +183,22 @@ window.abrirFicha = async (id) => {
       $("ficha-contenido").innerHTML = `
                 <div style="margin-bottom:1rem;">
                     <div style="font-size:0.72rem; color:#8c8c8c; text-transform:uppercase; font-weight:600;">Nombre completo o razón social</div>
-                    <div style="font-size:1.2rem; font-weight:600;">${c.nombre}</div>
+                    <div style="font-size:1.2rem; font-weight:600;">${nombreSeguro}</div>
                 </div>
                 <div style="border-top:1px solid #dee2e6; padding:1rem 0;">
                     <h4 style="font-size:0.9rem; font-weight:600; margin-bottom:0.8rem; margin-top:0;">Identificación</h4>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.8rem 1.25rem;">
-                        <div><div style="font-size:0.72rem; color:#8c8c8c; text-transform:uppercase; font-weight:600;">Tipo de Documento</div><div style="font-size:0.92rem;">${c.tipo_documento || "—"}</div></div>
-                        <div><div style="font-size:0.72rem; color:#8c8c8c; text-transform:uppercase; font-weight:600;">Número de Documento</div><div style="font-size:0.92rem;">${c.numero_documento || "—"}</div></div>
-                        <div style="grid-column:1/-1;"><div style="font-size:0.72rem; color:#8c8c8c; text-transform:uppercase; font-weight:600;">Categoría Impositiva</div><div style="font-size:0.92rem;">${(c.categoria_impositiva || "—").replace(/_/g, " ")}</div></div>
+                        <div><div style="font-size:0.72rem; color:#8c8c8c; text-transform:uppercase; font-weight:600;">Tipo de Documento</div><div style="font-size:0.92rem;">${tipoDocSeguro}</div></div>
+                        <div><div style="font-size:0.72rem; color:#8c8c8c; text-transform:uppercase; font-weight:600;">Número de Documento</div><div style="font-size:0.92rem;">${numDocSeguro}</div></div>
+                        <div style="grid-column:1/-1;"><div style="font-size:0.72rem; color:#8c8c8c; text-transform:uppercase; font-weight:600;">Categoría Impositiva</div><div style="font-size:0.92rem;">${catSegura}</div></div>
                     </div>
                 </div>
                 <div style="border-top:1px solid #dee2e6; padding:1rem 0;">
                     <h4 style="font-size:0.9rem; font-weight:600; margin-bottom:0.8rem; margin-top:0;">Contacto</h4>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.8rem 1.25rem;">
-                        <div><div style="font-size:0.72rem; color:#8c8c8c; text-transform:uppercase; font-weight:600;">Teléfono</div><div style="font-size:0.92rem;">${c.telefono || "—"}</div></div>
-                        <div><div style="font-size:0.72rem; color:#8c8c8c; text-transform:uppercase; font-weight:600;">Correo Electrónico</div><div style="font-size:0.92rem;">${c.correo || "—"}</div></div>
-                        <div style="grid-column:1/-1;"><div style="font-size:0.72rem; color:#8c8c8c; text-transform:uppercase; font-weight:600;">Domicilio</div><div style="font-size:0.92rem;">${c.domicilio || "—"}</div></div>
+                        <div><div style="font-size:0.72rem; color:#8c8c8c; text-transform:uppercase; font-weight:600;">Teléfono</div><div style="font-size:0.92rem;">${telSeguro}</div></div>
+                        <div><div style="font-size:0.72rem; color:#8c8c8c; text-transform:uppercase; font-weight:600;">Correo Electrónico</div><div style="font-size:0.92rem;">${correoSeguro}</div></div>
+                        <div style="grid-column:1/-1;"><div style="font-size:0.72rem; color:#8c8c8c; text-transform:uppercase; font-weight:600;">Domicilio</div><div style="font-size:0.92rem;">${domSeguro}</div></div>
                     </div>
                 </div>
                 <div style="border-top:1px solid #dee2e6; padding:1rem 0;">
@@ -201,7 +217,7 @@ window.abrirFicha = async (id) => {
     };
     abrirModal("modal-ficha");
   } catch (e) {
-    mostrarToast("Error al cargar la ficha", true);
+    mostrarToast(mensajeDeError(e, "Error al cargar la ficha"), true);
   }
 };
 
@@ -291,6 +307,19 @@ $("form-cliente").addEventListener("submit", async (e) => {
     valido = false;
   }
 
+  if (
+    !$("numero_documento").classList.contains("error") &&
+    $("tipo_documento").value
+  ) {
+    if (!validarDocumentoUI()) {
+      $("numero_documento").classList.add("error");
+      $("error-numero_documento").textContent =
+        "El número de documento no es válido para el tipo seleccionado.";
+      $("error-numero_documento").style.display = "block";
+      valido = false;
+    }
+  }
+
   if (!valido) return;
 
   const btn = $("btn-guardar-cliente");
@@ -322,7 +351,7 @@ $("form-cliente").addEventListener("submit", async (e) => {
       $("error-numero_documento").textContent = error.message;
       $("error-numero_documento").style.display = "block";
     } else {
-      mostrarToast(error.message, true);
+      mostrarToast(mensajeDeError(error, "Error al guardar"), true);
     }
   } finally {
     btn.disabled = false;
@@ -343,7 +372,7 @@ window.ocultarCliente = async (id) => {
     mostrarToast("Cliente oculto");
     cargarClientes();
   } catch (e) {
-    mostrarToast(e.message, true);
+    mostrarToast(mensajeDeError(e, "Error al ocultar"), true);
   }
 };
 
@@ -353,7 +382,7 @@ window.restaurarCliente = async (id) => {
     mostrarToast("Cliente restaurado");
     cargarClientes();
   } catch (e) {
-    mostrarToast(e.message, true);
+    mostrarToast(mensajeDeError(e, "Error al restaurar"), true);
   }
 };
 
@@ -370,20 +399,30 @@ window.eliminarCliente = async (id) => {
     cargarClientes();
   } catch (error) {
     if (error.status === 409) {
-      $("texto-error-eliminar").textContent =
-        error.message ||
-        "No se puede eliminar el cliente porque tiene ventas registradas o saldo en cuenta corriente.";
+      const msj =
+        error.message === "Error en la petición" || !error.message
+          ? "No se puede eliminar el cliente porque tiene ventas registradas o saldo en cuenta corriente."
+          : error.message;
+      $("texto-error-eliminar").textContent = msj;
       abrirModal("modal-error-eliminar");
     } else {
-      mostrarToast(error.message, true);
+      mostrarToast(mensajeDeError(error, "Error al eliminar"), true);
     }
   }
 };
 
 // --- INIT ---
 document.addEventListener("DOMContentLoaded", () => {
+  if (
+    typeof puedeHacer === "function" &&
+    !puedeHacer("clientes", "ver") &&
+    !puedeHacer("clientes", "seleccionar")
+  ) {
+    window.location.href = "dashboard.html";
+    return;
+  }
+
   if (!esAdmin) {
-    // Modo Cajero: ocultamos el botón de nuevo cliente
     document
       .querySelectorAll(".solo-admin")
       .forEach((el) => el.classList.add("hidden"));
@@ -415,12 +454,10 @@ document.addEventListener("DOMContentLoaded", () => {
   $("numero_documento").addEventListener("input", validarDocumentoUI);
   $("tipo_documento").addEventListener("change", validarDocumentoUI);
 
-  // Cerrar modales con el botón ✕ o Cancelar
   document.querySelectorAll("[data-cerrar]").forEach((el) => {
     el.addEventListener("click", () => cerrarModal(el.dataset.cerrar));
   });
 
-  // Cerrar modales haciendo clic afuera
   document.querySelectorAll(".modal-backdrop").forEach((fondo) => {
     fondo.addEventListener("mousedown", (e) => {
       if (e.target === fondo) fondo.classList.add("hidden");

@@ -1,5 +1,4 @@
 // Trazzo - Sprint 2 - Módulo 5: Productos
-// fetchAPI (api.js) y API_URL (config.js) son globales: los usa js/servicios/productos.js.
 import {
   calcularPrecioVenta,
   precioMenorAlCosto,
@@ -19,14 +18,10 @@ import {
   llenarSelectProveedores,
 } from "./servicios/proveedores.js";
 
-// La base guarda el rol en mayúsculas: PROPIETARIO, ADMIN o CAJERO.
 const esAdmin = esRolAdmin(
   rolDesdeToken(localStorage.getItem("trazzo_access_token")) || "CAJERO",
 );
 
-// Columnas visibles: admin ve auditoría + acciones admin; cajero no.
-// Base: Nombre, Categoría, Costo, Precio, Stock, Mínimo, Proveedor, Acciones = 8
-// Admin: + Creado por = 9
 const COLUMNAS = esAdmin ? 9 : 8;
 
 const $ = (id) => document.getElementById(id);
@@ -80,7 +75,6 @@ const mensajeEnTabla = (texto, esError = false) => {
     `<tr class="fila-mensaje${esError ? " error" : ""}"><td colspan="${COLUMNAS}">${esc(texto)}</td></tr>`;
 };
 
-// Normaliza la fecha de auditoría (puede venir ISO con Z) a hora local.
 const formatearFechaHora = (valor) => {
   if (!valor) return "—";
   try {
@@ -118,21 +112,19 @@ const renderizarTabla = (productos) => {
           : nivel === "BAJO"
             ? '<span class="badge badge-ambar">Stock bajo</span>'
             : "";
-      const oculto = prod.activo === false;
 
-      // Acciones base (todos los roles autenticados)
+      // ARREGLO: Validación estricta para que solo sea oculto si es false explícito
+      const oculto = prod.activo === false || prod.oculto === true;
+
       let acciones = boton("reponer", "Reponer stock", prod.id);
       acciones += boton("baja", "Dar de baja", prod.id);
 
-      // Acciones exclusivas de Admin/Propietario
       if (esAdmin) {
         acciones += boton("editar", "Editar", prod.id);
         if (!oculto) acciones += boton("ocultar", "Ocultar", prod.id);
         acciones += boton("eliminar", "Eliminar", prod.id);
       }
 
-      // Categoría y proveedor: usar lo que devuelva el backend.
-      // Si no viene, mostramos guión.
       const categoria = prod.categoria_nombre
         ? esc(prod.categoria_nombre)
         : "—";
@@ -140,8 +132,6 @@ const renderizarTabla = (productos) => {
         ? esc(prod.proveedor_nombre)
         : "—";
 
-      // Celda de auditoría: solo se renderiza para admin.
-      // El Cajero no recibe el dato ni ve la columna.
       const celdaAuditoria = esAdmin
         ? `<td>${formatearFechaHora(prod.creado_en)}<br /><span class="auditoria-autor">${esc(prod.creado_por) || "—"}</span></td>`
         : "";
@@ -172,7 +162,14 @@ const cargarProductos = async () => {
       ocultos: estado.ocultos && esAdmin,
     });
     if (miCarga !== estado.cargaActual) return;
-    renderizarTabla(productos);
+
+    // ARREGLO: Normalizar "activo" al cargar la lista
+    const productosNormalizados = productos.map((p) => ({
+      ...p,
+      activo: p.activo !== false, // Si no es false explícito, es true
+    }));
+
+    renderizarTabla(productosNormalizados);
   } catch (error) {
     if (miCarga !== estado.cargaActual) return;
     console.error(error);
@@ -194,6 +191,13 @@ const cargarListaProveedores = async () => {
     });
   } catch (error) {
     console.error(error);
+    const msjError = "Error al cargar proveedores";
+    [$("proveedor_id"), $("proveedor_id_repo")].forEach((select) => {
+      if (select) {
+        select.innerHTML = `<option value="">${msjError}</option>`;
+        select.disabled = true;
+      }
+    });
     mostrarToast(
       mensajeDeError(
         error,
@@ -334,7 +338,6 @@ const guardarProducto = async (e) => {
     mostrarToast(editando ? "Producto actualizado" : "Producto creado");
     cargarProductos();
   } catch (error) {
-    // 409 por nombre duplicado, etc.
     if (error?.status === 409) {
       mostrarErrorNombre(
         mensajeDeError(error, "Ya existe un producto con ese nombre."),
@@ -443,8 +446,12 @@ const guardarBaja = async (e) => {
 };
 
 // ---------- ocultar / eliminar (solo Admin) ----------
-const ocultarProducto = async (id) => {
-  if (!confirm("¿Ocultar este producto? No se borrarán sus datos.")) return;
+const ocultarProducto = async (id, skipConfirm = false) => {
+  if (
+    !skipConfirm &&
+    !confirm("¿Ocultar este producto? No se borrarán sus datos.")
+  )
+    return;
   try {
     await servicioProductos.ocultar(id);
     mostrarToast("Producto oculto");
@@ -471,7 +478,7 @@ const eliminarProducto = async (id) => {
           "El producto tiene movimientos y no se puede eliminar. ¿Querés ocultarlo?",
         )
       )
-        ocultarProducto(id);
+        ocultarProducto(id, true);
     } else {
       mostrarToast(
         mensajeDeError(error, "No se pudo eliminar el producto."),
@@ -534,7 +541,6 @@ const configurarEventos = () => {
     acciones[btn.dataset.accion]?.();
   });
 
-  // Solo Admin/Propietario puede abrir el modal de nuevo producto.
   const btnNuevo = $("btn-nuevo-producto");
   if (esAdmin) {
     btnNuevo.classList.remove("hidden");
@@ -569,7 +575,6 @@ const configurarEventos = () => {
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
-  // Mostrar la columna de auditoría solo para Admin/Propietario.
   if (esAdmin) {
     document
       .querySelectorAll(".col-auditoria")

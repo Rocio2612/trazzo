@@ -297,3 +297,22 @@ tr:last-child td {
 .toast.error {
   background: #b02a37;
 }
+/* Arreglar el modal para que el cuerpo tenga scroll y el pie quede fijo */
+#modal-cliente .modal-caja {
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  overflow: hidden; /* Evita que el modal entero scrollee */
+}
+#modal-cliente form {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Permite que el body interno haga el scroll */
+}
+#modal-cliente .modal-body {
+  overflow-y: auto;
+  flex: 1; /* Ocupa el espacio disponible */
+}
+#modal-cliente .modal-pie {
+  flex-shrink: 0; /* Evita que se achique el pie */
+}

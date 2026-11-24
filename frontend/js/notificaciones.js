@@ -110,6 +110,14 @@ const cargarAlertas = async (contenedor, actualizarContador) => {
             `/notificaciones/${alerta.id}/eliminar-vista`,
             "PATCH",
           );
+
+          // Si el array de notificaciones quedó vacío, renderizar el mensaje
+          if (notificaciones.length === 0) {
+            const contenedor = document.getElementById("lista-notificaciones"); // o el ID de tu contenedor
+            contenedor.innerHTML = '<div class="texto-vacio">Sin alertas</div>';
+          } else {
+            renderizarNotificaciones(); // Tu función normal de render
+          }
           div.remove();
           actualizarContador();
         } catch (e) {
