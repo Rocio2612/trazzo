@@ -170,10 +170,25 @@ test.describe("Productos: errores al cargar", () => {
     await expect(filas(page)).toHaveCount(2);
   });
 
-  test.fixme("si no cargan los proveedores, el desplegable avisa que no hay y se avisa del problema", async ({ page }) => {
-    await abrir(page, { preparar: (b) => b.fallar("GET /proveedores", { status: 500, body: { mensaje: "Error interno del servidor" } }) });
+  test("si no cargan los proveedores, lo avisa y los desplegables quedan deshabilitados con el aviso", async ({ page }) => {
+    await abrir(page, { preparar: (b) => b.fallar("GET /proveedores", { status: 500, body: {} }) });
     await expect(filas(page)).toHaveCount(3);
     await expect(toast(page)).toContainText("No se pudieron cargar los proveedores");
+    await expect(toast(page)).toHaveClass(/error/);
+    for (const id of ["#proveedor_id", "#proveedor_id_repo"]) {
+      await expect(page.locator(id)).toBeDisabled();
+      await expect(page.locator(`${id} option`)).toHaveText(["Error al cargar proveedores"]);
+    }
+  });
+
+  test("si el servidor de proveedores responde con un mensaje propio, lo muestra", async ({ page }) => {
+    await abrir(page, { preparar: (b) => b.fallar("GET /proveedores", { status: 500, body: { mensaje: "Error interno del servidor" } }) });
+    await expect(toast(page)).toHaveText("Error interno del servidor");
+  });
+
+  test("sin conexión con el servidor de proveedores, lo avisa", async ({ page }) => {
+    await abrir(page, { preparar: (b) => b.fallar("GET /proveedores", { abortar: true }) });
+    await expect(toast(page)).toHaveText("No se pudo conectar con el servidor.");
   });
 });
 
@@ -893,7 +908,7 @@ test.describe("Productos: ocultar y eliminar", () => {
     expect(backend.enviados("DELETE", "/productos/:id")).toHaveLength(0);
   });
 
-  test.fixme("un producto con movimientos (409) ofrece ocultarlo; si se acepta, se oculta", async ({ page }) => {
+  test("un producto con movimientos (409) ofrece ocultarlo; si se acepta, se oculta", async ({ page }) => {
     await abrir(page);
     await accion(page, "Sifón", "Eliminar").click();
     await expect(toast(page)).toHaveText("Producto oculto");
