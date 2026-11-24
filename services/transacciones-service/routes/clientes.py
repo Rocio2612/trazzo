@@ -41,11 +41,7 @@ CATEGORIAS_IMPOSITIVAS_VALIDAS = (
 ROLES_ADMIN = ['PROPIETARIO', 'ADMIN']
 TODOS_LOS_ROLES = ['PROPIETARIO', 'ADMIN', 'CAJERO']
 
-
-# ==============================================================================
 # FUNCIONES AUXILIARES DE VALIDACIÓN Y FORMATEO
-# ==============================================================================
-
 def validar_cuit(cuit):
     """
     Valida un número de CUIT o CUIL argentino mediante el algoritmo oficial Módulo 11.
@@ -138,11 +134,7 @@ def serializar_cliente(row, rol):
         "modificado_en": row["modificado_en"].isoformat() if row.get("modificado_en") else None
     }
 
-
-# ==============================================================================
 # ENDPOINTS PÚBLICOS (CONSUMIDOS POR EL FRONTEND A TRAVÉS DEL GATEWAY)
-# ==============================================================================
-
 # 1. LISTAR CLIENTES (GET /api/clientes)
 @clientes_bp.route('/api/clientes', methods=['GET'])
 def listar_clientes():
@@ -251,9 +243,7 @@ def crear_cliente():
         conn = get_db_connection(db_name)
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        # ----------------------------------------------------------------------
         # CASO A: ALTA RÁPIDA POR CAJERO (Solo nombre; descarta campos extra)
-        # ----------------------------------------------------------------------
         if rol == 'CAJERO':
             # Ignoramos cualquier otro dato enviado en el JSON y guardamos únicamente el nombre
             cur.execute("""
@@ -273,9 +263,7 @@ def crear_cliente():
                 "cliente": serializar_cliente(nuevo_cliente, rol)
             }), 201
 
-        # ----------------------------------------------------------------------
         # CASO B: ALTA COMPLETA POR ADMINISTRADOR / PROPIETARIO
-        # ----------------------------------------------------------------------
         tipo_doc = (datos.get('tipo_documento') or '').strip().upper()
         num_doc_raw = (datos.get('numero_documento') or '').strip()
         telefono = (datos.get('telefono') or '').strip()
@@ -668,11 +656,7 @@ def eliminar_cliente(id):
         if conn:
             conn.close()
 
-
-# ==============================================================================
 # ENDPOINT INTERNO (PARA CONSUMO DESDE VENTAS / MICROSERVICIOS)
-# ==============================================================================
-
 # 7. CONSULTAR CATEGORÍA IMPOSITIVA Y SALDO A FAVOR (GET /internal/clientes/<id>/categoria-impositiva)
 @clientes_bp.route('/internal/clientes/<int:id>/categoria-impositiva', methods=['GET'])
 def obtener_categoria_impositiva_interna(id):
