@@ -77,16 +77,20 @@ export const iniciarNotificaciones = () => {
   });
 };
 
+const mostrarSinAlertas = (contenedor) => {
+  const p = document.createElement("p");
+  p.textContent = "Sin alertas";
+  p.style.textAlign = "center";
+  p.style.color = "#8c8c8c";
+  contenedor.appendChild(p);
+};
+
 const cargarAlertas = async (contenedor, actualizarContador) => {
   contenedor.innerHTML = "";
   try {
     const alertas = await fetchAPI("/notificaciones");
     if (alertas.length === 0) {
-      const p = document.createElement("p");
-      p.textContent = "Sin alertas";
-      p.style.textAlign = "center";
-      p.style.color = "#8c8c8c";
-      contenedor.appendChild(p);
+      mostrarSinAlertas(contenedor);
       return;
     }
 
@@ -111,14 +115,9 @@ const cargarAlertas = async (contenedor, actualizarContador) => {
             "PATCH",
           );
 
-          // Si el array de notificaciones quedó vacío, renderizar el mensaje
-          if (notificaciones.length === 0) {
-            const contenedor = document.getElementById("lista-notificaciones"); // o el ID de tu contenedor
-            contenedor.innerHTML = '<div class="texto-vacio">Sin alertas</div>';
-          } else {
-            renderizarNotificaciones(); // Tu función normal de render
-          }
           div.remove();
+          // Si era la última alerta, el panel avisa que no quedan.
+          if (contenedor.children.length === 0) mostrarSinAlertas(contenedor);
           actualizarContador();
         } catch (e) {
           alert("Error al eliminar la alerta");
