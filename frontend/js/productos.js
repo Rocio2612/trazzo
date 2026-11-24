@@ -14,7 +14,7 @@ import {
 import { mensajeDeError } from "./servicios/errores.js";
 import { servicioProductos } from "./servicios/producto.js";
 import {
-  cargarProveedores,
+  pedirProveedores,
   llenarSelectProveedores,
 } from "./servicios/proveedores.js";
 
@@ -182,7 +182,7 @@ const cargarProductos = async () => {
 
 const cargarListaProveedores = async () => {
   try {
-    estado.proveedores = await cargarProveedores();
+    estado.proveedores = await pedirProveedores();
     llenarSelectProveedores($("proveedor_id"), estado.proveedores, {
       valor: $("proveedor_id").value,
     });
