@@ -209,7 +209,7 @@ test.describe("Notificaciones: descartar alertas", () => {
     expect(backend.llamadas.find((l) => l.metodo === "PATCH").ruta).toBe("/notificaciones/7/eliminar-vista");
   });
 
-  test.fixme("al descartar la última, el contador desaparece y el panel dice 'Sin alertas'", async ({ page }) => {
+  test("al descartar la última, el contador desaparece y el panel dice 'Sin alertas'", async ({ page }) => {
     await abrir(page, { semilla: (e) => (e.alertas = [{ id: 7, producto_nombre: "Collar", stock_actual: 2 }]) });
     await expect(contador(page)).toHaveText("1");
     await abrirPanel(page);
