@@ -413,11 +413,7 @@ window.eliminarCliente = async (id) => {
 
 // --- INIT ---
 document.addEventListener("DOMContentLoaded", () => {
-  if (
-    typeof puedeHacer === "function" &&
-    !puedeHacer("clientes", "ver") &&
-    !puedeHacer("clientes", "seleccionar")
-  ) {
+  if (typeof puedeHacer === "function" && !puedeHacer("clientes", "ver")) {
     window.location.href = "dashboard.html";
     return;
   }
