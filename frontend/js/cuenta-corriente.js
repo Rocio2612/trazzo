@@ -251,7 +251,7 @@ const crearModalBase = (titulo, cuerpo, botones, ancho = "", onCloseRequest = nu
         h("div", { class: "cc-modal-header" }, h("h2", { text: titulo }), h("button", { class: "cc-modal-close", text: "×", onclick: cerrar })),
         h("div", { class: "cc-modal-body" }, cuerpo),
         h("div", { class: "cc-modal-footer" }, ...botones.map(b => {
-            if (b.textContent === "Cancelar") {
+            if (b.textContent === "Cancelar" || b.textContent === "Cerrar" ) {
                 b.onclick = cerrar;
             }
             return b;
@@ -546,7 +546,9 @@ const cargarDatos = async () => {
         pagos = resPagos.items || resPagos || [];
 
         const resMedios = await fetchAPI("/medios-pago");
-        mediosPago = resMedios.items || resMedios || [];
+        mediosPago = Array.isArray(resMedios)
+            ? resMedios
+            : (resMedios.medios_pago || resMedios.items || []);
 
         renderizarTabla();
     } catch (error) {
