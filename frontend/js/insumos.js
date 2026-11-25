@@ -30,7 +30,7 @@ let refrescarUI = null;
 
 const obtenerProveedores = async () => {
     try {
-        const res = await fetchAPI("/proveedores"); // Corregido Punto 1
+        const res = await fetchAPI("/proveedores"); 
         return res.items || []; 
     } catch (error) {
         console.error("Error al cargar proveedores:", error);
@@ -62,7 +62,7 @@ const abrirModal = ({ titulo, cuerpo, onGuardar }) => {
 };
 
 const iniciarPantalla = () => {
-    // Corregido Punto 3
+    // Protección de ruta para Cajero
     if (typeof puedeHacer === "function" && !puedeHacer("insumos", "ver")) {
         window.location.href = "dashboard.html";
         return;
@@ -149,6 +149,9 @@ const iniciarPantalla = () => {
     
     refrescarUI = refrescar; 
     refrescar(); 
+
+    // CORRECCIÓN QA: Se llama acá adentro, después de verificar permisos
+    cargarDatos();
 };
 
 const cargarDatos = async () => {
@@ -164,7 +167,7 @@ const cargarDatos = async () => {
             costo_total: item.valor_stock, 
             fecha: item.fecha || item.creado_en || "—",
             proveedor: item.proveedor_nombre || "—",
-            proveedor_id: item.proveedor_id, // Corregido Punto 5 (guardar id)
+            proveedor_id: item.proveedor_id,
             creado_por: item.creado_por || "admin",
             oculto: item.activo === false || item.oculto === true || false
         }));
@@ -202,7 +205,7 @@ const crear = async () => {
             const provId = document.getElementById("m-prov").value;
 
             if (!nombre) throw new Error("El nombre es obligatorio.");
-            if (isNaN(costo) || costo <= 0) throw new Error("El costo unitario debe ser mayor a 0."); // Corregido Punto 2
+            if (isNaN(costo) || costo <= 0) throw new Error("El costo unitario debe ser mayor a 0."); 
             if (isNaN(cant) || cant <= 0) throw new Error("La cantidad debe ser mayor a 0.");
             if (!provId) throw new Error("Debe seleccionar un proveedor.");
             
@@ -211,7 +214,7 @@ const crear = async () => {
 
             await servicioInsumos.crear({
                 nombre: nombre, precio_compra: costo, cantidad: cant, stock_minimo: 0, 
-                proveedor_id: parseInt(provId),
+                proveedor_id: parseInt(provId), 
                 iva_alicuota: 21.00, fecha: fechaFormateada 
             });
             await cargarDatos();
@@ -227,7 +230,6 @@ const crear = async () => {
     }, 50);
 };
 
-// Corregido Punto 4: Edit modal implementado
 const editar = async (insumo) => {
     const proveedores = await obtenerProveedores();
 
@@ -339,5 +341,5 @@ const consumir = (insumo) => {
     });
 };
 
+// ACÁ ESTABA EL ERROR: Sacamos cargarDatos() de acá afuera
 iniciarPantalla();
-cargarDatos();
