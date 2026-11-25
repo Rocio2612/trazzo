@@ -62,7 +62,9 @@ def evaluar_alerta():
         alerta = cur.fetchone()
 
         if float(stock_actual) <= float(stock_minimo):
-            mensaje = f"Quedan {stock_actual} unidades de {nombre_producto}"
+            # [Ajuste formato stock - Aldi]: evita ".00" en el texto cuando la cantidad es entera
+            stock_fmt = int(float(stock_actual)) if float(stock_actual).is_integer() else round(float(stock_actual), 2)
+            mensaje = f"Quedan {stock_fmt} unidades de {nombre_producto}"
             if alerta:
                 cur.execute("""
                     UPDATE notificaciones.alertas_stock 
@@ -110,7 +112,14 @@ def listar_alertas():
             WHERE a.emprendimiento_id = %s AND a.estado = 'ACTIVA' AND d.id IS NULL
             ORDER BY a.actualizado_en DESC
         """, (usuario_id, emprendimiento_id))
-        return jsonify({"status": "ok", "items": cur.fetchall()}), 200
+
+        # [Ajuste serialización stock - Aldi]: convierte Decimal de PostgreSQL a int/float limpio para el Front
+        alertas = cur.fetchall()
+        for a in alertas:
+            val = float(a["stock_actual"])
+            a["stock_actual"] = int(val) if val.is_integer() else round(val, 2)
+        return jsonify({"status": "ok", "items": alertas}), 200
+
     except Exception as e:
         print(f"ERROR EN LISTAR_ALERTAS: {e}") # <--- AGREGADO PARA VER EL ERROR
         return jsonify({"status": "error", "mensaje": str(e)}), 500
@@ -136,7 +145,8 @@ def contador_alertas():
             WHERE a.emprendimiento_id = %s AND a.estado = 'ACTIVA' AND d.id IS NULL
         """, (usuario_id, emprendimiento_id))
         total = cur.fetchone()['total']
-        return jsonify({"status": "ok", "contador": total}), 200
+        # [Ajuste contrato contador - Aldi]: agrega "cantidad" además de "contador" para coincidir con front
+        return jsonify({"status": "ok", "contador": total, "cantidad": total}), 200
     except Exception as e:
         print(f"ERROR EN CONTADOR_ALERTAS: {e}") # <--- AGREGADO PARA VER EL ERROR
         return jsonify({"status": "error", "mensaje": str(e)}), 500
@@ -145,6 +155,8 @@ def contador_alertas():
         conn.close()
 
 @app.route('/api/notificaciones/<int:id>/descartar', methods=['PATCH'])
+# [Ajuste ruta alias descarte - Aldi]: acepta también /eliminar-vista además de /descartar para coincidir con front
+@app.route('/api/notificaciones/<int:id>/eliminar-vista', methods=['PATCH'])
 def descartar_alerta(id):
     payload, error_resp, status = verificar_token()
     if error_resp:

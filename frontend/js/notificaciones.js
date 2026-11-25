@@ -39,8 +39,11 @@ export const iniciarNotificaciones = () => {
     if (document.hidden) return;
     try {
       const data = await fetchAPI("/notificaciones/contador");
-      if (data.cantidad > 0) {
-        contador.textContent = textoContador(data.cantidad); // Usamos la función
+      // Arreglo 2: El backend devuelve "cantidad" o "contador"
+      const total = data.cantidad ?? data.contador ?? 0;
+
+      if (total > 0) {
+        contador.textContent = textoContador(total);
         contador.hidden = false;
       } else {
         contador.hidden = true;
@@ -88,7 +91,10 @@ const mostrarSinAlertas = (contenedor) => {
 const cargarAlertas = async (contenedor, actualizarContador) => {
   contenedor.innerHTML = "";
   try {
-    const alertas = await fetchAPI("/notificaciones");
+    const res = await fetchAPI("/notificaciones");
+    // Arreglo 1: El backend devuelve { status: "ok", items: [...] }
+    const alertas = Array.isArray(res) ? res : res.items || [];
+
     if (alertas.length === 0) {
       mostrarSinAlertas(contenedor);
       return;
@@ -100,7 +106,7 @@ const cargarAlertas = async (contenedor, actualizarContador) => {
         "display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; border-bottom:1px solid #eee;";
 
       const p = document.createElement("span");
-      p.textContent = textoAlerta(alerta); // Usamos la función
+      p.textContent = textoAlerta(alerta);
       p.style.fontSize = "0.85rem";
 
       const btn = document.createElement("button");
@@ -110,10 +116,8 @@ const cargarAlertas = async (contenedor, actualizarContador) => {
 
       btn.onclick = async () => {
         try {
-          await fetchAPI(
-            `/notificaciones/${alerta.id}/eliminar-vista`,
-            "PATCH",
-          );
+          // Arreglo 3: La ruta correcta en el backend es /descartar
+          await fetchAPI(`/notificaciones/${alerta.id}/descartar`, "PATCH");
 
           div.remove();
           // Si era la última alerta, el panel avisa que no quedan.
