@@ -1,6 +1,6 @@
 // --- LÓGICA DE LA PANTALLA DE REPORTES (módulo ES, sin DOM) ---
 // Qué tarjetas se muestran, de qué servicio depende cada una y los textos que no vienen del Backend.
-// Los números los calcula el Backend (hoy los simula mocks/reportes.js): acá solo se decide cómo mostrarlos.
+// Los números los calcula el Backend (llegan por servicios/reportes.js): acá solo se decide cómo mostrarlos.
 
 export const PERIODOS = [
   { valor: "hoy", texto: "Hoy" },
@@ -35,7 +35,7 @@ export const INDICADORES_ESTADO = [
 export const TITULO_DESGLOSE = "Desglose de inversión por producto";
 export const NOTA_DESGLOSE = "Este monto refleja capital acumulado, no es una pérdida. Solo se transformará en costo (CMV) a medida que los productos se vayan vendiendo.";
 export const MENSAJE_SIN_DESGLOSE = "Sin inventario comprado en este período.";
-export const MENSAJE_DESGLOSE_CAIDO = "No se pudo calcular el desglose: falla en el servicio de Productos.";
+export const MENSAJE_DESGLOSE_CAIDO = "No se pudo calcular";
 
 export const textoVentasPorSaldar = (cantidad) =>
   Number(cantidad) === 1 ? "1 venta confirmada falta por saldar" : `${Number(cantidad) || 0} ventas confirmadas faltan por saldar`;
@@ -62,7 +62,7 @@ export const afectadosPorFalla = (caidos) => {
 export const textoAvisoParcial = (caidos) => {
   const nombres = caidos.map((s) => SERVICIOS[s]);
   const servicios = nombres.length > 1 ? `${nombres.slice(0, -1).join(", ")} y ${nombres.at(-1)}` : nombres[0];
-  return `No se pudieron calcular algunos indicadores por una falla en el servicio de ${servicios}: ${afectadosPorFalla(caidos).join(", ")}. Los demás indicadores se muestran con normalidad.`;
+  return `No se pudieron calcular algunos indicadores por una falla en ${servicios}.`;
 };
 
 // Total de la tabla de desglose.

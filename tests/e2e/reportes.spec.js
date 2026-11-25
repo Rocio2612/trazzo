@@ -1,8 +1,9 @@
 const { test, expect } = require("@playwright/test");
 const { simularApi, iniciarSesionComo } = require("./helpers");
 
-// Reportes usa los datos de ejemplo de frontend/js/mocks/reportes.js (sin Backend). Para que los números no cambien con el día en que
-// se corren los tests, el reloj se fija el 15-11-2026: "Este mes" es noviembre de 2026 y "Este año", 2026.
+// La pantalla le pide GET /reportes?periodo= al Backend. Acá ese pedido se intercepta (sin Backend) y se responde con los datos de
+// ejemplo de frontend/js/mocks/reportes.js. Para que los números no cambien con el día en que se corren los tests, el reloj se fija
+// el 15-11-2026: "Este mes" es noviembre de 2026 y "Este año", 2026.
 // Valores de los ejemplos (verificados a mano):
 //   Hoy       Ingresos $ 0 · Desglose $ 1.700 (Sifón: 2 unidades compradas hoy)
 //   Este mes  Ingresos $ 11.730 · Vendido y saldado $ 11.730 (falta saldar 1) · CMV $ 10.380 · Ganancia bruta $ 5.610 · Gastos $ 0 · Neta $ 5.610 · Desglose $ 25.700
@@ -17,12 +18,43 @@ const apiBasica = (page) =>
     "GET /notificaciones": { status: 200, body: [] },
   });
 
-const abrirReportes = async (page, { rol = "ADMIN", falla = "" } = {}) => {
+const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,OPTIONS" };
+
+// Intercepta GET /reportes. `responder(periodo)` devuelve { status, body } o { abortar: true } (backend caído).
+// Devuelve la lista de pedidos que hizo la pantalla. Hay que llamarla después de apiBasica para que tenga prioridad.
+const simularReportes = async (page, responder) => {
+  const pedidos = [];
+  await page.route(
+    (url) => url.pathname === "/api/reportes",
+    async (route) => {
+      const request = route.request();
+      if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
+      const periodo = new URL(request.url()).searchParams.get("periodo");
+      pedidos.push({ metodo: request.method(), periodo, autorizacion: request.headers().authorization });
+      const { abortar, status = 200, body } = await responder(periodo);
+      if (abortar) return route.abort();
+      return route.fulfill({ status, headers: CORS, json: body });
+    },
+  );
+  return pedidos;
+};
+
+// Respuesta con los datos de ejemplo. Se calculan dentro de la página para que usen su reloj fijo y la falla simulada.
+const conEjemplos = (page) => async (periodo) => ({
+  body: await page.evaluate(async (elegido) => {
+    const { servicioReportes } = await import("/js/mocks/reportes.js");
+    return servicioReportes.obtener({ periodo: elegido });
+  }, periodo),
+});
+
+const abrirReportes = async (page, { rol = "ADMIN", falla = "", responder } = {}) => {
   await page.clock.setFixedTime(HOY);
   if (falla) await page.addInitScript((servicio) => sessionStorage.setItem("trazzo_reportes_falla", servicio), falla);
   await apiBasica(page);
+  const pedidos = await simularReportes(page, responder ?? conEjemplos(page));
   await iniciarSesionComo(page, rol);
   await page.goto("/reportes.html");
+  return pedidos;
 };
 
 const abrirReportesComoAdmin = async (page, opciones) => {
@@ -86,6 +118,15 @@ test.describe("Reportes: pantalla del Administrador", () => {
 
     await cambiarPeriodo(page, "mes");
     await expect(valor(page, "ingresos")).toHaveText(/11\.730,00/);
+  });
+
+  test("pide GET /reportes con el período elegido y el token de la sesión", async ({ page }) => {
+    const pedidos = await abrirReportes(page);
+    await expect(page.getByTestId("rep-ingresos")).toBeVisible();
+    await cambiarPeriodo(page, "anio");
+    await expect(valor(page, "ingresos")).toHaveText(/147\.930,00/);
+    expect(pedidos.map((p) => `${p.metodo} ${p.periodo}`)).toEqual(["GET mes", "GET anio"]);
+    for (const pedido of pedidos) expect(pedido.autorizacion).toMatch(/^Bearer .+/);
   });
 
   test("mientras recalcula muestra 'Actualizando indicadores…'", async ({ page }) => {
@@ -185,13 +226,10 @@ test.describe("Reportes: si un servicio falla, lo demás se sigue viendo", () =>
   test("falla Finanzas: avisa y marca gastos, bienes de uso y ganancia neta", async ({ page }) => {
     await abrirReportesComoAdmin(page, { falla: "finanzas" });
     const aviso = page.getByTestId("reportes-aviso-parcial");
-    await expect(aviso).toContainText("falla en el servicio de Finanzas");
-    await expect(aviso).toContainText("Total de gastos operativos");
-    await expect(aviso).toContainText("Inversión realizada en bienes de uso");
-    await expect(aviso).toContainText("Ganancia neta operativa estimada");
+    await expect(aviso).toHaveText("No se pudieron calcular algunos indicadores por una falla en Finanzas.");
     for (const id of ["gastos", "bienes-uso", "ganancia-neta"]) {
       await expect(page.getByTestId(`rep-${id}-error`)).toHaveText("No se pudo calcular");
-      await expect(page.getByTestId(`rep-${id}`)).toContainText("Falla en el servicio de Finanzas.");
+      await expect(page.getByTestId(`rep-${id}`).locator("p")).toHaveCount(0); // sin otro texto de error
     }
     // lo que no depende de Finanzas sigue normal
     await expect(valor(page, "ingresos")).toHaveText(/11\.730,00/);
@@ -202,9 +240,9 @@ test.describe("Reportes: si un servicio falla, lo demás se sigue viendo", () =>
 
   test("falla Productos: no se calculan el inventario ni el desglose", async ({ page }) => {
     await abrirReportesComoAdmin(page, { falla: "productos" });
-    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("falla en el servicio de Productos");
+    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("una falla en Productos.");
     await expect(page.getByTestId("rep-inventario-error")).toHaveText("No se pudo calcular");
-    await expect(page.getByTestId("rep-desglose-error")).toHaveText("No se pudo calcular el desglose: falla en el servicio de Productos.");
+    await expect(page.getByTestId("rep-desglose-error")).toHaveText("No se pudo calcular");
     await expect(page.getByTestId("rep-desglose")).toHaveCount(0);
     await expect(valor(page, "ingresos")).toHaveText(/11\.730,00/);
     await expect(valor(page, "gastos")).toBeVisible();
@@ -213,7 +251,7 @@ test.describe("Reportes: si un servicio falla, lo demás se sigue viendo", () =>
 
   test("falla Transacciones: no se calculan ventas, ganancias ni 'Por cobrar'", async ({ page }) => {
     await abrirReportesComoAdmin(page, { falla: "transacciones" });
-    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("falla en el servicio de Transacciones");
+    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("una falla en Transacciones.");
     for (const id of ["ingresos", "vendido-saldado", "cmv", "ganancia-bruta", "ganancia-neta", "por-cobrar"]) {
       await expect(page.getByTestId(`rep-${id}-error`)).toHaveText("No se pudo calcular");
     }
@@ -241,6 +279,7 @@ test.describe("Reportes: acceso por rol", () => {
   test("el Administrador ve el link en el menú y entra desde ahí", async ({ page }) => {
     await page.clock.setFixedTime(HOY);
     await apiBasica(page);
+    await simularReportes(page, conEjemplos(page));
     await iniciarSesionComo(page, "ADMIN");
     await page.goto("/dashboard.html");
     await page.getByTestId("menu-reportes").click();
@@ -283,7 +322,7 @@ test.describe("Reportes: acceso por rol", () => {
 });
 
 // Estos casos no se pueden armar con los datos de ejemplo (el simulador solo deja caer un servicio a la vez y nunca falla
-// toda la consulta). Se reemplaza el módulo de ejemplos por uno con la respuesta que haga falta, para probar solo la pantalla.
+// toda la consulta). Se responde GET /reportes con lo que haga falta en cada caso.
 test.describe("Reportes: respuestas especiales del servicio", () => {
   const base = {
     periodo: "mes",
@@ -301,24 +340,11 @@ test.describe("Reportes: respuestas especiales del servicio", () => {
     desglose_inversion: [{ producto: "Producto X", unidades: 2, costo_unitario: 100, inversion: 200 }],
   };
 
-  // `cuerpo` es el código de `obtener({ periodo })`; `RESPUESTA` ya trae la respuesta base.
-  const simularServicio = (page, cuerpo) =>
-    page.route("**/js/mocks/reportes.js", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "text/javascript",
-        body: `const RESPUESTA = ${JSON.stringify(base)};
-export const servicioReportes = { obtener: async ({ periodo = "mes" } = {}) => { ${cuerpo} } };`,
-      }),
-    );
-
-  const abrir = async (page, cuerpo, opciones) => {
-    await simularServicio(page, cuerpo);
-    await abrirReportes(page, opciones);
-  };
+  const respuesta = (cambios = {}) => ({ body: { ...base, ...cambios } });
+  const abrir = (page, responder) => abrirReportes(page, { responder });
 
   test("si falla toda la consulta, avisa y no muestra tarjetas (error de conexión)", async ({ page }) => {
-    await abrir(page, `throw new Error("Failed to fetch");`);
+    await abrir(page, () => ({ abortar: true }));
     await expect(page.getByTestId("reportes-error")).toHaveText("No se pudo conectar con el servidor.");
     await expect(page.getByTestId("reportes-error")).toHaveAttribute("role", "alert");
     await expect(page.locator('[data-testid^="rep-"]')).toHaveCount(0);
@@ -326,17 +352,17 @@ export const servicioReportes = { obtener: async ({ periodo = "mes" } = {}) => {
   });
 
   test("si el servidor responde con error y sin mensaje propio, usa el texto por defecto", async ({ page }) => {
-    await abrir(page, `throw Object.assign(new Error("Error en la petición"), { status: 500 });`);
+    await abrir(page, () => ({ status: 500, body: {} }));
     await expect(page.getByTestId("reportes-error")).toHaveText("No se pudieron cargar los reportes. Intentá de nuevo.");
   });
 
   test("si el servidor responde con un mensaje propio, lo muestra", async ({ page }) => {
-    await abrir(page, `throw Object.assign(new Error("Servicio en mantenimiento"), { status: 503 });`);
+    await abrir(page, () => ({ status: 503, body: { status: "error", mensaje: "Servicio en mantenimiento" } }));
     await expect(page.getByTestId("reportes-error")).toHaveText("Servicio en mantenimiento");
   });
 
   test("tras un error se puede volver a consultar cambiando el período", async ({ page }) => {
-    await abrir(page, `if (periodo === "mes") throw new Error("Failed to fetch"); return { ...RESPUESTA, periodo, ingresos: 2500 };`);
+    await abrir(page, (periodo) => (periodo === "mes" ? { abortar: true } : respuesta({ periodo, ingresos: 2500 })));
     await expect(page.getByTestId("reportes-error")).toBeVisible();
     await page.getByTestId("reportes-filtro-periodo").selectOption("anio");
     await expect(valor(page, "ingresos")).toHaveText(/2\.500,00/);
@@ -344,7 +370,7 @@ export const servicioReportes = { obtener: async ({ periodo = "mes" } = {}) => {
   });
 
   test("sin productos comprados en el período, el desglose lo dice y las demás tarjetas siguen", async ({ page }) => {
-    await abrir(page, `return { ...RESPUESTA, desglose_inversion: [] };`);
+    await abrir(page, () => respuesta({ desglose_inversion: [] }));
     await expect(page.getByTestId("rep-desglose-vacio")).toHaveText("Sin inventario comprado en este período.");
     await expect(page.getByTestId("rep-desglose")).toHaveCount(0);
     await expect(page.getByText("Este monto refleja capital acumulado, no es una pérdida.")).toBeVisible();
@@ -352,45 +378,43 @@ export const servicioReportes = { obtener: async ({ periodo = "mes" } = {}) => {
   });
 
   test("un indicador sin valor se marca como sin datos, sin aviso de falla de servicio", async ({ page }) => {
-    await abrir(page, `return { ...RESPUESTA, ingresos: null };`);
+    await abrir(page, () => respuesta({ ingresos: null }));
     await expect(page.getByTestId("rep-ingresos-error")).toHaveText("No se pudo calcular");
-    await expect(page.getByTestId("rep-ingresos")).toContainText("No hay datos para este indicador.");
+    await expect(page.getByTestId("rep-ingresos").locator("p")).toHaveCount(0);
     await expect(page.getByTestId("reportes-aviso-parcial")).toHaveCount(0);
     await expect(valor(page, "cmv")).toHaveText(/300,00/);
   });
 
   test("con dos servicios caídos, el aviso los nombra a los dos", async ({ page }) => {
-    await abrir(
-      page,
-      `return { ...RESPUESTA, servicios_caidos: ["transacciones", "finanzas"], ingresos: null, vendido_saldado: null, ventas_por_saldar: null, cmv: null,
-        ganancia_bruta: null, gastos_operativos: null, bienes_de_uso: null, ganancia_neta: null, por_cobrar: null };`,
+    await abrir(page, () =>
+      respuesta({ servicios_caidos: ["transacciones", "finanzas"], ingresos: null, vendido_saldado: null, ventas_por_saldar: null, cmv: null,
+        ganancia_bruta: null, gastos_operativos: null, bienes_de_uso: null, ganancia_neta: null, por_cobrar: null }),
     );
-    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("falla en el servicio de Transacciones y Finanzas");
+    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("una falla en Transacciones y Finanzas.");
     await expect(page.getByTestId("rep-ingresos-error")).toBeVisible();
     await expect(page.getByTestId("rep-gastos-error")).toBeVisible();
     await expect(valor(page, "inventario")).toHaveText(/5\.000,00/);
   });
 
   test("con los tres servicios caídos, no queda ninguna tarjeta con valor", async ({ page }) => {
-    await abrir(
-      page,
-      `return { ...RESPUESTA, servicios_caidos: ["transacciones", "finanzas", "productos"], ingresos: null, vendido_saldado: null, ventas_por_saldar: null,
+    await abrir(page, () =>
+      respuesta({ servicios_caidos: ["transacciones", "finanzas", "productos"], ingresos: null, vendido_saldado: null, ventas_por_saldar: null,
         cmv: null, ganancia_bruta: null, gastos_operativos: null, bienes_de_uso: null, ganancia_neta: null, inventario_actual: null, por_cobrar: null,
-        desglose_inversion: null };`,
+        desglose_inversion: null }),
     );
-    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("falla en el servicio de Transacciones, Finanzas y Productos");
+    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("una falla en Transacciones, Finanzas y Productos.");
     await expect(page.locator('[data-testid^="rep-"][data-testid$="-error"]')).toHaveCount(10); // 9 tarjetas + el desglose
     await expect(page.locator('[data-testid^="rep-"][data-testid$="-valor"]')).toHaveCount(0);
   });
 
   test("un servicio caído que la pantalla no conoce se ignora", async ({ page }) => {
-    await abrir(page, `return { ...RESPUESTA, servicios_caidos: ["servicio-nuevo"] };`);
+    await abrir(page, () => respuesta({ servicios_caidos: ["servicio-nuevo"] }));
     await expect(page.getByTestId("reportes-aviso-parcial")).toHaveCount(0);
     await expect(valor(page, "ingresos")).toHaveText(/1\.000,00/);
   });
 
   test("solo las ganancias se pintan de rojo cuando son negativas", async ({ page }) => {
-    await abrir(page, `return { ...RESPUESTA, ingresos: -5, ganancia_bruta: -100, ganancia_neta: -300 };`);
+    await abrir(page, () => respuesta({ ingresos: -5, ganancia_bruta: -100, ganancia_neta: -300 }));
     await expect(valor(page, "ganancia-bruta")).toHaveClass(/reportes-valor-negativo/);
     await expect(valor(page, "ganancia-neta")).toHaveClass(/reportes-valor-negativo/);
     await expect(valor(page, "ingresos")).not.toHaveClass(/reportes-valor-negativo/);
@@ -398,23 +422,22 @@ export const servicioReportes = { obtener: async ({ periodo = "mes" } = {}) => {
   });
 
   test("una ganancia en cero no se pinta de rojo", async ({ page }) => {
-    await abrir(page, `return { ...RESPUESTA, ganancia_bruta: 0, ganancia_neta: 0 };`);
+    await abrir(page, () => respuesta({ ganancia_bruta: 0, ganancia_neta: 0 }));
     await expect(valor(page, "ganancia-neta")).not.toHaveClass(/reportes-valor-negativo/);
     await expect(valor(page, "ganancia-neta")).toHaveText(/^\$\s0,00$/);
   });
 
   test("con una sola venta por saldar el cartel va en singular", async ({ page }) => {
-    await abrir(page, `return { ...RESPUESTA, ventas_por_saldar: 1 };`);
+    await abrir(page, () => respuesta({ ventas_por_saldar: 1 }));
     await expect(page.getByTestId("rep-faltan-saldar")).toHaveText("1 venta confirmada falta por saldar");
   });
 
   test("si llega una respuesta vieja después de la nueva, se descarta", async ({ page }) => {
     // "Hoy" tarda mucho más que "Este año": su respuesta llega última y no debe pisar a la que se pidió después.
-    await abrir(
-      page,
-      `await new Promise((r) => setTimeout(r, periodo === "hoy" ? 900 : 50));
-       return { ...RESPUESTA, periodo, ingresos: periodo === "hoy" ? 111 : 222 };`,
-    );
+    await abrir(page, async (periodo) => {
+      await new Promise((r) => setTimeout(r, periodo === "hoy" ? 900 : 50));
+      return respuesta({ periodo, ingresos: periodo === "hoy" ? 111 : 222 });
+    });
     await expect(valor(page, "ingresos")).toHaveText(/222,00/);
     const filtro = page.getByTestId("reportes-filtro-periodo");
     await filtro.selectOption("hoy");
