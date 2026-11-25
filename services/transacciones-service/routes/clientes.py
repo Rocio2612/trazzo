@@ -92,20 +92,29 @@ def validar_email(correo):
 
 
 def normalizar_documento(tipo_doc, num_doc):
-    """Limpia guiones/puntos del número de documento y valida longitud básica para DNI."""
+    """
+    Normaliza y valida la longitud del documento según su tipo:
+      - DNI: deja únicamente 7 u 8 dígitos sin puntos ni espacios.
+      - CUIT / CUIL: formatea con guiones estándar XX-XXXXXXXX-X (11 dígitos).
+    Retorna el documento normalizado o None si no cumple la longitud.
+    """
     solo_digitos = re.sub(r'\D', '', str(num_doc).strip())
     if tipo_doc == 'DNI':
         # Un DNI argentino válido tiene entre 7 y 8 dígitos numéricos
         if len(solo_digitos) not in (7, 8):
             return None
+        return solo_digitos
+    if tipo_doc in ('CUIT', 'CUIL'):
+        if len(solo_digitos) != 11:
+            return None
+        return f"{solo_digitos[:2]}-{solo_digitos[2:10]}-{solo_digitos[10]}"
     return solo_digitos
-
 
 def serializar_cliente(row, rol):
     """
     Adapta los campos devueltos según el rol del usuario autenticado:
       - CAJERO: Devuelve únicamente {id, nombre} (Ley N° 25.326 de Protección de Datos).
-      - ADMIN / PROPIETARIO: Devuelve la ficha completa y convierte valores Decimal a float.
+      - ADMIN / PROPIETARIO: Devuelve la ficha completa incluyendo cantidad_ventas y saldo_cuenta_corriente.
     """
     if rol == 'CAJERO':
         return {
@@ -113,20 +122,26 @@ def serializar_cliente(row, rol):
             "nombre": row["nombre_razon_social"]
         }
 
-    # Para Admin/Propietario devolvemos todos los datos de gestión y saldos
+    saldo_favor = round(float(row["saldo_a_favor"] or 0), 2)
+    deuda_total = round(float(row.get("deuda_total", 0) or 0), 2)
+    # Positivo = deuda (rojo en Front); Negativo = saldo a favor (verde en Front)
+    saldo_cta_cte = round(deuda_total - saldo_favor, 2)
+
     return {
         "id": row["id"],
         "emprendimiento_id": row["emprendimiento_id"],
         "nombre_razon_social": row["nombre_razon_social"],
-        "nombre": row["nombre_razon_social"],  # Alias útil para componentes reutilizables del Front
+        "nombre": row["nombre_razon_social"],
         "tipo_documento": row["tipo_documento"],
         "numero_documento": row["numero_documento"],
         "telefono": row["telefono"],
         "correo": row["correo"],
         "domicilio": row["domicilio"],
         "categoria_impositiva": row["categoria_impositiva"],
-        "saldo_a_favor": float(row["saldo_a_favor"] or 0),
-        "deuda_total": float(row.get("deuda_total", 0) or 0),
+        "saldo_a_favor": saldo_favor,
+        "deuda_total": deuda_total,
+        "saldo_cuenta_corriente": saldo_cta_cte,
+        "cantidad_ventas": int(row.get("cantidad_ventas", 0) or 0),
         "activo": row["activo"],
         "creado_por": row["creado_por"],
         "modificado_por": row["modificado_por"],
@@ -147,8 +162,9 @@ def listar_clientes():
     emprendimiento_id = payload.get("negocio_id")
     db_name = payload.get("db_name")
 
-    # Parámetros opcionales de consulta (?solo_activos=true para selector de Ventas, ?q=texto para buscar)
+    # Parámetros opcionales de consulta (?ocultos=true para Admin, ?solo_activos=true para Ventas, ?q=texto)
     solo_activos = request.args.get('solo_activos', 'false').lower() == 'true'
+    ver_ocultos = request.args.get('ocultos', 'false').lower() == 'true'
     busqueda = (request.args.get('q') or '').strip()
 
     conn = None
@@ -157,10 +173,16 @@ def listar_clientes():
         conn = get_db_connection(db_name)
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Construimos la consulta base calculando la deuda pendiente en vivo desde ventas confirmadas
+        # Calculamos deuda pendiente y cantidad de ventas confirmadas en vivo
         query = """
             SELECT
                 c.*,
+                COALESCE((
+                    SELECT COUNT(*)
+                    FROM ventas.ventas v
+                    WHERE v.cliente_id = c.id
+                      AND v.estado = 'CONFIRMADA'
+                ), 0) AS cantidad_ventas,
                 COALESCE((
                     SELECT SUM(
                         GREATEST(
@@ -182,28 +204,37 @@ def listar_clientes():
         """
         params = [emprendimiento_id]
 
-        # Si consulta un Cajero o se pide para el selector de Ventas, excluimos clientes ocultos
+        # Filtrado por estado activo/oculto según rol y pestaña activa en el Front
         if rol == 'CAJERO' or solo_activos:
             query += " AND c.activo = TRUE"
+        elif ver_ocultos:
+            query += " AND c.activo = FALSE"
+        else:
+            # Por defecto el listado principal muestra los clientes activos
+            query += " AND c.activo = TRUE"
 
-        # Filtro de búsqueda por texto
+        # Filtro de búsqueda por texto (tolera CUIT/CUIL con o sin guiones)
         if busqueda:
             if rol == 'CAJERO':
-                # Por privacidad, el Cajero solo puede filtrar por nombre o razón social
                 query += " AND c.nombre_razon_social ILIKE %s"
                 params.append(f"%{busqueda}%")
             else:
-                # El Admin puede buscar tanto por nombre como por número de documento
-                query += " AND (c.nombre_razon_social ILIKE %s OR c.numero_documento ILIKE %s)"
-                params.extend([f"%{busqueda}%", f"%{busqueda}%"])
+                busqueda_limpia = re.sub(r'[-.\s]', '', busqueda)
+                query += """
+                    AND (
+                        c.nombre_razon_social ILIKE %s
+                        OR REPLACE(COALESCE(c.numero_documento, ''), '-', '') ILIKE %s
+                        OR COALESCE(c.correo, '') ILIKE %s
+                    )
+                """
+                params.extend([f"%{busqueda}%", f"%{busqueda_limpia}%", f"%{busqueda}%"])
 
-        # Ordenamos alfabéticamente para facilitar la lectura en tablas y desplegables
-        query += " ORDER BY c.nombre_razon_social ASC"
+        # Ordenamos por orden de creación (id ascendente)
+        query += " ORDER BY c.id ASC"
 
         cur.execute(query, tuple(params))
         filas = cur.fetchall()
 
-        # Serializamos cada fila respetando el nivel de visibilidad del rol
         items = [serializar_cliente(fila, rol) for fila in filas]
 
         return jsonify({"status": "ok", "items": items}), 200
@@ -299,14 +330,14 @@ def crear_cliente():
                 "mensaje": "El formato del correo electrónico no es válido"
             }), 400
 
-        # Validamos el número de documento según su tipo (Módulo 11 para CUIT/CUIL)
+        # Validamos y normalizamos el número de documento según su tipo (Módulo 11 para CUIT/CUIL)
         if tipo_doc in ('CUIT', 'CUIL'):
             if not validar_cuit(num_doc_raw):
                 return jsonify({
                     "status": "error",
                     "mensaje": f"El {tipo_doc} ingresado no es válido (dígito verificador incorrecto)"
                 }), 400
-            num_doc = re.sub(r'\D', '', num_doc_raw)
+            num_doc = normalizar_documento(tipo_doc, num_doc_raw)
         else:
             num_doc = normalizar_documento('DNI', num_doc_raw)
             if not num_doc:
@@ -355,7 +386,6 @@ def crear_cliente():
         if conn:
             conn.close()
 
-
 # 3. OBTENER DETALLE DE UN CLIENTE (GET /api/clientes/<id>)
 @clientes_bp.route('/api/clientes/<int:id>', methods=['GET'])
 def obtener_cliente(id):
@@ -376,6 +406,12 @@ def obtener_cliente(id):
         cur.execute("""
             SELECT
                 c.*,
+                COALESCE((
+                    SELECT COUNT(*)
+                    FROM ventas.ventas v
+                    WHERE v.cliente_id = c.id
+                      AND v.estado = 'CONFIRMADA'
+                ), 0) AS cantidad_ventas,
                 COALESCE((
                     SELECT SUM(
                         GREATEST(
@@ -400,9 +436,13 @@ def obtener_cliente(id):
         if not cliente:
             return jsonify({"status": "error", "mensaje": "Cliente no encontrado"}), 404
 
+        cliente_serializado = serializar_cliente(cliente, rol)
+
+        # Devolvemos los atributos tanto en 'cliente' como en la raíz para compatibilidad con abrirFicha()
         return jsonify({
             "status": "ok",
-            "cliente": serializar_cliente(cliente, rol)
+            "cliente": cliente_serializado,
+            **cliente_serializado
         }), 200
 
     except Exception as e:
@@ -412,7 +452,6 @@ def obtener_cliente(id):
             cur.close()
         if conn:
             conn.close()
-
 
 # 4. EDITAR FICHA COMPLETA DE CLIENTE — SOLO ADMIN (PUT /api/clientes/<id>)
 @clientes_bp.route('/api/clientes/<int:id>', methods=['PUT'])
@@ -451,17 +490,21 @@ def editar_cliente(id):
     if not validar_email(correo):
         return jsonify({"status": "error", "mensaje": "El formato del correo electrónico no es válido"}), 400
 
+    # Validamos y normalizamos el número de documento según su tipo (Módulo 11 para CUIT/CUIL)
     if tipo_doc in ('CUIT', 'CUIL'):
         if not validar_cuit(num_doc_raw):
             return jsonify({
                 "status": "error",
                 "mensaje": f"El {tipo_doc} ingresado no es válido (dígito verificador incorrecto)"
             }), 400
-        num_doc = re.sub(r'\D', '', num_doc_raw)
+        num_doc = normalizar_documento(tipo_doc, num_doc_raw)
     else:
         num_doc = normalizar_documento('DNI', num_doc_raw)
         if not num_doc:
-            return jsonify({"status": "error", "mensaje": "El DNI debe contener 7 u 8 dígitos numéricos"}), 400
+            return jsonify({
+                "status": "error",
+                "mensaje": "El DNI debe contener 7 u 8 dígitos numéricos"
+            }), 400
 
     conn = None
     cur = None
