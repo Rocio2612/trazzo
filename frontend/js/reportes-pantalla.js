@@ -103,7 +103,7 @@ function iniciar() {
     );
 
   const cuerpoDelDesglose = (datos, caidos) => {
-    if (caidos.includes("productos") || !Array.isArray(datos.desglose_inversion)) return h("div", { class: "reportes-vacio", "data-testid": "rep-desglose-error", text: MENSAJE_DESGLOSE_CAIDO });
+    if (caidos.includes("productos") || !Array.isArray(datos.desglose_inversion)) return h("div", { class: "reportes-vacio reportes-sin-calculo", "data-testid": "rep-desglose-error", text: MENSAJE_DESGLOSE_CAIDO });
     return [
       datos.desglose_inversion.length === 0 ? h("div", { class: "reportes-vacio", "data-testid": "rep-desglose-vacio", text: MENSAJE_SIN_DESGLOSE }) : tablaDeDesglose(datos.desglose_inversion),
       h("p", { class: "gastos-ayuda reportes-desglose-nota", text: NOTA_DESGLOSE }),

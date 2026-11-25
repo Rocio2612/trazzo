@@ -145,11 +145,16 @@
   color: #b02a37;
 }
 
-/* "No se pudo calcular": igual en todas las tarjetas (también en la destacada) y como el mensaje del desglose */
+/* "No se pudo calcular": en rojo y del mismo tamaño en todas las tarjetas (también en la destacada) */
 .reportes-indicador .reportes-sin-calculo {
   font-size: 1rem;
   font-weight: 400;
-  color: var(--gastos-gris);
+  color: #b02a37;
+}
+
+/* El mismo rojo para el desglose cuando no se pudo calcular */
+.reportes-vacio.reportes-sin-calculo {
+  color: #b02a37;
 }
 
 .reportes-indicador .gastos-ayuda {
