@@ -178,7 +178,9 @@ def obtener_reporte_general():
 
     servicios_caidos = []
 
-    # Paso 3: Consultar transacciones-service (5003) -> Pagos y Ventas
+    # Paso 3: Consultar transacciones-service (5003) -> Pagos y Ventas ----------------------------------------------------
+    # Muestra en Reporte: Ingresos, Total vendido y saldado (+ faltan saldar),
+    # CMV, Ganancia bruta y Por cobrar.
     data_pagos, ok_pagos = consultar_interno(TRANSACCIONES_URL, "/internal/pagos/resumen", params_comunes)
     data_ventas, ok_ventas = consultar_interno(TRANSACCIONES_URL, "/internal/ventas/resumen", params_comunes)
 
@@ -194,21 +196,24 @@ def obtener_reporte_general():
     cmv = redondear_o_none(data_ventas.get("cmv")) if ok_ventas else None
     ganancia_bruta = redondear_o_none(data_ventas.get("ganancia_bruta")) if ok_ventas else None
 
-    # Paso 4: Consultar finanzas-service (5004) -> Gastos Operativos
-    data_gastos, ok_gastos = consultar_interno(FINANZAS_URL, "/internal/gastos/resumen", params_comunes)
-    if not ok_gastos:
+    # Paso 4: Consultar finanzas-service (5004) -> Gastos, Bienes de Uso e Insumos ---------------------------------------
+    # Muestra en Reporte: Total de gastos operativos, Inversión realizada en
+    # bienes de uso y resta Insumos consumidos en Ganancia neta.
+    data_finanzas, ok_finanzas = consultar_interno(FINANZAS_URL, "/internal/finanzas/resumen", params_comunes)
+    if not ok_finanzas:
         servicios_caidos.append("finanzas")
 
-    gastos_operativos = redondear_o_none(data_gastos.get("gastos_operativos")) if ok_gastos else None
+    gastos_operativos = redondear_o_none(data_finanzas.get("gastos_operativos")) if ok_finanzas else None
+    bienes_de_uso = redondear_o_none(data_finanzas.get("bienes_de_uso")) if ok_finanzas else None
+    insumos_consumidos = redondear_o_none(data_finanzas.get("insumos_consumidos")) if ok_finanzas else None
 
-    # Paso 5: Consultar productos-service (5002) -> Inventario, Bienes de Uso e Insumos
+    # Paso 5: Consultar productos-service (5002) -> Inventario actual y Desglose -----------------------------------------
+    # Muestra en Reporte: Inversión actual en inventario y tabla Desglose por producto.
     data_productos, ok_productos = consultar_interno(PRODUCTOS_URL, "/internal/productos/resumen", params_comunes)
     if not ok_productos:
         servicios_caidos.append("productos")
 
     inventario_actual = redondear_o_none(data_productos.get("inventario_actual")) if ok_productos else None
-    bienes_de_uso = redondear_o_none(data_productos.get("bienes_de_uso")) if ok_productos else None
-    insumos_consumidos = redondear_o_none(data_productos.get("insumos_consumidos", 0)) if ok_productos else 0.0
 
     # Normalizamos cada fila del desglose al formato exacto que dibuja reportes-pantalla.js
     desglose_inversion = None
@@ -225,6 +230,7 @@ def obtener_reporte_general():
 
     # Paso 6: Calcular Ganancia Neta Operativa Estimada
     # Fórmula: Ganancia Bruta - Gastos Operativos - Insumos Consumidos
+    # Muestra en Reporte: Ganancia neta operativa estimada.
     if ganancia_bruta is not None and gastos_operativos is not None:
         ganancia_neta = round(ganancia_bruta - gastos_operativos - (insumos_consumidos or 0.0), 2)
     else:
