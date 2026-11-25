@@ -1921,6 +1921,100 @@ def eliminar_bien_gasto(id):
         cur.close()
         conn.close()
 
+# ENDPOINT INTERNO PARA REPORTES-SERVICE (PUERTO 5005) --------------------------------------------------------------
+@app.route('/internal/finanzas/resumen', methods=['GET'])
+@app.route('/internal/gastos/resumen', methods=['GET'])
+def resumen_finanzas_interno():
+    """
+    Consolida para reportes-service (5005) los indicadores del dominio de Finanzas
+    en un rango de fechas (?db_name=...&emprendimiento_id=...&fecha_desde=...&fecha_hasta=...):
+      1. gastos_operativos: Suma de gastos activos en el período.
+      2. bienes_de_uso: Suma de compras de BIEN_DE_USO (activos y ocultos, sin eliminados) en el período.
+      3. insumos_consumidos: Costo de movimientos tipo 'CONSUMO' sobre BIEN_DE_GASTO en el período.
+    """
+    db_name = request.args.get('db_name') or request.headers.get('X-DB-Name')
+    if not db_name:
+        return jsonify({"status": "error", "mensaje": "Falta el parámetro obligatorio db_name"}), 400
+
+    emprendimiento_id = request.args.get('emprendimiento_id', type=int)
+    fecha_desde = (request.args.get('fecha_desde') or '').strip()
+    fecha_hasta = (request.args.get('fecha_hasta') or '').strip()
+
+    conn = get_db_connection(db_name)
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # 1. Total de Gastos Operativos activos en el período
+        q_gastos = """
+            SELECT COALESCE(SUM(monto), 0) AS total_gastos
+            FROM finanzas.gastos_operativos
+            WHERE activo = TRUE
+        """
+        p_gastos = []
+        if emprendimiento_id:
+            q_gastos += " AND emprendimiento_id = %s"
+            p_gastos.append(emprendimiento_id)
+        if fecha_desde:
+            q_gastos += " AND fecha >= %s"
+            p_gastos.append(fecha_desde)
+        if fecha_hasta:
+            q_gastos += " AND fecha <= %s"
+            p_gastos.append(fecha_hasta)
+
+        cur.execute(q_gastos, tuple(p_gastos))
+        gastos_operativos = round(float(cur.fetchone()['total_gastos'] or 0), 2)
+
+        # 2. Inversión realizada en Bienes de Uso en el período (incluye ocultos, excluye eliminados)
+        q_bienes = """
+            SELECT COALESCE(SUM(cantidad * precio_compra), 0) AS total_bienes
+            FROM productos.productos
+            WHERE tipo_producto = 'BIEN_DE_USO'
+        """
+        p_bienes = []
+        if emprendimiento_id:
+            q_bienes += " AND emprendimiento_id = %s"
+            p_bienes.append(emprendimiento_id)
+        if fecha_desde:
+            q_bienes += " AND (creado_en AT TIME ZONE 'America/Argentina/Buenos_Aires')::date >= %s"
+            p_bienes.append(fecha_desde)
+        if fecha_hasta:
+            q_bienes += " AND (creado_en AT TIME ZONE 'America/Argentina/Buenos_Aires')::date <= %s"
+            p_bienes.append(fecha_hasta)
+
+        cur.execute(q_bienes, tuple(p_bienes))
+        bienes_de_uso = round(float(cur.fetchone()['total_bienes'] or 0), 2)
+
+        # 3. Insumos consumidos en el período (solo movimientos 'CONSUMO', nunca la compra)
+        q_insumos = """
+            SELECT COALESCE(SUM(ABS(m.cantidad_movimiento) * p.precio_compra), 0) AS total_consumido
+            FROM productos.movimientos_stock m
+            JOIN productos.productos p ON m.producto_id = p.id
+            WHERE m.tipo = 'CONSUMO'
+              AND p.tipo_producto = 'BIEN_DE_GASTO'
+        """
+        p_insumos = []
+        if emprendimiento_id:
+            q_insumos += " AND m.emprendimiento_id = %s"
+            p_insumos.append(emprendimiento_id)
+        if fecha_desde:
+            q_insumos += " AND (m.fecha AT TIME ZONE 'America/Argentina/Buenos_Aires')::date >= %s"
+            p_insumos.append(fecha_desde)
+        if fecha_hasta:
+            q_insumos += " AND (m.fecha AT TIME ZONE 'America/Argentina/Buenos_Aires')::date <= %s"
+            p_insumos.append(fecha_hasta)
+
+        cur.execute(q_insumos, tuple(p_insumos))
+        insumos_consumidos = round(float(cur.fetchone()['total_consumido'] or 0), 2)
+
+        return jsonify({
+            "status": "ok",
+            "gastos_operativos": gastos_operativos,
+            "bienes_de_uso": bienes_de_uso,
+            "insumos_consumidos": insumos_consumidos
+        }), 200
+    finally:
+        cur.close()
+        conn.close()
+
 if __name__ == '__main__':
     port = int(os.getenv("SERVICE_PORT", 5004))
     print(f" Microservicio Finanzas activo en http://127.0.0.1:{port}")
