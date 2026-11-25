@@ -1,8 +1,9 @@
 // --- BACKEND FALSO DE VENTAS PARA LOS TESTS E2E ---
 // Simula, dentro del navegador de Playwright, los endpoints que usan las pantallas Nueva venta e Historial de ventas
-// (ver frontend/js/servicios/ventas.js), con las reglas que va a tener el Backend real: el stock se descuenta al confirmar
-// y vuelve al anular, el número de venta lo asigna el servidor, el saldo a favor se descuenta, y los rechazos tienen el
-// mismo formato ({ mensaje } para el bloqueo por stock y { errores: { campo: mensaje } } para los datos inválidos).
+// (ver frontend/js/servicios/ventas.js), respondiendo con el mismo formato que el Backend real: el stock se descuenta al
+// confirmar y vuelve al anular, el número de venta lo asigna el servidor y los rechazos llegan como { mensaje }. Igual
+// que el real, no descuenta saldo a favor, no oculta ventas, no manda el IVA ni los productos de las ventas de contado.
+// `estado` guarda cada venta con todos sus datos y las rutas devuelven solo lo que devuelve el Backend.
 //
 //   const backend = await simularBackendVentas(page, { rol: "ADMIN", categoriaNegocio: "RESPONSABLE_INSCRIPTO" });
 //   backend.llamadas                       -> todo lo que pidió la pantalla ({ metodo, ruta, body })
@@ -72,12 +73,6 @@ const semillaInicial = (categoriaNegocio) => ({
       items: [{ producto_id: 1, producto: "Sifón de soda 1.5 l", precio: 1200, cantidad: 2 }],
       iva: { modo: "DISCRIMINA", neto: 1983.47, iva: 416.53, leyenda: "El crédito fiscal discriminado en el presente comprobante no puede ser computado", texto: null },
     },
-    {
-      id: 4, numero: "00001-00000454", tipo: "CONTADO", cliente_id: null, cliente_nombre: null, fecha_hora: haceDias(5),
-      total: 590, saldo: 0, medio_pago: "Efectivo", credito_aplicado: 0, anulada: false, oculto: true,
-      items: [{ producto_id: 4, producto: "Lavandina 1 l", precio: 590, cantidad: 1 }],
-      iva: { modo: "INCLUIDO", neto: null, iva: null, leyenda: null, texto: "El precio incluye IVA." },
-    },
   ],
 });
 
@@ -92,17 +87,6 @@ const decodificarRol = (cabecera) => {
   }
 };
 
-// IVA según la categoría del negocio y la del cliente (las mismas reglas que el módulo de Ventas).
-const calcularIva = (total, categoriaNegocio, categoriaCliente) => {
-  if (categoriaNegocio === "MONOTRIBUTISTA") return { modo: "NINGUNO", neto: null, iva: null, leyenda: null, texto: "IVA no discriminado: el impuesto está unificado en la cuota fija del negocio." };
-  if (categoriaNegocio === "EXENTO") return { modo: "NINGUNO", neto: null, iva: null, leyenda: null, texto: "Negocio exento: no se genera débito fiscal ni se adiciona IVA." };
-  if (categoriaCliente === "RESPONSABLE_INSCRIPTO" || categoriaCliente === "MONOTRIBUTISTA") {
-    const neto = redondear(total / 1.21);
-    return { modo: "DISCRIMINA", neto, iva: redondear(total - neto), leyenda: categoriaCliente === "MONOTRIBUTISTA" ? "El crédito fiscal discriminado en el presente comprobante no puede ser computado" : null, texto: null };
-  }
-  return { modo: "INCLUIDO", neto: null, iva: null, leyenda: null, texto: "El precio incluye IVA." };
-};
-
 async function simularBackendVentas(page, { rol = "ADMIN", categoriaNegocio = "RESPONSABLE_INSCRIPTO", semilla = null } = {}) {
   const estado = semillaInicial(categoriaNegocio);
   if (semilla) semilla(estado);
@@ -115,92 +99,87 @@ async function simularBackendVentas(page, { rol = "ADMIN", categoriaNegocio = "R
   const cliente = (id) => estado.clientes.find((c) => c.id === Number(id));
   const venta = (id) => estado.ventas.find((v) => v.id === Number(id));
 
-  const listarVentas = () => [200, { status: "ok", ventas: estado.ventas }];
+  const listarVentas = () => [200, {
+    status: "ok",
+    items: estado.ventas.map((v) => ({
+      id: v.id,
+      numero_venta: v.numero.split("-")[1],
+      tipo_venta: v.tipo,
+      total: v.total.toFixed(2),
+      estado: v.anulada ? "ANULADA" : "CONFIRMADA",
+      fecha_hora: new Date(v.fecha_hora).toUTCString(),
+      cliente: v.cliente_nombre,
+    })),
+  }];
+  const cuentasCorrientes = () => [200, {
+    status: "ok",
+    items: estado.ventas
+      .filter((v) => v.tipo === "CUENTA_CORRIENTE")
+      .map((v) => ({ venta_id: v.id, saldo_pendiente: v.saldo, productos: v.items.map((i) => ({ nombre: i.producto, precio: i.precio, cantidad: i.cantidad, subtotal: redondear(i.precio * i.cantidad) })) })),
+  }];
+  const listarPagos = () => [200, { status: "ok", items: estado.ventas.filter((v) => v.medio_pago).map((v) => ({ venta_id: v.id, medio_pago: v.medio_pago, monto: v.total })) }];
   const listarProductos = () => [200, { status: "ok", items: estado.productos }];
   const listarMedios = () => [200, { status: "ok", medios_pago: estado.medios }];
   const negocio = () => [200, { status: "ok", negocio: { identificador: "kiosco", nombre_comercial: "Kiosco", rubro: "Kiosco", categoria_impositiva: estado.negocio.categoria_impositiva } }];
-  // Al Cajero nunca le llegan la categoría impositiva ni otros datos del cliente: solo el nombre y su saldo a favor.
-  const listarClientes = () => [200, { status: "ok", clientes: estado.clientes.map((c) => (esAdmin ? { ...c } : { id: c.id, nombre: c.nombre, saldo_a_favor: c.saldo_a_favor })) }];
+  // Al Cajero nunca le llegan la categoría impositiva ni otros datos del cliente: solo el nombre.
+  const listarClientes = () => [200, { status: "ok", items: estado.clientes.map((c) => (esAdmin ? { ...c } : { id: c.id, nombre: c.nombre })) }];
 
   const crearVenta = (_p, body) => {
     const items = Array.isArray(body.items) ? body.items : [];
-    const errores = {};
-    if (items.length === 0) errores.items = "Seleccioná al menos un producto.";
-    if (!["CONTADO", "CUENTA_CORRIENTE"].includes(body.tipo)) errores.tipo = "Elegí el tipo de venta.";
-    if (items.some((i) => !Number.isInteger(i.cantidad) || i.cantidad < 1)) errores.items = "Cada producto necesita una cantidad entera mayor a 0.";
     const comprador = body.cliente_id ? cliente(body.cliente_id) : null;
-    if (body.cliente_id && !comprador) errores.cliente_id = "El cliente no está registrado.";
-    if (body.tipo === "CUENTA_CORRIENTE" && !body.cliente_id) errores.cliente_id = "Seleccioná un cliente registrado para una venta a cuenta corriente.";
+    if (items.length === 0) return error(400, "El carrito está vacío");
+    if (!["CONTADO", "CUENTA_CORRIENTE"].includes(body.tipo_venta)) return error(400, "Tipo de venta inválido");
+    if (body.tipo_venta === "CUENTA_CORRIENTE" && !body.cliente_id) return error(400, "Venta Cta Cte requiere cliente");
+    if (body.tipo_venta === "CONTADO" && !body.medio_pago_id) return error(400, "Venta de contado requiere medio de pago");
+
     const lineas = items.map((i) => ({ ...i, producto: producto(i.producto_id) }));
-    if (lineas.some((l) => !l.producto)) errores.items = "Hay un producto que no existe.";
-    if (Object.keys(errores).length) return error(400, "Error de validación en los datos enviados", errores);
+    // Bloqueo por stock: la venta no se crea y no cambia nada.
+    const sinStock = lineas.find((l) => !l.producto || l.producto.cantidad < l.cantidad);
+    if (sinStock) return error(409, `Stock insuficiente para el producto ${sinStock.producto_id}`);
 
     const total = redondear(lineas.reduce((suma, l) => suma + l.producto.precio_venta * l.cantidad, 0));
-    const credito = Number(body.saldo_a_favor_usado) || 0;
-    if (credito > 0) {
-      if (!comprador || credito > comprador.saldo_a_favor) return error(400, "Error de validación en los datos enviados", { saldo_a_favor_usado: "El saldo a favor a usar supera el que tiene el cliente." });
-      if (credito > total) return error(400, "Error de validación en los datos enviados", { saldo_a_favor_usado: "El saldo a favor a usar supera el total de la venta." });
-    }
-    const aCobrar = redondear(total - credito);
-    if (body.tipo === "CONTADO" && aCobrar > 0 && !estado.medios.some((m) => m.id === Number(body.medio_pago_id))) {
-      return error(400, "Error de validación en los datos enviados", { medio_pago_id: "Seleccioná el medio de pago de la venta." });
-    }
-    // Bloqueo por stock: la venta no se crea y no cambia nada. El mensaje lleva el nombre del producto y su stock del momento.
-    const sinStock = lineas.find((l) => l.producto.cantidad < l.cantidad);
-    if (sinStock) return error(409, `No se puede confirmar la venta: "${sinStock.producto.nombre}" no tiene stock suficiente (stock actual: ${sinStock.producto.cantidad}).`);
-
     lineas.forEach((l) => (l.producto.cantidad -= l.cantidad));
-    if (comprador) comprador.saldo_a_favor = redondear(comprador.saldo_a_favor - credito);
     const siguiente = Math.max(450, ...estado.ventas.map((v) => Number(v.numero.split("-")[1]))) + 1;
     const nueva = {
       id: Math.max(0, ...estado.ventas.map((v) => v.id)) + 1,
       numero: `00001-${String(siguiente).padStart(8, "0")}`,
-      tipo: body.tipo,
+      tipo: body.tipo_venta,
       cliente_id: comprador?.id ?? null,
       cliente_nombre: comprador?.nombre ?? null,
       fecha_hora: new Date().toISOString(),
       total,
-      saldo: body.tipo === "CONTADO" ? 0 : aCobrar,
-      medio_pago: body.tipo === "CONTADO" && aCobrar > 0 ? estado.medios.find((m) => m.id === Number(body.medio_pago_id)).nombre : null,
-      credito_aplicado: credito,
+      saldo: body.tipo_venta === "CONTADO" ? 0 : total,
+      medio_pago: body.tipo_venta === "CONTADO" ? estado.medios.find((m) => m.id === Number(body.medio_pago_id))?.nombre : null,
       anulada: false,
-      oculto: false,
       items: lineas.map((l) => ({ producto_id: l.producto.id, producto: l.producto.nombre, precio: l.producto.precio_venta, cantidad: l.cantidad })),
-      iva: calcularIva(total, estado.negocio.categoria_impositiva, comprador ? comprador.categoria_impositiva : "CONSUMIDOR_FINAL"),
     };
     estado.ventas.push(nueva);
-    return [201, { status: "ok", mensaje: "Venta confirmada", venta: nueva }];
+    return [201, { status: "ok", mensaje: "Venta confirmada", venta_id: nueva.id, numero: String(siguiente).padStart(8, "0"), total }];
   };
 
   const anularVenta = ({ id }) => {
     const v = venta(id);
-    if (!v) return error(404, "Venta no encontrada");
-    if (v.anulada) return error(409, "La venta ya está anulada");
+    if (!v || v.anulada) return error(404, "Venta no encontrada o ya anulada");
     v.anulada = true;
     v.saldo = 0;
     v.items.forEach((i) => {
       const p = producto(i.producto_id);
       if (p) p.cantidad += i.cantidad; // el stock vuelve
     });
-    return [200, { status: "ok", mensaje: "Venta anulada", venta: v }];
+    return [200, { status: "ok", mensaje: "Venta anulada, stock repuesto y pagos anulados" }];
   };
 
-  const ocultarVenta = ({ id }, body) => {
-    const v = venta(id);
-    if (!v) return error(404, "Venta no encontrada");
-    v.oculto = Boolean(body.oculto);
-    return [200, { status: "ok", venta: v }];
-  };
-
-  const ticket = ({ id }) => (venta(id) ? [200, "%PDF-1.4 ticket de prueba", "application/pdf"] : error(404, "Venta no encontrada"));
+  // El Backend todavía no tiene esta ruta.
+  const ocultarVenta = () => [404, {}];
 
   // [método, patrón, manejador]. Los segmentos ":id" se pasan como parámetros.
   const rutas = [
     ["GET", "/ventas", listarVentas],
     ["POST", "/ventas", crearVenta],
-    ["POST", "/ventas/:id/anular", anularVenta],
+    ["PATCH", "/ventas/:id/anular", anularVenta],
     ["PATCH", "/ventas/:id/ocultar", ocultarVenta],
-    ["GET", "/ventas/:id/ticket", ticket],
+    ["GET", "/pagos/cuentas-corrientes", cuentasCorrientes],
+    ["GET", "/pagos", listarPagos],
     ["GET", "/clientes", listarClientes],
     ["GET", "/productos", listarProductos],
     ["GET", "/medios-pago", listarMedios],
@@ -240,8 +219,7 @@ async function simularBackendVentas(page, { rol = "ADMIN", categoriaNegocio = "R
       if (m !== metodo) continue;
       const params = coincide(patron, ruta);
       if (!params) continue;
-      const [status, cuerpo, tipo] = manejador(params, body);
-      if (tipo) return route.fulfill({ status, headers: { ...CORS, "content-type": tipo }, body: cuerpo });
+      const [status, cuerpo] = manejador(params, body);
       return route.fulfill({ status, headers: CORS, json: cuerpo });
     }
     return route.fulfill({ status: 404, headers: CORS, json: { status: "error", mensaje: "Ruta no simulada" } });
