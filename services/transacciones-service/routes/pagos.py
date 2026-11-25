@@ -41,6 +41,8 @@ from flask import Blueprint, request, jsonify
 from psycopg2.extras import RealDictCursor
 # Importamos desde helpers.py la conexión dinámica multi-base y la validación de tokens JWT
 from helpers import get_db_connection, verificar_token
+import json
+import urllib.request
 
 # Creamos el Blueprint de Pagos que luego se registra en app.py
 pagos_bp = Blueprint('pagos', __name__)
@@ -59,41 +61,83 @@ def formatear_nro_venta(sucursal_id, numero_venta):
     num = str(numero_venta or "0").zfill(8)
     return f"{suc:05d}-{num}"
 
-
 def formatear_nro_pago(pago_id):
     """Formatea el número de pago con 8 dígitos con ceros a la izquierda (ej. 00000001)."""
     return f"{int(pago_id):08d}"
 
-
-def obtener_productos_de_ventas(cur, venta_ids):
+def obtener_productos_de_ventas(cur, venta_ids, auth_header=None):
     """
-    Consulta ventas.venta_detalle para una lista de ventas y agrupa sus ítems
-    en el formato {nombre, precio, cantidad, subtotal} que espera el modal Ver Detalle.
+    Consulta ventas.venta_detalle (precio_unitario_historico, cantidad, subtotal)
+    y resuelve el nombre de cada producto vía productos-service (5002) o fallback SQL.
     """
     if not venta_ids:
         return {}
 
     cur.execute("""
-        SELECT *
+        SELECT
+            id,
+            venta_id,
+            producto_id,
+            cantidad,
+            precio_unitario_historico,
+            subtotal
         FROM ventas.venta_detalle
         WHERE venta_id = ANY(%s)
         ORDER BY id ASC
     """, (list(venta_ids),))
+    detalles = cur.fetchall()
+
+    if not detalles:
+        return {vid: [] for vid in venta_ids}
+
+    producto_ids = list({d["producto_id"] for d in detalles if d.get("producto_id")})
+    nombres_productos = {}
+
+    # 1. Intentamos obtener los nombres desde productos-service (5002)
+    if producto_ids and auth_header:
+        try:
+            req = urllib.request.Request(
+                "http://127.0.0.1:5002/api/productos?incluir_ocultos=true",
+                headers={"Authorization": auth_header}
+            )
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                lista_prod = data if isinstance(data, list) else (data.get("items") or data.get("productos") or [])
+                for p in lista_prod:
+                    if p.get("id") in producto_ids:
+                        nombres_productos[p["id"]] = p.get("nombre")
+        except Exception:
+            pass
+
+    # 2. Fallback directo a productos.productos protegido con SAVEPOINT (no aborta la transacción si hay restricción de esquema)
+    faltantes = [pid for pid in producto_ids if pid not in nombres_productos]
+    if faltantes:
+        try:
+            cur.execute("SAVEPOINT sp_nombres_productos")
+            cur.execute(
+                "SELECT id, nombre FROM productos.productos WHERE id = ANY(%s)",
+                (faltantes,)
+            )
+            for p in cur.fetchall():
+                nombres_productos[p["id"]] = p["nombre"]
+            cur.execute("RELEASE SAVEPOINT sp_nombres_productos")
+        except Exception:
+            cur.execute("ROLLBACK TO SAVEPOINT sp_nombres_productos")
 
     agrupado = {vid: [] for vid in venta_ids}
-    for d in cur.fetchall():
+    for d in detalles:
         vid = d["venta_id"]
-        precio = round(float(d.get("precio_unitario") or d.get("precio") or 0), 2)
-        cantidad = float(d.get("cantidad") or 0)
-        subtotal = round(float(d.get("subtotal") or (precio * cantidad)), 2)
+        pid = d["producto_id"]
+        precio = round(float(d["precio_unitario_historico"] or 0), 2)
+        cantidad = float(d["cantidad"] or 0)
+        subtotal = round(float(d["subtotal"] or (precio * cantidad)), 2)
         agrupado.setdefault(vid, []).append({
-            "nombre": d.get("nombre_producto") or d.get("producto_nombre") or d.get("nombre") or "Producto",
+            "nombre": nombres_productos.get(pid) or f"Producto #{pid}",
             "precio": precio,
             "cantidad": int(cantidad) if cantidad.is_integer() else cantidad,
             "subtotal": subtotal
         })
     return agrupado
-
 
 def calcular_saldo_venta(cur, venta_id, emprendimiento_id):
     """
@@ -341,7 +385,11 @@ def listar_cuentas_corrientes():
         filas = cur.fetchall()
 
         # Obtenemos en una sola consulta los productos vendidos de todas estas ventas
-        productos_por_venta = obtener_productos_de_ventas(cur, [f["venta_id"] for f in filas])
+        productos_por_venta = obtener_productos_de_ventas(
+            cur,
+            [f["venta_id"] for f in filas],
+            request.headers.get("Authorization")
+        )
 
         items = []
         for f in filas:
