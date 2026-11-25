@@ -62,7 +62,7 @@ const abrirModal = ({ titulo, cuerpo, onGuardar }) => {
 };
 
 const iniciarPantalla = () => {
-    // Corregido Punto 3
+    // Corregido Punto 3: Redirección del Cajero
     if (typeof puedeHacer === "function" && !puedeHacer("bienes_uso", "ver")) {
         window.location.href = "dashboard.html";
         return;
@@ -148,6 +148,9 @@ const iniciarPantalla = () => {
     
     refrescarUI = refrescar;
     refrescar(); 
+
+    // CORRECCIÓN QA: Se llama acá adentro, después de verificar permisos
+    cargarDatos();
 };
 
 const cargarDatos = async () => {
@@ -161,7 +164,7 @@ const cargarDatos = async () => {
             cantidad: item.cantidad,
             valor_total: item.valor_total, 
             fecha: item.fecha_adquisicion || item.creado_en || "—", 
-            proveedor_id: item.proveedor_id, // Corregido Punto 5 (guardar id)
+            proveedor_id: item.proveedor_id,
             creado_por: item.creado_por || "admin",
             oculto: item.activo === false || item.oculto === true || false
         }));
@@ -198,7 +201,7 @@ const crear = async () => {
             const provId = document.getElementById("m-prov").value;
 
             if (!nombre) throw new Error("El nombre es obligatorio.");
-            if (isNaN(valor) || valor <= 0) throw new Error("El valor de adquisición debe ser mayor a 0."); // Corregido Punto 2
+            if (isNaN(valor) || valor <= 0) throw new Error("El valor de adquisición debe ser mayor a 0."); 
             if (isNaN(cant) || cant <= 0) throw new Error("La cantidad debe ser mayor a 0.");
             if (!provId) throw new Error("Debe seleccionar un proveedor.");
             
@@ -226,7 +229,6 @@ const editar = async (bien) => {
         h("div", { class: "gastos-campo" }, h("label", { text: "Proveedor *" }), 
             h("select", { id: "e-prov", class: "gastos-entrada" }, 
                 h("option", { value: "", text: "Seleccione un proveedor" }),
-                // Corregido Punto 5: agregamos selected
                 ...proveedores.map(p => h("option", { value: p.id, text: p.nombre, selected: p.id === bien.proveedor_id }))
             )
         )
@@ -242,7 +244,7 @@ const editar = async (bien) => {
             const provId = document.getElementById("e-prov").value;
 
             if (!nombre) throw new Error("El nombre es obligatorio.");
-            if (isNaN(valor) || valor <= 0) throw new Error("El valor de adquisición debe ser mayor a 0."); // Corregido Punto 2
+            if (isNaN(valor) || valor <= 0) throw new Error("El valor de adquisición debe ser mayor a 0."); 
             if (isNaN(cant) || cant <= 0) throw new Error("La cantidad debe ser mayor a 0.");
             if (!provId) throw new Error("Debe seleccionar un proveedor.");
             
@@ -261,5 +263,5 @@ const editar = async (bien) => {
     });
 };
 
+// ACÁ ESTABA EL ERROR: Sacamos cargarDatos() de acá afuera
 iniciarPantalla();
-cargarDatos();

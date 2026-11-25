@@ -25,17 +25,30 @@ const ICONO_DOC = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 
 
 let ventas = [];
 let pagos = [];
+let mediosPago = [];
 let tabActiva = 'ventas';
 let verOcultos = false;
 let esCajero = false;
 
-const API_VENTAS = "/cuenta-corriente/ventas"; 
-const API_PAGOS = "/cuenta-corriente/pagos";
+// Sistema de Toast
+const mostrarToast = (msg) => {
+    const toast = h("div", { text: msg });
+    toast.style.cssText = "position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#111; color:#fff; padding:0.6rem 1rem; border-radius:8px; font-size:0.88rem; z-index:2000; box-shadow: 0 4px 12px rgba(0,0,0,0.15);";
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2600);
+};
+
+const mostrarCargando = () => {
+    const container = document.getElementById("cc-tabla-container");
+    container.replaceChildren(
+        h("div", { class: "cc-tabla-tarjeta" }, 
+            h("div", { style: "text-align: center; padding: 4rem 1rem; color: #8c8c8c; font-weight: 500;", text: "Actualizando saldos..." })
+        )
+    );
+};
 
 const iniciarPantalla = () => {
     const pagina = document.getElementById("cc-pagina");
-    
-    // Corregido Punto 9: Usamos puedeHacer
     esCajero = typeof puedeHacer === "function" ? !puedeHacer("cuentas_corrientes", "ocultar") : false;
 
     pagina.replaceChildren(
@@ -44,6 +57,7 @@ const iniciarPantalla = () => {
     );
     
     dibujarInterfaz();
+    cargarDatos();
 };
 
 const dibujarInterfaz = () => {
@@ -185,7 +199,7 @@ const renderizarTabla = () => {
         const filas = filtrados.map(p => {
             const acciones = [];
             if (p.oculto) {
-                acciones.push(h("button", { class: "cc-btn-accion", onclick: () => restaurarPago(p) }, crearSvg(ICONO_RESTAURAR), "Restaurar"));
+                acciones.push(h("button", { class: "cc-btn-accion", onclick: () => cambiarVisibilidadPago(p, false) }, crearSvg(ICONO_RESTAURAR), "Restaurar"));
             } else {
                 if (!p.anulado) {
                     acciones.push(h("button", { class: "cc-btn-accion solo-icono", title: "Editar", onclick: () => abrirModalPago(null, p) }, crearSvg(ICONO_LAPIZ)));
@@ -223,12 +237,27 @@ const renderizarTabla = () => {
 
 // --- MODALES ---
 
-const crearModalBase = (titulo, cuerpo, botones, ancho = "") => {
+const crearModalBase = (titulo, cuerpo, botones, ancho = "", onCloseRequest = null) => {
     const fondo = h("div", { class: "cc-modal-fondo" });
+    
+    const cerrar = () => {
+        if (onCloseRequest) {
+            onCloseRequest(() => fondo.remove());
+        } else {
+            fondo.remove();
+        }
+    };
+
     const modal = h("div", { class: `cc-modal ${ancho}`, role: "dialog", "aria-modal": "true" },
-        h("div", { class: "cc-modal-header" }, h("h2", { text: titulo }), h("button", { class: "cc-modal-close", text: "×", onclick: () => fondo.remove() })),
+        h("div", { class: "cc-modal-header" }, h("h2", { text: titulo }), h("button", { class: "cc-modal-close", text: "×", onclick: cerrar })),
         h("div", { class: "cc-modal-body" }, cuerpo),
-        h("div", { class: "cc-modal-footer" }, ...botones)
+        h("div", { class: "cc-modal-footer" }, ...botones.map(b => {
+            // Si es el botón de cancelar, le inyectamos la validación
+            if (b.textContent === "Cancelar") {
+                b.onclick = cerrar;
+            }
+            return b;
+        }))
     );
     fondo.append(modal); document.body.append(fondo);
     return { fondo, modal };
@@ -237,8 +266,7 @@ const crearModalBase = (titulo, cuerpo, botones, ancho = "") => {
 const abrirModalDetalle = (venta) => {
     const saldo = venta.total - venta.pagado;
     const estado = calcularEstado(venta);
-    // Corregido Punto 6: Usa los productos reales
-    const productos = venta.productos || venta.detalles || [];
+    const productos = venta.productos || [];
     const pagosVenta = pagos.filter(p => p.nro_venta === venta.nro_venta && !p.oculto);
 
     const cuerpo = h("div", {},
@@ -297,31 +325,39 @@ const abrirModalDetalle = (venta) => {
 
     const esPagable = !venta.anulada && saldo > 0;
     const { fondo: modalFondo } = crearModalBase(`Venta ${venta.nro_venta}`, cuerpo, [
-        h("button", { class: "cc-btn-accion", text: "Cerrar", onclick: () => modalFondo.remove() }),
+        h("button", { class: "cc-btn-accion", text: "Cerrar" }),
         h("button", { class: "cc-btn-primario", text: "Registrar pago", disabled: !esPagable, onclick: () => { modalFondo.remove(); abrirModalPago(venta); } })
     ], "ancho");
 };
 
 const abrirModalPago = async (ventaFija = null, pagoAEditar = null) => {
-    const medios = ["Efectivo", "Transferencia", "Tarjeta Débito", "Mercado Pago"];
-    const ventasDisponibles = ventas.filter(v => !v.anulada && (v.total - v.pagado) > 0);
+    const ventasDisponibles = [...ventas];
+    if (pagoAEditar && !ventasDisponibles.find(v => v.id === pagoAEditar.venta_id)) {
+        ventasDisponibles.push(pagoAEditar.venta_actual || { id: pagoAEditar.venta_id, nro_venta: pagoAEditar.nro_venta, cliente: pagoAEditar.cliente });
+    }
 
     const form = h("div", {});
     const avisoError = h("div", { class: "cc-aviso error" });
-    
-    const selectVenta = h("select", { class: "cc-select", id: "cc-pago-venta", disabled: !!ventaFija || !!pagoAEditar });
-    if (!ventaFija && !pagoAEditar) selectVenta.append(h("option", { value: "", text: "Elegí una venta" }));
-    ventasDisponibles.forEach(v => selectVenta.append(h("option", { value: v.nro_venta, text: `${v.nro_venta} · ${v.cliente}` })));
+    let hayCambios = false;
 
-    const inputMonto = h("input", { type: "number", class: "cc-input", id: "cc-pago-monto", step: "0.01" });
+    const selectVenta = h("select", { class: "cc-select", id: "cc-pago-venta", disabled: !!ventaFija, onchange: () => hayCambios = true });
+    if (!ventaFija && !pagoAEditar) selectVenta.append(h("option", { value: "", text: "Elegí una venta" }));
+    
+    ventasDisponibles.forEach(v => {
+        const isSelected = pagoAEditar && v.id === pagoAEditar.venta_id ? true : false;
+        const texto = `${v.nro_venta} · ${v.cliente}${v.anulada ? ' · ANULADA' : ''}`;
+        selectVenta.append(h("option", { value: v.id, text: texto, selected: isSelected }));
+    });
+
+    const inputMonto = h("input", { type: "number", class: "cc-input", id: "cc-pago-monto", step: "0.01", oninput: () => { hayCambios = true; actualizarSaldoLabel(); } });
     const labelSaldo = h("div", { class: "cc-ayuda" });
     
-    const selectMedio = h("select", { class: "cc-select", id: "cc-pago-medio" });
+    const selectMedio = h("select", { class: "cc-select", id: "cc-pago-medio", onchange: () => hayCambios = true });
     selectMedio.append(h("option", { value: "", text: "Elegí una opción" }));
-    medios.forEach(m => selectMedio.append(h("option", { value: m, text: m })));
+    mediosPago.forEach(m => selectMedio.append(h("option", { value: m.id, text: m.nombre })));
 
-    const inputFecha = h("input", { type: "text", class: "cc-input", id: "cc-pago-fecha", placeholder: "dd-mm-aaaa" });
-    const inputHora = h("input", { type: "text", class: "cc-input", id: "cc-pago-hora", placeholder: "hh:mm" });
+    const inputFecha = h("input", { type: "text", class: "cc-input", id: "cc-pago-fecha", placeholder: "dd-mm-aaaa", oninput: () => hayCambios = true });
+    const inputHora = h("input", { type: "text", class: "cc-input", id: "cc-pago-hora", placeholder: "hh:mm", oninput: () => hayCambios = true });
 
     form.append(
         avisoError,
@@ -337,12 +373,12 @@ const abrirModalPago = async (ventaFija = null, pagoAEditar = null) => {
     );
 
     const actualizarSaldoLabel = () => {
-        const idVenta = selectVenta.value;
-        const v = ventas.find(x => x.nro_venta === idVenta);
+        const idVenta = parseInt(selectVenta.value);
+        const v = ventas.find(x => x.id === idVenta);
         if (!v) { labelSaldo.textContent = ""; return; }
         
         let saldoActual = v.total - v.pagado;
-        if (pagoAEditar) saldoActual += pagoAEditar.monto;
+        if (pagoAEditar && pagoAEditar.venta_id === idVenta) saldoActual += pagoAEditar.monto;
         
         const montoIngresado = parseFloat(inputMonto.value) || 0;
         const saldoNuevo = saldoActual - montoIngresado;
@@ -355,23 +391,18 @@ const abrirModalPago = async (ventaFija = null, pagoAEditar = null) => {
         labelSaldo.textContent = texto;
     };
 
-    selectVenta.addEventListener("change", actualizarSaldoLabel);
-    inputMonto.addEventListener("input", actualizarSaldoLabel);
-
-    // Corregido Puntos 7 y 8: Función pad para agregar el 0 a los días y horas
     const pad = (n) => String(n).padStart(2, '0');
     const hoy = new Date();
 
     if (ventaFija) {
-        selectVenta.value = ventaFija.nro_venta;
+        selectVenta.value = ventaFija.id;
         inputMonto.value = (ventaFija.total - ventaFija.pagado).toFixed(2);
         inputFecha.value = `${pad(hoy.getDate())}-${pad(hoy.getMonth() + 1)}-${hoy.getFullYear()}`;
         inputHora.value = `${pad(hoy.getHours())}:${pad(hoy.getMinutes())}`;
     } else if (pagoAEditar) {
         const f = new Date(pagoAEditar.fecha);
-        selectVenta.value = pagoAEditar.nro_venta;
         inputMonto.value = pagoAEditar.monto;
-        selectMedio.value = pagoAEditar.medio_pago;
+        selectMedio.value = pagoAEditar.medio_pago_id;
         inputFecha.value = `${pad(f.getDate())}-${pad(f.getMonth() + 1)}-${f.getFullYear()}`;
         inputHora.value = `${pad(f.getHours())}:${pad(f.getMinutes())}`;
     } else {
@@ -381,28 +412,68 @@ const abrirModalPago = async (ventaFija = null, pagoAEditar = null) => {
 
     actualizarSaldoLabel();
 
-    const { fondo } = crearModalBase(pagoAEditar ? `Editar pago ${pagoAEditar.nro_pago}` : "Registrar pago", form, [
-        h("button", { class: "cc-btn-accion", text: "Cancelar", onclick: () => fondo.remove() }),
-        h("button", { class: "cc-btn-primario", text: "Guardar", onclick: async (e) => {
-            const btn = e.target;
-            const idVenta = selectVenta.value;
-            const monto = parseFloat(inputMonto.value);
-            const medio = selectMedio.value;
-            const fecha = inputFecha.value;
-            const hora = inputHora.value;
+    const { fondo } = crearModalBase(
+        pagoAEditar ? `Editar pago ${pagoAEditar.nro_pago}` : "Registrar pago", 
+        form, 
+        [
+            h("button", { class: "cc-btn-accion", text: "Cancelar" }),
+            h("button", { class: "cc-btn-primario", text: "Guardar", onclick: async (e) => {
+                const btn = e.target;
+                const ventaId = selectVenta.value;
+                const monto = parseFloat(inputMonto.value);
+                const medioId = selectMedio.value;
+                const fecha = inputFecha.value;
+                const hora = inputHora.value;
 
-            if (!idVenta || !monto || monto <= 0 || !medio || !fecha || !hora) {
-                avisoError.textContent = "Revisá estos datos: monto abonado, medio de pago, fecha y hora.";
-                avisoError.style.display = "block";
-                return;
+                if (!ventaId || !monto || monto <= 0 || !medioId || !fecha || !hora) {
+                    avisoError.textContent = "Revisá estos datos: venta, monto abonado, medio de pago, fecha y hora.";
+                    avisoError.style.display = "block";
+                    return;
+                }
+
+                btn.disabled = true; btn.textContent = "Guardando...";
+                
+                try {
+                    // Formato esperado: YYYY-MM-DD HH:mm:ss o ISO. Mandamos lo que pidió el back.
+                    const fechaPago = `${fecha.split('-').reverse().join('-')} ${hora}:00`; 
+                    const payload = { venta_id: parseInt(ventaId), medio_pago_id: parseInt(medioId), monto: monto, fecha_pago: fechaPago };
+
+                    if (pagoAEditar) {
+                        await fetchAPI(`/pagos/${pagoAEditar.id}`, "PUT", payload);
+                        mostrarToast(`Pago ${pagoAEditar.nro_pago} actualizado`);
+                    } else {
+                        await fetchAPI("/pagos", "POST", payload);
+                        mostrarToast("Pago registrado");
+                    }
+                    
+                    fondo.remove();
+                    cargarDatos();
+                } catch (err) {
+                    alert(err.message || "Error al guardar el pago");
+                    btn.disabled = false; btn.textContent = "Guardar";
+                }
+            }})
+        ], 
+        "ancho",
+        (cerrar) => {
+            if (hayCambios) {
+                abrirModalConfirmarDescarte(cerrar);
+            } else {
+                cerrar();
             }
+        }
+    );
+};
 
-            btn.disabled = true; btn.textContent = "Guardando...";
-            await new Promise(r => setTimeout(r, 500)); // Simula el guardado
-            fondo.remove();
-            alert(pagoAEditar ? "Pago actualizado" : "Pago registrado");
-        }})
-    ], "ancho");
+const abrirModalConfirmarDescarte = (onConfirmar) => {
+    const { fondo } = crearModalBase("Hay datos sin guardar", 
+        h("p", { text: "Si cerrás ahora, se pierde lo que cargaste. ¿Querés descartarlo?", style: "margin-bottom: 1rem;" }),
+        [
+            h("button", { class: "cc-btn-accion", text: "Seguir editando", onclick: () => fondo.remove() }),
+            h("button", { class: "cc-btn-primario", text: "Descartar", onclick: () => { fondo.remove(); onConfirmar(); } })
+        ],
+        "chico"
+    );
 };
 
 const abrirModalAnular = (pago) => {
@@ -413,10 +484,14 @@ const abrirModalAnular = (pago) => {
     );
 
     const { fondo } = crearModalBase("Anular pago", cuerpo, [
-        h("button", { class: "cc-btn-accion", text: "Cancelar", onclick: () => fondo.remove() }),
+        h("button", { class: "cc-btn-accion", text: "Cancelar" }),
         h("button", { class: "cc-btn-primario", text: "Anular pago", style: "background: #dc3545;", onclick: async () => {
-            fondo.remove();
-            alert("Pago anulado");
+            try {
+                await fetchAPI(`/pagos/${pago.id}/anular`, "PATCH");
+                fondo.remove();
+                mostrarToast(`Pago ${pago.nro_pago} anulado`);
+                cargarDatos();
+            } catch (err) { alert(err.message); }
         }})
     ], "chico");
 };
@@ -428,37 +503,52 @@ const abrirModalOcultar = (pago) => {
     );
 
     const { fondo } = crearModalBase("Ocultar pago", cuerpo, [
-        h("button", { class: "cc-btn-accion", text: "Cancelar", onclick: () => fondo.remove() }),
+        h("button", { class: "cc-btn-accion", text: "Cancelar" }),
         h("button", { class: "cc-btn-primario", text: "Ocultar", onclick: async () => {
-            fondo.remove();
-            alert("Pago oculto");
+            try {
+                await fetchAPI(`/pagos/${pago.id}/visibilidad`, "PATCH", { oculto: true });
+                fondo.remove();
+                mostrarToast(`Pago ${pago.nro_pago} oculto`);
+                cargarDatos();
+            } catch (err) { alert(err.message); }
         }})
     ], "chico");
 };
 
-const restaurarPago = async (pago) => {
-    alert("Pago restaurado");
+const cambiarVisibilidadPago = async (pago, oculto) => {
+    try {
+        await fetchAPI(`/pagos/${pago.id}/visibilidad`, "PATCH", { oculto });
+        mostrarToast(`Pago ${pago.nro_pago} ${oculto ? 'oculto' : 'restaurado'}`);
+        cargarDatos();
+    } catch (err) { alert(err.message); }
 };
 
-// --- CARGA DE DATOS (MOCK TEMPORAL) ---
+// --- CARGA DE DATOS (API REAL) ---
 const cargarDatos = async () => {
+    mostrarCargando();
     try {
-        // MOCK
-        ventas = [
-            { nro_venta: "00001-0000467", cliente: "Sandra Quiroga", fecha: "2026-11-03T17:20:00Z", total: 4260.00, pagado: 0, anulada: false },
-            { nro_venta: "00001-0000460", cliente: "Panadería La Espiga S.A.", fecha: "2026-10-28T14:00:00Z", total: 6500.00, pagado: 6500.00, anulada: false },
-            { nro_venta: "00001-0000462", cliente: "Almacén Don Pedro S.R.L.", fecha: "2026-10-20T16:45:00Z", total: 4260.00, pagado: 1000.00, anulada: false }
-        ];
-        pagos = [
-            { nro_pago: "00000002", nro_venta: "00001-0000460", cliente: "Panadería La Espiga S.A.", fecha: "2026-10-28T14:30:00Z", medio_pago: "Efectivo", monto: 6500.00, anulado: false, oculto: false },
-            { nro_pago: "00000001", nro_venta: "00001-0000462", cliente: "Almacén Don Pedro S.R.L.", fecha: "2026-10-21T10:00:00Z", medio_pago: "Transferencia", monto: 1000.00, anulado: false, oculto: false }
-        ];
-        
+        // 1. Cargar Ventas de Cuenta Corriente
+        const resVentas = await fetchAPI("/pagos/cuentas-corrientes");
+        ventas = resVentas.items || resVentas || [];
+
+        // 2. Cargar Pagos (incluyendo ocultos)
+        const resPagos = await fetchAPI("/pagos?incluir_ocultos=true");
+        pagos = resPagos.items || resPagos || [];
+
+        // 3. Cargar Medios de Pago
+        const resMedios = await fetchAPI("/medios-pago");
+        mediosPago = resMedios.items || resMedios || [];
+
         renderizarTabla();
     } catch (error) {
         console.error("Error al cargar cuenta corriente:", error);
+        const container = document.getElementById("cc-tabla-container");
+        container.replaceChildren(
+            h("div", { class: "cc-tabla-tarjeta" }, 
+                h("div", { style: "text-align: center; padding: 4rem 1rem; color: #b02a37;", text: "Error al cargar los datos. Verificá la conexión." })
+            )
+        );
     }
 };
 
 iniciarPantalla();
-cargarDatos();
