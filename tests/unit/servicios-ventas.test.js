@@ -16,25 +16,63 @@ afterEach(() => {
 });
 
 describe("servicioVentas", () => {
-  it("listar pide GET /ventas y devuelve las ventas (o vacío si no vino nada)", async () => {
-    fetchAPI.mockResolvedValueOnce({ ventas: [{ id: 1, numero: "00001-00000458" }] });
-    expect(await servicioVentas.listar()).toEqual([{ id: 1, numero: "00001-00000458" }]);
-    fetchAPI.mockResolvedValueOnce({});
-    expect(await servicioVentas.listar()).toEqual([]);
+  const VENTA = { id: 9, numero_venta: "00000459", tipo_venta: "CONTADO", total: "300.00", estado: "CONFIRMADA", fecha_hora: "Wed, 25 Nov 2026 12:00:00 GMT", cliente: null };
+  const falla = Object.assign(new Error("Error interno"), { status: 500 });
+  // Responde según la ruta pedida; lo que no se indique viene vacío.
+  const backend = (respuestas) => fetchAPI.mockImplementation(async (ruta, metodo = "GET") => {
+    const respuesta = respuestas[`${metodo} ${ruta.split("?")[0]}`] ?? { items: [] };
+    if (respuesta instanceof Error) throw respuesta;
+    return respuesta;
+  });
+
+  it("listar traduce los nombres de los campos del Backend", async () => {
+    backend({ "GET /ventas": { items: [VENTA] }, "GET /pagos": { items: [{ venta_id: 9, medio_pago: "Efectivo" }] } });
+    expect(await servicioVentas.listar()).toEqual([
+      { id: 9, numero: "00001-00000459", tipo: "CONTADO", cliente_nombre: null, fecha_hora: VENTA.fecha_hora, total: 300, saldo: undefined, medio_pago: "Efectivo", credito_aplicado: 0, anulada: false, oculto: false, items: [], iva: null },
+    ]);
     expect(fetchAPI).toHaveBeenCalledWith("/ventas");
+    expect(fetchAPI).toHaveBeenCalledWith("/pagos?todos=true&incluir_ocultos=true");
   });
 
-  it("crear envía POST /ventas con los datos y devuelve la venta confirmada", async () => {
-    const datos = { tipo: "CONTADO", cliente_id: null, medio_pago_id: 1, saldo_a_favor_usado: 0, items: [{ producto_id: 1, cantidad: 2 }] };
-    fetchAPI.mockResolvedValue({ venta: { id: 9, numero: "00001-00000459" } });
-    expect(await servicioVentas.crear(datos)).toEqual({ id: 9, numero: "00001-00000459" });
-    expect(fetchAPI).toHaveBeenCalledWith("/ventas", "POST", datos);
+  it("listar completa las ventas a cuenta corriente con sus productos y su saldo, sin medio de pago", async () => {
+    backend({
+      "GET /ventas": { items: [{ ...VENTA, tipo_venta: "CUENTA_CORRIENTE", estado: "ANULADA", cliente: "Ana" }] },
+      "GET /pagos/cuentas-corrientes": { items: [{ venta_id: 9, saldo_pendiente: 120, productos: [{ nombre: "Sifón", precio: 150, cantidad: 2, subtotal: 300 }] }] },
+      "GET /pagos": { items: [{ venta_id: 9, medio_pago: "Efectivo" }] },
+    });
+    expect((await servicioVentas.listar())[0]).toMatchObject({ cliente_nombre: "Ana", anulada: true, saldo: 120, medio_pago: null, items: [{ producto: "Sifón", precio: 150, cantidad: 2 }] });
   });
 
-  it("anular envía POST /ventas/<id>/anular y devuelve la venta", async () => {
-    fetchAPI.mockResolvedValue({ venta: { id: 9, anulada: true } });
-    expect(await servicioVentas.anular(9)).toEqual({ id: 9, anulada: true });
-    expect(fetchAPI).toHaveBeenCalledWith("/ventas/9/anular", "POST");
+  it("listar devuelve vacío si no hay ventas, sin pedir nada más", async () => {
+    backend({});
+    expect(await servicioVentas.listar()).toEqual([]);
+    expect(fetchAPI).toHaveBeenCalledTimes(1);
+  });
+
+  it("listar muestra las ventas aunque fallen los pagos o la cuenta corriente", async () => {
+    backend({ "GET /ventas": { items: [VENTA] }, "GET /pagos": falla, "GET /pagos/cuentas-corrientes": falla });
+    expect((await servicioVentas.listar())[0]).toMatchObject({ id: 9, medio_pago: null, items: [] });
+  });
+
+  const DATOS = { tipo: "CONTADO", cliente_id: null, medio_pago_id: 1, saldo_a_favor_usado: 0, items: [{ producto_id: 1, cantidad: 2 }] };
+  const CREADA = { status: "ok", venta_id: 9, numero: "00000459", total: 300 };
+
+  it("crear envía tipo_venta y devuelve la venta guardada que está en el listado", async () => {
+    backend({ "POST /ventas": CREADA, "GET /ventas": { items: [VENTA] }, "GET /pagos": { items: [{ venta_id: 9, medio_pago: "Efectivo" }] } });
+    expect(await servicioVentas.crear(DATOS)).toMatchObject({ id: 9, numero: "00001-00000459", medio_pago: "Efectivo", fecha_hora: VENTA.fecha_hora });
+    const { tipo, ...resto } = DATOS;
+    expect(fetchAPI).toHaveBeenCalledWith("/ventas", "POST", { ...resto, tipo_venta: tipo });
+  });
+
+  it("crear no falla si la venta se guardó pero no se puede releer", async () => {
+    backend({ "POST /ventas": CREADA, "GET /ventas": falla });
+    expect(await servicioVentas.crear({ ...DATOS, tipo: "CUENTA_CORRIENTE", cliente_id: 3 })).toMatchObject({ id: 9, numero: "00001-00000459", tipo: "CUENTA_CORRIENTE", total: 300, cliente_nombre: "Cliente registrado" });
+  });
+
+  it("anular envía PATCH /ventas/<id>/anular", async () => {
+    fetchAPI.mockResolvedValue({ status: "ok" });
+    await servicioVentas.anular(9);
+    expect(fetchAPI).toHaveBeenCalledWith("/ventas/9/anular", "PATCH");
   });
 
   it("ocultar envía PATCH /ventas/<id>/ocultar con { oculto } y devuelve la venta", async () => {
@@ -47,17 +85,18 @@ describe("servicioVentas", () => {
     ]);
   });
 
-  it("los errores del Backend llegan tal cual a la pantalla (el 409 de stock y los 400 con errores por campo)", async () => {
-    const sinStock = Object.assign(new Error("Stock insuficiente para Sifón"), { status: 409 });
-    const invalida = Object.assign(new Error("Error de validación"), { status: 400, errores: { cliente_id: "El cliente no está registrado." } });
-    fetchAPI.mockRejectedValueOnce(sinStock);
-    await expect(servicioVentas.crear({})).rejects.toBe(sinStock);
-    fetchAPI.mockRejectedValueOnce(invalida);
-    await expect(servicioVentas.crear({})).rejects.toBe(invalida);
-    fetchAPI.mockRejectedValueOnce(sinStock);
-    await expect(servicioVentas.anular(1)).rejects.toBe(sinStock);
-    fetchAPI.mockRejectedValueOnce(sinStock);
-    await expect(servicioVentas.listar()).rejects.toBe(sinStock);
+  it("el error de stock llega con el nombre del producto en vez de su número", async () => {
+    const sinStock = Object.assign(new Error("Stock insuficiente para el producto 1"), { status: 409 });
+    backend({ "POST /ventas": sinStock, "GET /productos": { items: [{ id: 1, nombre: "Sifón", cantidad: 0, precio_venta: 150 }] } });
+    await expect(servicioVentas.crear(DATOS)).rejects.toThrow('Stock insuficiente para el producto "Sifón"');
+  });
+
+  it("los demás errores del Backend llegan tal cual a la pantalla", async () => {
+    const invalida = Object.assign(new Error("Tipo de venta inválido"), { status: 400 });
+    fetchAPI.mockRejectedValue(invalida);
+    await expect(servicioVentas.crear(DATOS)).rejects.toBe(invalida);
+    await expect(servicioVentas.anular(1)).rejects.toBe(invalida);
+    await expect(servicioVentas.listar()).rejects.toBe(invalida);
   });
 });
 
@@ -127,24 +166,14 @@ describe("servicioVentas.descargarTicket", () => {
 
 describe("servicioClientesDeVentas", () => {
   it("listar pide GET /clientes y devuelve los clientes", async () => {
-    fetchAPI.mockResolvedValue({ clientes: [{ id: 1, nombre: "Ana", saldo_a_favor: 100, categoria_impositiva: "EXENTO" }] });
-    expect(await servicioClientesDeVentas.listar()).toEqual([{ id: 1, nombre: "Ana", saldo_a_favor: 100, categoria_impositiva: "EXENTO" }]);
+    fetchAPI.mockResolvedValue({ items: [{ id: 1, nombre: "Ana", categoria_impositiva: "EXENTO" }] });
+    expect(await servicioClientesDeVentas.listar()).toEqual([{ id: 1, nombre: "Ana", categoria_impositiva: "EXENTO", saldo_a_favor: 0 }]);
     expect(fetchAPI).toHaveBeenCalledWith("/clientes");
   });
 
-  it("el saldo a favor llega como número, aunque el Backend lo mande como texto", async () => {
-    fetchAPI.mockResolvedValue({ clientes: [{ id: 1, nombre: "Ana", saldo_a_favor: "1500.50" }] });
-    expect((await servicioClientesDeVentas.listar())[0].saldo_a_favor).toBe(1500.5);
-  });
-
-  it("sin saldo a favor (o con un valor que no es número) queda en 0", async () => {
-    fetchAPI.mockResolvedValue({ clientes: [{ id: 1, nombre: "Ana" }, { id: 2, nombre: "Luis", saldo_a_favor: null }, { id: 3, nombre: "Eva", saldo_a_favor: "abc" }] });
-    expect((await servicioClientesDeVentas.listar()).map((c) => c.saldo_a_favor)).toEqual([0, 0, 0]);
-  });
-
-  it("el Cajero recibe solo id, nombre y saldo a favor, y no se le agrega nada más", async () => {
-    fetchAPI.mockResolvedValue({ clientes: [{ id: 1, nombre: "Ana", saldo_a_favor: 100 }] });
-    expect(Object.keys((await servicioClientesDeVentas.listar())[0]).sort()).toEqual(["id", "nombre", "saldo_a_favor"]);
+  it("entrega el saldo a favor en 0 porque el Backend todavía no lo descuenta", async () => {
+    fetchAPI.mockResolvedValue({ items: [{ id: 1, nombre: "Ana", saldo_a_favor: 1500.5 }, { id: 2, nombre: "Luis" }] });
+    expect((await servicioClientesDeVentas.listar()).map((c) => c.saldo_a_favor)).toEqual([0, 0]);
   });
 
   it("si la respuesta no trae clientes, devuelve una lista vacía", async () => {
