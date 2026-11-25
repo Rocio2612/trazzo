@@ -39,8 +39,9 @@ export const iniciarNotificaciones = () => {
     if (document.hidden) return;
     try {
       const data = await fetchAPI("/notificaciones/contador");
-      // PUNTO 2: El backend devuelve "contador", no "cantidad"
+      // Arreglo 2: El backend devuelve "cantidad" o "contador"
       const total = data.cantidad ?? data.contador ?? 0;
+
       if (total > 0) {
         contador.textContent = textoContador(total);
         contador.hidden = false;
@@ -91,7 +92,7 @@ const cargarAlertas = async (contenedor, actualizarContador) => {
   contenedor.innerHTML = "";
   try {
     const res = await fetchAPI("/notificaciones");
-    // PUNTO 1: El backend devuelve { status, items }, no un array directo
+    // Arreglo 1: El backend devuelve { status: "ok", items: [...] }
     const alertas = Array.isArray(res) ? res : res.items || [];
 
     if (alertas.length === 0) {
@@ -115,7 +116,7 @@ const cargarAlertas = async (contenedor, actualizarContador) => {
 
       btn.onclick = async () => {
         try {
-          // PUNTO 3: La ruta correcta es /descartar, no /eliminar-vista
+          // Arreglo 3: La ruta correcta en el backend es /descartar
           await fetchAPI(`/notificaciones/${alerta.id}/descartar`, "PATCH");
 
           div.remove();
