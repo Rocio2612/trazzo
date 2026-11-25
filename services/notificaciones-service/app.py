@@ -112,6 +112,7 @@ def listar_alertas():
         """, (usuario_id, emprendimiento_id))
         return jsonify({"status": "ok", "items": cur.fetchall()}), 200
     except Exception as e:
+        print(f"ERROR EN LISTAR_ALERTAS: {e}") # <--- AGREGADO PARA VER EL ERROR
         return jsonify({"status": "error", "mensaje": str(e)}), 500
     finally:
         cur.close()
@@ -137,6 +138,7 @@ def contador_alertas():
         total = cur.fetchone()['total']
         return jsonify({"status": "ok", "contador": total}), 200
     except Exception as e:
+        print(f"ERROR EN CONTADOR_ALERTAS: {e}") # <--- AGREGADO PARA VER EL ERROR
         return jsonify({"status": "error", "mensaje": str(e)}), 500
     finally:
         cur.close()
@@ -162,6 +164,7 @@ def descartar_alerta(id):
         return jsonify({"status": "ok", "mensaje": "Alerta descartada"}), 200
     except Exception as e:
         conn.rollback()
+        print(f"ERROR EN DESCARTAR_ALERTA: {e}") # <--- AGREGADO PARA VER EL ERROR
         return jsonify({"status": "error", "mensaje": str(e)}), 500
     finally:
         cur.close()
