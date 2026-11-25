@@ -1,4 +1,4 @@
-// --- DATOS SIMULADOS DE REPORTES (hasta que Back publique /reportes) ---
+// --- DATOS SIMULADOS DE REPORTES (solo para los tests) ---
 // Simulan lo que calcularía el Backend a partir de Ventas, Cuenta Corriente, Productos, Bienes de Uso, Insumos y Gastos:
 //   GET /reportes?periodo=hoy|mes|anio  ->  respuesta de `servicioReportes.obtener` (ver abajo)
 // Solo el Admin entra a Reportes (el Backend responde 403 al Cajero). Los nombres de campo son provisorios hasta cerrar el contrato con Back.

@@ -1,14 +1,13 @@
 // --- PANTALLA DE REPORTES (módulo ES) ---
 // Panel de solo lectura (solo Administrador): tarjetas de indicadores y desglose de la inversión en inventario, con un
-// filtro de período. Los números vienen de mocks/reportes.js hasta que Back publique GET /reportes; cuando exista, solo
-// hay que cambiar el import de `servicioReportes` por uno que llame a fetchAPI. Lo que se muestra de cada tarjeta
+// filtro de período. Los números vienen del Backend (servicios/reportes.js). Lo que se muestra de cada tarjeta
 // (títulos, de qué servicio depende, textos) está en reportes.js.
 // Si el usuario no tiene permiso (por ejemplo un Cajero que escribe la dirección), se avisa con el 403 y se vuelve al
 // Panel antes de pedir ningún dato.
 
 import { bannerAmbar, crearSvg, h } from "./componentes/ui-panel.js";
 import { formatearDinero } from "./formatos.js";
-import { servicioReportes } from "./mocks/reportes.js";
+import { servicioReportes } from "./servicios/reportes.js";
 import { mensajeDeError } from "./servicios/errores.js";
 import {
   estaCaido,

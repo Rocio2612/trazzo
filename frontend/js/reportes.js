@@ -1,6 +1,6 @@
 // --- LÓGICA DE LA PANTALLA DE REPORTES (módulo ES, sin DOM) ---
 // Qué tarjetas se muestran, de qué servicio depende cada una y los textos que no vienen del Backend.
-// Los números los calcula el Backend (hoy los simula mocks/reportes.js): acá solo se decide cómo mostrarlos.
+// Los números los calcula el Backend (llegan por servicios/reportes.js): acá solo se decide cómo mostrarlos.
 
 export const PERIODOS = [
   { valor: "hoy", texto: "Hoy" },
