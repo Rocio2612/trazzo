@@ -30,7 +30,6 @@ let tabActiva = 'ventas';
 let verOcultos = false;
 let esCajero = false;
 
-// Sistema de Toast
 const mostrarToast = (msg) => {
     const toast = h("div", { text: msg });
     toast.style.cssText = "position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#111; color:#fff; padding:0.6rem 1rem; border-radius:8px; font-size:0.88rem; z-index:2000; box-shadow: 0 4px 12px rgba(0,0,0,0.15);";
@@ -252,7 +251,6 @@ const crearModalBase = (titulo, cuerpo, botones, ancho = "", onCloseRequest = nu
         h("div", { class: "cc-modal-header" }, h("h2", { text: titulo }), h("button", { class: "cc-modal-close", text: "×", onclick: cerrar })),
         h("div", { class: "cc-modal-body" }, cuerpo),
         h("div", { class: "cc-modal-footer" }, ...botones.map(b => {
-            // Si es el botón de cancelar, le inyectamos la validación
             if (b.textContent === "Cancelar") {
                 b.onclick = cerrar;
             }
@@ -331,9 +329,15 @@ const abrirModalDetalle = (venta) => {
 };
 
 const abrirModalPago = async (ventaFija = null, pagoAEditar = null) => {
-    const ventasDisponibles = [...ventas];
-    if (pagoAEditar && !ventasDisponibles.find(v => v.id === pagoAEditar.venta_id)) {
-        ventasDisponibles.push(pagoAEditar.venta_actual || { id: pagoAEditar.venta_id, nro_venta: pagoAEditar.nro_venta, cliente: pagoAEditar.cliente });
+    // Punto 1: Filtrar ventas disponibles si es pago nuevo
+    let ventasDisponibles = [];
+    if (pagoAEditar) {
+        ventasDisponibles = [...ventas];
+        if (!ventasDisponibles.find(v => v.id === pagoAEditar.venta_id)) {
+            ventasDisponibles.push(pagoAEditar.venta_actual || { id: pagoAEditar.venta_id, nro_venta: pagoAEditar.nro_venta, cliente: pagoAEditar.cliente });
+        }
+    } else {
+        ventasDisponibles = ventas.filter(v => !v.anulada && (v.total - v.pagado) > 0);
     }
 
     const form = h("div", {});
@@ -401,6 +405,7 @@ const abrirModalPago = async (ventaFija = null, pagoAEditar = null) => {
         inputHora.value = `${pad(hoy.getHours())}:${pad(hoy.getMinutes())}`;
     } else if (pagoAEditar) {
         const f = new Date(pagoAEditar.fecha);
+        selectVenta.value = pagoAEditar.venta_id; // Punto 2: Asegurar venta seleccionada
         inputMonto.value = pagoAEditar.monto;
         selectMedio.value = pagoAEditar.medio_pago_id;
         inputFecha.value = `${pad(f.getDate())}-${pad(f.getMonth() + 1)}-${f.getFullYear()}`;
@@ -432,9 +437,9 @@ const abrirModalPago = async (ventaFija = null, pagoAEditar = null) => {
                 }
 
                 btn.disabled = true; btn.textContent = "Guardando...";
+                avisoError.style.display = "none"; // Ocultar errores previos
                 
                 try {
-                    // Formato esperado: YYYY-MM-DD HH:mm:ss o ISO. Mandamos lo que pidió el back.
                     const fechaPago = `${fecha.split('-').reverse().join('-')} ${hora}:00`; 
                     const payload = { venta_id: parseInt(ventaId), medio_pago_id: parseInt(medioId), monto: monto, fecha_pago: fechaPago };
 
@@ -449,7 +454,9 @@ const abrirModalPago = async (ventaFija = null, pagoAEditar = null) => {
                     fondo.remove();
                     cargarDatos();
                 } catch (err) {
-                    alert(err.message || "Error al guardar el pago");
+                    // Punto 3: Mostrar error del backend en el cartel rojo
+                    avisoError.textContent = err.message || "Error al guardar el pago";
+                    avisoError.style.display = "block";
                     btn.disabled = false; btn.textContent = "Guardar";
                 }
             }})
@@ -491,7 +498,9 @@ const abrirModalAnular = (pago) => {
                 fondo.remove();
                 mostrarToast(`Pago ${pago.nro_pago} anulado`);
                 cargarDatos();
-            } catch (err) { alert(err.message); }
+            } catch (err) { 
+                mostrarToast(err.message || "Error al anular el pago"); // Punto 3: Toast
+            }
         }})
     ], "chico");
 };
@@ -510,7 +519,9 @@ const abrirModalOcultar = (pago) => {
                 fondo.remove();
                 mostrarToast(`Pago ${pago.nro_pago} oculto`);
                 cargarDatos();
-            } catch (err) { alert(err.message); }
+            } catch (err) { 
+                mostrarToast(err.message || "Error al ocultar el pago"); // Punto 3: Toast
+            }
         }})
     ], "chico");
 };
@@ -520,22 +531,20 @@ const cambiarVisibilidadPago = async (pago, oculto) => {
         await fetchAPI(`/pagos/${pago.id}/visibilidad`, "PATCH", { oculto });
         mostrarToast(`Pago ${pago.nro_pago} ${oculto ? 'oculto' : 'restaurado'}`);
         cargarDatos();
-    } catch (err) { alert(err.message); }
+    } catch (err) { 
+        mostrarToast(err.message || "Error al cambiar la visibilidad"); // Punto 3: Toast
+    }
 };
 
-// --- CARGA DE DATOS (API REAL) ---
 const cargarDatos = async () => {
     mostrarCargando();
     try {
-        // 1. Cargar Ventas de Cuenta Corriente
         const resVentas = await fetchAPI("/pagos/cuentas-corrientes");
         ventas = resVentas.items || resVentas || [];
 
-        // 2. Cargar Pagos (incluyendo ocultos)
         const resPagos = await fetchAPI("/pagos?incluir_ocultos=true");
         pagos = resPagos.items || resPagos || [];
 
-        // 3. Cargar Medios de Pago
         const resMedios = await fetchAPI("/medios-pago");
         mediosPago = resMedios.items || resMedios || [];
 
