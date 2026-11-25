@@ -207,7 +207,7 @@ test.describe("Insumos: eliminar", () => {
 });
 
 test.describe("Insumos: nuevo insumo", () => {
-  test.fixme("pide los proveedores a GET /proveedores", async ({ page }) => {
+  test("pide los proveedores a GET /proveedores", async ({ page }) => {
     await abrir(page);
     await page.getByRole("button", { name: "Nuevo insumo" }).click();
     await expect(modal(page)).toBeVisible();
@@ -256,8 +256,8 @@ test.describe("Insumos: nuevo insumo", () => {
   const invalidos = [
     ["sin nombre", { nombre: "" }, "El nombre es obligatorio."],
     ["con el nombre en blanco", { nombre: "    " }, "El nombre es obligatorio."],
-    ["sin costo", { costo: "" }, "Ingrese un costo unitario válido."],
-    ["con costo negativo", { costo: "-5" }, "Ingrese un costo unitario válido."],
+    ["sin costo", { costo: "" }, "El costo unitario debe ser mayor a 0."],
+    ["con costo negativo", { costo: "-5" }, "El costo unitario debe ser mayor a 0."],
     ["sin cantidad", { cantidad: "" }, "La cantidad debe ser mayor a 0."],
     ["con cantidad 0", { cantidad: "0" }, "La cantidad debe ser mayor a 0."],
     ["con cantidad negativa", { cantidad: "-2" }, "La cantidad debe ser mayor a 0."],
@@ -283,7 +283,7 @@ test.describe("Insumos: nuevo insumo", () => {
 
   // El Backend exige un costo mayor a cero ("El costo y la cantidad deben ser mayores a cero"). La pantalla solo rechaza costos
   // negativos: con 0 envía el pedido y el Backend lo rechaza. Debería avisarlo antes, igual que con la cantidad.
-  test.fixme("un costo unitario de 0 se rechaza antes de enviarlo", async ({ page }) => {
+  test("un costo unitario de 0 se rechaza antes de enviarlo", async ({ page }) => {
     await abrir(page);
     await page.getByRole("button", { name: "Nuevo insumo" }).click();
     await llenarNuevo(page, { costo: "0" });
@@ -449,7 +449,7 @@ test.describe("Insumos: consumir", () => {
 });
 
 test.describe("Insumos: editar", () => {
-  test.fixme("el botón Editar tiene que abrir un formulario con los datos del insumo", async ({ page }) => {
+  test("el botón Editar tiene que abrir un formulario con los datos del insumo", async ({ page }) => {
     await abrir(page);
     await fila(page, "Papel de ticket").getByTitle("Editar").click();
     // Hoy el botón solo avisa que "la API de edición todavía no está documentada" (editar() en insumos.js).
@@ -475,9 +475,8 @@ test.describe("Insumos: acceso", () => {
     await expect(page.getByTestId("menu-insumos")).toHaveCount(0);
   });
 
-  // Como Gastos, Proveedores y Mi negocio: sin permiso para ver el módulo se vuelve al Panel. Insumos solo oculta el contenido
-  // (por data-modulo) y se queda en la dirección, además de pedirle los insumos al Backend.
-  test.fixme("el Cajero que entra por la dirección vuelve al Panel y no pide los insumos", async ({ page }) => {
+  // Como Gastos, Proveedores y Mi negocio: sin permiso para ver el módulo se vuelve al Panel y no se piden los datos al Backend.
+  test("el Cajero que entra por la dirección vuelve al Panel y no pide los insumos", async ({ page }) => {
     await abrir(page, { rol: "CAJERO" });
     await expect(page).toHaveURL(/dashboard\.html$/);
     expect(backend.llamadas.some((l) => l.ruta === "/bienes-gasto")).toBe(false);

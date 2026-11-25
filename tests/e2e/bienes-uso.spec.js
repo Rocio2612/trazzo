@@ -52,7 +52,7 @@ const llenarEdicion = async (page, datos = {}) => {
   await page.locator("#e-valor").fill(v.valor);
   await page.locator("#e-cant").fill(v.cantidad);
   await page.locator("#e-fecha").fill(v.fecha);
-  if (v.proveedor) await page.locator("#e-prov").selectOption(v.proveedor);
+  await page.locator("#e-prov").selectOption(v.proveedor);
 };
 
 test.describe("Equipamiento: pantalla", () => {
@@ -202,7 +202,7 @@ test.describe("Equipamiento: eliminar", () => {
 });
 
 test.describe("Equipamiento: nuevo equipamiento", () => {
-  test.fixme("pide los proveedores a GET /proveedores", async ({ page }) => {
+  test("pide los proveedores a GET /proveedores", async ({ page }) => {
     await abrir(page);
     await nuevo(page).click();
     await expect(modal(page)).toBeVisible();
@@ -247,10 +247,10 @@ test.describe("Equipamiento: nuevo equipamiento", () => {
   const invalidos = [
     ["sin nombre", { nombre: "" }, "El nombre es obligatorio."],
     ["con el nombre en blanco", { nombre: "    " }, "El nombre es obligatorio."],
-    ["sin valor", { valor: "" }, "Ingrese un valor de adquisición válido."],
-    ["con valor negativo", { valor: "-1" }, "Ingrese un valor de adquisición válido."],
-    // El Backend exige un valor mayor a cero; la pantalla solo rechaza los negativos y con 0 deja que el Backend lo rechace.
-    ["con valor 0", { valor: "0" }, "Ingrese un valor de adquisición válido."],
+    ["sin valor", { valor: "" }, "El valor de adquisición debe ser mayor a 0."],
+    ["con valor negativo", { valor: "-1" }, "El valor de adquisición debe ser mayor a 0."],
+    // El Backend exige un valor mayor a cero: la pantalla lo rechaza antes de enviarlo.
+    ["con valor 0", { valor: "0" }, "El valor de adquisición debe ser mayor a 0."],
     ["sin cantidad", { cantidad: "" }, "La cantidad debe ser mayor a 0."],
     ["con cantidad 0", { cantidad: "0" }, "La cantidad debe ser mayor a 0."],
     ["sin proveedor", { proveedor: "" }, "Debe seleccionar un proveedor."],
@@ -261,8 +261,7 @@ test.describe("Equipamiento: nuevo equipamiento", () => {
 
   for (const [nombre, datos, mensaje] of invalidos) {
     // Con valor 0 la pantalla todavía deja que el Backend lo rechace (pendiente de arreglar en el frontend).
-    const prueba = nombre === "con valor 0" ? test.fixme : test;
-    prueba(`rechaza guardar ${nombre}: avisa y no envía nada`, async ({ page }) => {
+    test(`rechaza guardar ${nombre}: avisa y no envía nada`, async ({ page }) => {
       await abrir(page);
       await nuevo(page).click();
       await llenarNuevo(page, datos);
@@ -313,7 +312,7 @@ test.describe("Equipamiento: editar", () => {
     await expect(page.locator("#e-fecha")).toHaveValue("12-02-2026");
   });
 
-  test.fixme("abre con el proveedor del equipo ya elegido", async ({ page }) => {
+  test("abre con el proveedor del equipo ya elegido", async ({ page }) => {
     await abrir(page, { semilla: (e) => Object.assign(e.bienes[0], { proveedor_id: 2, proveedor_nombre: "Librería Central" }) });
     await abrirEdicion(page);
     await expect(page.locator("#e-prov")).toHaveValue("2");
@@ -344,8 +343,8 @@ test.describe("Equipamiento: editar", () => {
 
   const invalidos = [
     ["sin nombre", { nombre: "" }, "El nombre es obligatorio."],
-    ["sin valor", { valor: "" }, "Ingrese un valor de adquisición válido."],
-    ["con valor negativo", { valor: "-10" }, "Ingrese un valor de adquisición válido."],
+    ["sin valor", { valor: "" }, "El valor de adquisición debe ser mayor a 0."],
+    ["con valor negativo", { valor: "-10" }, "El valor de adquisición debe ser mayor a 0."],
     ["con cantidad 0", { cantidad: "0" }, "La cantidad debe ser mayor a 0."],
     ["sin proveedor", { proveedor: "" }, "Debe seleccionar un proveedor."],
     ["sin fecha", { fecha: "" }, "La fecha es obligatoria y debe tener el formato dd-mm-aaaa."],
@@ -402,7 +401,7 @@ test.describe("Equipamiento: acceso", () => {
   });
 
   // Como Gastos, Proveedores y Mi negocio: sin permiso para ver el módulo se vuelve al Panel.
-  test.fixme("el Cajero que entra por la dirección vuelve al Panel y no pide el equipamiento", async ({ page }) => {
+  test("el Cajero que entra por la dirección vuelve al Panel y no pide el equipamiento", async ({ page }) => {
     await abrir(page, { rol: "CAJERO" });
     await expect(page).toHaveURL(/dashboard\.html$/);
     expect(backend.llamadas.some((l) => l.ruta === "/bienes-uso")).toBe(false);
