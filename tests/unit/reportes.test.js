@@ -117,15 +117,12 @@ describe("servicios que fallan", () => {
     ]);
   });
 
-  it("el aviso nombra el servicio y lo que no se pudo calcular", () => {
-    const texto = textoAvisoParcial(["finanzas"]);
-    expect(texto).toContain("falla en el servicio de Finanzas");
-    expect(texto).toContain("Total de gastos operativos");
-    expect(texto).toContain("Los demás indicadores se muestran con normalidad.");
+  it("el aviso es corto y nombra el servicio que falló", () => {
+    expect(textoAvisoParcial(["finanzas"])).toBe("No se pudieron calcular algunos indicadores por una falla en Finanzas.");
   });
 
   it("con dos servicios caídos los nombra a los dos", () => {
-    expect(textoAvisoParcial(["finanzas", "productos"])).toContain("servicio de Finanzas y Productos");
+    expect(textoAvisoParcial(["finanzas", "productos"])).toContain("una falla en Finanzas y Productos.");
   });
 });
 
@@ -239,7 +236,7 @@ describe("constantes de Reportes", () => {
 
   it("el desglose vacío y el desglose caído tienen cada uno su mensaje", () => {
     expect(MENSAJE_SIN_DESGLOSE).toBe("Sin inventario comprado en este período.");
-    expect(MENSAJE_DESGLOSE_CAIDO).toBe("No se pudo calcular el desglose: falla en el servicio de Productos.");
+    expect(MENSAJE_DESGLOSE_CAIDO).toBe("No se pudo calcular");
     expect(MENSAJE_SIN_DESGLOSE).not.toBe(MENSAJE_DESGLOSE_CAIDO);
   });
 });

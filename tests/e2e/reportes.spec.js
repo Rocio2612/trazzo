@@ -226,13 +226,10 @@ test.describe("Reportes: si un servicio falla, lo demás se sigue viendo", () =>
   test("falla Finanzas: avisa y marca gastos, bienes de uso y ganancia neta", async ({ page }) => {
     await abrirReportesComoAdmin(page, { falla: "finanzas" });
     const aviso = page.getByTestId("reportes-aviso-parcial");
-    await expect(aviso).toContainText("falla en el servicio de Finanzas");
-    await expect(aviso).toContainText("Total de gastos operativos");
-    await expect(aviso).toContainText("Inversión realizada en bienes de uso");
-    await expect(aviso).toContainText("Ganancia neta operativa estimada");
+    await expect(aviso).toHaveText("No se pudieron calcular algunos indicadores por una falla en Finanzas.");
     for (const id of ["gastos", "bienes-uso", "ganancia-neta"]) {
       await expect(page.getByTestId(`rep-${id}-error`)).toHaveText("No se pudo calcular");
-      await expect(page.getByTestId(`rep-${id}`)).toContainText("Falla en el servicio de Finanzas.");
+      await expect(page.getByTestId(`rep-${id}`).locator("p")).toHaveCount(0); // sin otro texto de error
     }
     // lo que no depende de Finanzas sigue normal
     await expect(valor(page, "ingresos")).toHaveText(/11\.730,00/);
@@ -243,9 +240,9 @@ test.describe("Reportes: si un servicio falla, lo demás se sigue viendo", () =>
 
   test("falla Productos: no se calculan el inventario ni el desglose", async ({ page }) => {
     await abrirReportesComoAdmin(page, { falla: "productos" });
-    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("falla en el servicio de Productos");
+    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("una falla en Productos.");
     await expect(page.getByTestId("rep-inventario-error")).toHaveText("No se pudo calcular");
-    await expect(page.getByTestId("rep-desglose-error")).toHaveText("No se pudo calcular el desglose: falla en el servicio de Productos.");
+    await expect(page.getByTestId("rep-desglose-error")).toHaveText("No se pudo calcular");
     await expect(page.getByTestId("rep-desglose")).toHaveCount(0);
     await expect(valor(page, "ingresos")).toHaveText(/11\.730,00/);
     await expect(valor(page, "gastos")).toBeVisible();
@@ -254,7 +251,7 @@ test.describe("Reportes: si un servicio falla, lo demás se sigue viendo", () =>
 
   test("falla Transacciones: no se calculan ventas, ganancias ni 'Por cobrar'", async ({ page }) => {
     await abrirReportesComoAdmin(page, { falla: "transacciones" });
-    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("falla en el servicio de Transacciones");
+    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("una falla en Transacciones.");
     for (const id of ["ingresos", "vendido-saldado", "cmv", "ganancia-bruta", "ganancia-neta", "por-cobrar"]) {
       await expect(page.getByTestId(`rep-${id}-error`)).toHaveText("No se pudo calcular");
     }
@@ -383,7 +380,7 @@ test.describe("Reportes: respuestas especiales del servicio", () => {
   test("un indicador sin valor se marca como sin datos, sin aviso de falla de servicio", async ({ page }) => {
     await abrir(page, () => respuesta({ ingresos: null }));
     await expect(page.getByTestId("rep-ingresos-error")).toHaveText("No se pudo calcular");
-    await expect(page.getByTestId("rep-ingresos")).toContainText("No hay datos para este indicador.");
+    await expect(page.getByTestId("rep-ingresos").locator("p")).toHaveCount(0);
     await expect(page.getByTestId("reportes-aviso-parcial")).toHaveCount(0);
     await expect(valor(page, "cmv")).toHaveText(/300,00/);
   });
@@ -393,7 +390,7 @@ test.describe("Reportes: respuestas especiales del servicio", () => {
       respuesta({ servicios_caidos: ["transacciones", "finanzas"], ingresos: null, vendido_saldado: null, ventas_por_saldar: null, cmv: null,
         ganancia_bruta: null, gastos_operativos: null, bienes_de_uso: null, ganancia_neta: null, por_cobrar: null }),
     );
-    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("falla en el servicio de Transacciones y Finanzas");
+    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("una falla en Transacciones y Finanzas.");
     await expect(page.getByTestId("rep-ingresos-error")).toBeVisible();
     await expect(page.getByTestId("rep-gastos-error")).toBeVisible();
     await expect(valor(page, "inventario")).toHaveText(/5\.000,00/);
@@ -405,7 +402,7 @@ test.describe("Reportes: respuestas especiales del servicio", () => {
         cmv: null, ganancia_bruta: null, gastos_operativos: null, bienes_de_uso: null, ganancia_neta: null, inventario_actual: null, por_cobrar: null,
         desglose_inversion: null }),
     );
-    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("falla en el servicio de Transacciones, Finanzas y Productos");
+    await expect(page.getByTestId("reportes-aviso-parcial")).toContainText("una falla en Transacciones, Finanzas y Productos.");
     await expect(page.locator('[data-testid^="rep-"][data-testid$="-error"]')).toHaveCount(10); // 9 tarjetas + el desglose
     await expect(page.locator('[data-testid^="rep-"][data-testid$="-valor"]')).toHaveCount(0);
   });

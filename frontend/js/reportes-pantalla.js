@@ -5,7 +5,7 @@
 // Si el usuario no tiene permiso (por ejemplo un Cajero que escribe la dirección), se avisa con el 403 y se vuelve al
 // Panel antes de pedir ningún dato.
 
-import { bannerAmbar, crearSvg, h } from "./componentes/ui-panel.js";
+import { crearSvg, h } from "./componentes/ui-panel.js";
 import { formatearDinero } from "./formatos.js";
 import { servicioReportes } from "./servicios/reportes.js";
 import { mensajeDeError } from "./servicios/errores.js";
@@ -19,7 +19,6 @@ import {
   NOTA_DESGLOSE,
   PERIODO_INICIAL,
   afectadosPorFalla,
-  SERVICIOS,
   serviciosCaidos,
   textoAvisoParcial,
   textoDePeriodo,
@@ -62,10 +61,9 @@ function iniciar() {
   const tarjeta = (indicador, datos, caidos) => {
     const valor = datos[indicador.campo];
     const caido = estaCaido(indicador, caidos) || valor === null || valor === undefined;
-    const servicio = indicador.depende.find((s) => caidos.includes(s));
     return h(
       "div",
-      { class: `reportes-indicador${indicador.destacado ? " reportes-indicador-destacado" : ""}${caido ? " reportes-indicador-error" : ""}`, "data-testid": `rep-${indicador.id}` },
+      { class: `reportes-indicador${indicador.destacado ? " reportes-indicador-destacado" : ""}`, "data-testid": `rep-${indicador.id}` },
       h(
         "div",
         { class: "reportes-cabecera" },
@@ -78,10 +76,7 @@ function iniciar() {
         indicador.alDiaDeHoy && h("span", { class: "reportes-insignia reportes-insignia-azul", "data-testid": `rep-${indicador.id}-al-dia`, text: "Al día de hoy" }),
       ),
       caido
-        ? [
-            h("div", { class: "reportes-valor reportes-sin-calculo", "data-testid": `rep-${indicador.id}-error`, text: "No se pudo calcular" }),
-            h("p", { class: "gastos-ayuda", text: servicio ? `Falla en el servicio de ${SERVICIOS[servicio]}.` : "No hay datos para este indicador." }),
-          ]
+        ? h("div", { class: "reportes-valor reportes-sin-calculo", "data-testid": `rep-${indicador.id}-error`, text: "No se pudo calcular" })
         : [
             h("div", { class: `reportes-valor${esNegativo(indicador, valor) ? " reportes-valor-negativo" : ""}`, "data-testid": `rep-${indicador.id}-valor`, text: formatearDinero(valor) }),
             h("p", { class: "gastos-ayuda", text: indicador.detalle }),
@@ -119,7 +114,7 @@ function iniciar() {
     const caidos = serviciosCaidos(datos);
     zonaContenido.replaceChildren(
       ...[
-        afectadosPorFalla(caidos).length > 0 && h("div", { "data-testid": "reportes-aviso-parcial" }, bannerAmbar(textoAvisoParcial(caidos))),
+        afectadosPorFalla(caidos).length > 0 && h("div", { class: "reportes-aviso", role: "status", "data-testid": "reportes-aviso-parcial", text: textoAvisoParcial(caidos) }),
         h("h2", { class: "reportes-seccion", text: "Indicadores principales" }),
         h("div", { class: "reportes-indicadores" }, INDICADORES_PRINCIPALES.map((i) => tarjeta(i, datos, caidos))),
         h(

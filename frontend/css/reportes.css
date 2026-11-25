@@ -78,10 +78,15 @@
   font-size: 2.3rem;
 }
 
-/* Si el servicio del que depende falló: la tarjeta se marca en ámbar y las demás siguen normales */
-.reportes-indicador-error {
-  background-color: var(--gastos-ambar-fondo);
-  border-color: var(--gastos-ambar-borde);
+/* Aviso de arriba cuando falla algún servicio: chico y en un rojo suave */
+.reportes-aviso {
+  margin-bottom: 1rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.8rem;
+  color: #842029;
+  background-color: var(--gastos-rojo-fondo);
+  border: 1px solid var(--gastos-rojo-borde);
+  border-radius: 8px;
 }
 
 .reportes-cabecera {
@@ -140,10 +145,11 @@
   color: #b02a37;
 }
 
-.reportes-sin-calculo {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--gastos-ambar-texto);
+/* "No se pudo calcular": igual en todas las tarjetas (también en la destacada) y como el mensaje del desglose */
+.reportes-indicador .reportes-sin-calculo {
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--gastos-gris);
 }
 
 .reportes-indicador .gastos-ayuda {
