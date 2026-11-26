@@ -164,8 +164,10 @@ def crear_venta():
                 return jsonify({"status": "error", "mensaje": f"Stock insuficiente para producto {item['producto_id']}"}), 409
             
             subtotal_neto += float(prod['precio_venta']) * int(item['cantidad'])
+            # [Arreglo en tu parte, Aldana - Jimena]: faltaba guardar "nombre", que usa el aviso a Notificaciones
+            # (b9b0202). La venta se guardaba pero respondía 500 y no se avisaba el stock bajo.
             items_validados.append({
-                "id": item['producto_id'], "cantidad": int(item['cantidad']),
+                "id": item['producto_id'], "cantidad": int(item['cantidad']), "nombre": prod['nombre'],
                 "precio": prod['precio_venta'], "costo": prod['precio_compra'], "iva": prod['iva_alicuota'],
                 "stock_restante": prod['cantidad'], "stock_minimo": prod['stock_minimo']
             })
@@ -280,6 +282,27 @@ def anular_venta(id):
                     "stock_actual": prod_rep['cantidad'],
                     "stock_minimo": prod_rep['stock_minimo']
                 })
+
+        # [Arreglo en anular_venta - Jimena] Aldana: si en esta venta se pagó de más, el excedente se había sumado
+        # al saldo a favor del cliente y quedaba ahí al anular. Ahora se quita junto con los pagos; si el cliente
+        # ya lo usó, la venta no se anula (409).
+        cur.execute("""
+            SELECT v.total, COALESCE(SUM(p.monto), 0) AS pagado
+            FROM ventas.ventas v
+            LEFT JOIN ventas.pagos p ON p.venta_id = v.id AND p.estado = 'ACTIVO'
+            WHERE v.id = %s
+            GROUP BY v.total
+        """, (id,))
+        cuenta = cur.fetchone()
+        excedente = cuenta['pagado'] - cuenta['total']
+        if excedente > 0 and venta['cliente_id']:
+            cur.execute("""
+                UPDATE ventas.clientes SET saldo_a_favor = saldo_a_favor - %s
+                WHERE id = %s AND saldo_a_favor >= %s
+            """, (excedente, venta['cliente_id'], excedente))
+            if cur.rowcount == 0:
+                conn.rollback()
+                return jsonify({"status": "error", "mensaje": "No se puede anular: el saldo a favor que generó esta venta ya se usó"}), 409
 
         cur.execute("""
             UPDATE ventas.pagos SET estado = 'ANULADO', anulado_por = %s, anulado_en = CURRENT_TIMESTAMP 
