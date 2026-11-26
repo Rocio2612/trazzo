@@ -40,10 +40,12 @@ app = Flask(__name__)
 # Clave secreta compartida con auth-service para validar los JWT (lee JWT_SECRET del .env)
 JWT_SECRET_KEY = os.getenv("JWT_SECRET") or os.getenv("JWT_SECRET_KEY", "trazzo_jwt_secret_key_2026_super_segura")
 
-# URLs base de los microservicios internos (configurables desde .env)
-TRANSACCIONES_URL = os.getenv("TRANSACCIONES_SERVICE_URL")
-FINANZAS_URL = os.getenv("FINANZAS_SERVICE_URL")
-PRODUCTOS_URL = os.getenv("PRODUCTOS_SERVICE_URL")
+# URLs base de los microservicios internos (configurables desde .env; si faltan, los puertos locales de cada uno)
+# [Arreglo en Reportes, Aldana - Jimena]: sin valor por defecto, si faltaban estas variables el reporte salía vacío
+# ("No se pudo calcular"). Lo definido en .env o en el entorno sigue teniendo prioridad.
+TRANSACCIONES_URL = os.getenv("TRANSACCIONES_SERVICE_URL") or "http://127.0.0.1:5003"
+FINANZAS_URL = os.getenv("FINANZAS_SERVICE_URL") or "http://127.0.0.1:5004"
+PRODUCTOS_URL = os.getenv("PRODUCTOS_SERVICE_URL") or "http://127.0.0.1:5002"
 
 # Roles autorizados exclusivamente para ver Reportes (Cajero queda excluido por diseño)
 ROLES_AUTORIZADOS = ("PROPIETARIO", "ADMIN")
