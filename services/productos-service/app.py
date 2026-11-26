@@ -269,7 +269,11 @@ def crear_proveedor():
     if error_resp:
         return error_resp, status
 
-    datos = request.get_json()
+    # [Ajuste permisos RBAC - Aldi]: solo ADMIN o PROPIETARIO pueden dar de alta proveedores
+    if (payload.get("rol") or "").upper() not in ("ADMIN", "PROPIETARIO"):
+        return jsonify({"status": "error", "mensaje": "No tenés permiso para esta acción"}), 403
+
+    datos = request.get_json(silent=True) or {}
     emprendimiento_id = payload.get("negocio_id")
 
     if not datos.get('nombre') or not datos.get('numero_documento') or not datos.get('categoria_impositiva'):
@@ -282,14 +286,14 @@ def crear_proveedor():
             INSERT INTO productos.proveedores 
             (emprendimiento_id, nombre, tipo_documento, numero_documento, categoria_impositiva, telefono, correo, descripcion_compra) 
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id, nombre
-        """, (emprendimiento_id, datos['nombre'], datos.get('tipo_documento', 'CUIT'), datos['numero_documento'], datos['categoria_impositiva'], datos.get('telefono', ''), datos.get('correo', ''), datos.get('descripcion_compra', '')))
+        """, (emprendimiento_id, datos['nombre'].strip(), datos.get('tipo_documento', 'CUIT'), datos['numero_documento'].strip(), datos['categoria_impositiva'], (datos.get('telefono') or '').strip(), (datos.get('correo') or '').strip(), (datos.get('descripcion_compra') or '').strip()))
         proveedor = cur.fetchone()
         conn.commit()
         return jsonify({"status": "ok", "mensaje": "Proveedor creado", "proveedor": proveedor}), 201
     except Exception as e:
         conn.rollback()
         if "uq_proveedor_doc_tenant" in str(e):
-            return jsonify({"status": "error", "mensaje": "Proveedor ya existe"}), 409
+            return jsonify({"status": "error", "campo": "numero_documento","mensaje": "Ya hay un proveedor con ese documento (revisá también los ocultos)"}), 409
         return jsonify({"status": "error", "mensaje": str(e)}), 500
     finally:
         cur.close()
@@ -297,6 +301,7 @@ def crear_proveedor():
 
 @app.route('/api/proveedores', methods=['GET'])
 def listar_proveedores():
+    # GET permanece abierto también para CAJERO porque lo necesita en el desplegable de Reposición de stock
     payload, error_resp, status = verificar_token()
     if error_resp:
         return error_resp, status
@@ -330,7 +335,21 @@ def listar_proveedores():
 
         query += " ORDER BY p.nombre ASC"
         cur.execute(query, tuple(params))
-        return jsonify({"status": "ok", "items": cur.fetchall()}), 200
+        items = cur.fetchall()
+
+        # [Ajuste privacidad por rol - Aldi]: al Cajero se le devuelven solo los campos necesarios para reponer stock
+        if (payload.get("rol") or "").upper() == "CAJERO":
+            items = [
+                {
+                    "id": p["id"],
+                    "nombre": p["nombre"],
+                    "categoria_impositiva": p["categoria_impositiva"],
+                    "activo": p["activo"]
+                }
+                for p in items
+            ]
+
+        return jsonify({"status": "ok", "items": items}), 200
     except Exception as e:
         return jsonify({"status": "error", "mensaje": str(e)}), 500
     finally:
@@ -343,30 +362,57 @@ def editar_proveedor(id):
     if error_resp:
         return error_resp, status
 
-    datos = request.get_json()
+    # [Ajuste permisos RBAC - Aldi]: solo ADMIN o PROPIETARIO pueden editar proveedores
+    if (payload.get("rol") or "").upper() not in ("ADMIN", "PROPIETARIO"):
+        return jsonify({"status": "error", "mensaje": "No tenés permiso para esta acción"}), 403
+
+    datos = request.get_json(silent=True) or {}
     emprendimiento_id = payload.get("negocio_id")
     conn = get_db(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        cur.execute("SELECT id FROM productos.proveedores WHERE id = %s AND emprendimiento_id = %s", (id, emprendimiento_id))
-        if not cur.fetchone():
+        # [Ajuste edición campos vacíos - Aldi]: traemos el registro completo para distinguir
+        # "no vino en el JSON" (conserva el valor actual) de "vino vacío ('' o null)" (permite vaciar el campo sin COALESCE).
+        cur.execute("SELECT * FROM productos.proveedores WHERE id = %s AND emprendimiento_id = %s", (id, emprendimiento_id))
+        actual = cur.fetchone()
+        if not actual:
             return jsonify({"status": "error", "mensaje": "Proveedor no encontrado"}), 404
+
+        campos_obligatorios = ['nombre', 'tipo_documento', 'numero_documento', 'categoria_impositiva']
+        campos_opcionales = ['telefono', 'correo', 'descripcion_compra']
+        valores = {}
+
+        for c in campos_obligatorios:
+            raw = datos[c] if c in datos else actual[c]
+            limpio = str(raw).strip() if raw is not None else ''
+            if not limpio:
+                return jsonify({"status": "error", "campo": c, "mensaje": f"El campo {c} es obligatorio"}), 400
+            valores[c] = limpio
+
+        for c in campos_opcionales:
+            valores[c] = (datos[c] or '').strip() if c in datos else actual[c]
 
         cur.execute("""
             UPDATE productos.proveedores SET 
-                nombre = COALESCE(%s, nombre), tipo_documento = COALESCE(%s, tipo_documento),
-                numero_documento = COALESCE(%s, numero_documento), categoria_impositiva = COALESCE(%s, categoria_impositiva),
-                telefono = COALESCE(%s, telefono), correo = COALESCE(%s, correo), descripcion_compra = COALESCE(%s, descripcion_compra)
-            WHERE id = %s RETURNING id, nombre
-        """, (datos.get('nombre'), datos.get('tipo_documento'), datos.get('numero_documento'), datos.get('categoria_impositiva'), datos.get('telefono'), datos.get('correo'), datos.get('descripcion_compra'), id))
-        
+                nombre = %s, tipo_documento = %s,
+                numero_documento = %s, categoria_impositiva = %s,
+                telefono = %s, correo = %s, descripcion_compra = %s
+            WHERE id = %s AND emprendimiento_id = %s
+            RETURNING id, nombre
+        """, (
+            valores['nombre'], valores['tipo_documento'],
+            valores['numero_documento'], valores['categoria_impositiva'],
+            valores['telefono'], valores['correo'], valores['descripcion_compra'],
+            id, emprendimiento_id
+        ))
         proveedor = cur.fetchone()
         conn.commit()
         return jsonify({"status": "ok", "mensaje": "Proveedor actualizado", "proveedor": proveedor}), 200
     except Exception as e:
         conn.rollback()
         if "uq_proveedor_doc_tenant" in str(e):
-            return jsonify({"status": "error", "mensaje": "El documento ya existe"}), 409
+            # [Ajuste contrato 409 - Aldi]: envía 'campo' para que el Front marque el input y avisa revisar ocultos
+            return jsonify({"status": "error", "campo": "numero_documento", "mensaje": "Ya hay un proveedor con ese documento (revisá también los ocultos)"}), 409
         return jsonify({"status": "error", "mensaje": str(e)}), 500
     finally:
         cur.close()
@@ -378,14 +424,23 @@ def cambiar_visibilidad_proveedor(id):
     if error_resp:
         return error_resp, status
 
-    datos = request.get_json()
+    # [Ajuste permisos RBAC - Aldi]: solo ADMIN o PROPIETARIO pueden ocultar/restaurar proveedores
+    if (payload.get("rol") or "").upper() not in ("ADMIN", "PROPIETARIO"):
+        return jsonify({"status": "error", "mensaje": "No tenés permiso para esta acción"}), 403
+
+    datos = request.get_json(silent=True) or {}
     if 'activo' not in datos:
         return jsonify({"status": "error", "mensaje": "Falta el campo activo"}), 400
-    
+
+    emprendimiento_id = payload.get("negocio_id")
     conn = get_db(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        cur.execute("UPDATE productos.proveedores SET activo = %s WHERE id = %s RETURNING id, activo", (datos['activo'], id))
+        # [Ajuste aislamiento multi-tenant - Aldi]: agrega filtro por emprendimiento_id en el UPDATE
+        cur.execute(
+            "UPDATE productos.proveedores SET activo = %s WHERE id = %s AND emprendimiento_id = %s RETURNING id, activo",
+            (datos['activo'], id, emprendimiento_id)
+        )
         proveedor = cur.fetchone()
         if not proveedor:
             return jsonify({"status": "error", "mensaje": "Proveedor no encontrado"}), 404
@@ -404,6 +459,10 @@ def eliminar_proveedor(id):
     payload, error_resp, status = verificar_token()
     if error_resp:
         return error_resp, status
+
+    # [Ajuste permisos RBAC - Aldi]: solo ADMIN o PROPIETARIO pueden eliminar proveedores
+    if (payload.get("rol") or "").upper() not in ("ADMIN", "PROPIETARIO"):
+        return jsonify({"status": "error", "mensaje": "No tenés permiso para esta acción"}), 403
 
     emprendimiento_id = payload.get("negocio_id")
     conn = get_db(payload.get("db_name"))
@@ -425,11 +484,67 @@ def eliminar_proveedor(id):
         if cur.fetchone():
             return jsonify({"status": "error", "mensaje": "No se puede eliminar: tiene reposiciones asociadas"}), 409
 
-        cur.execute("DELETE FROM productos.proveedores WHERE id = %s", (id,))
+        cur.execute("DELETE FROM productos.proveedores WHERE id = %s AND emprendimiento_id = %s", (id, emprendimiento_id))
         conn.commit()
         return jsonify({"status": "ok", "mensaje": "Proveedor eliminado definitivamente"}), 200
     except Exception as e:
         conn.rollback()
+        return jsonify({"status": "error", "mensaje": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+# ENDPOINT INTERNO PARA REPORTES (5005)
+# [Agregado para Reportes - Aldi]: calcula la inversión actual en inventario
+# sobre bienes de cambio sin filtrar fecha ni activo (los ocultos siguen siendo capital invertido).
+@app.route('/internal/productos/resumen', methods=['GET'])
+def resumen_productos_reportes():
+    db_name = request.args.get('db_name')
+    emprendimiento_id = request.args.get('emprendimiento_id')
+
+    if not db_name or not emprendimiento_id:
+        return jsonify({"status": "error", "mensaje": "Faltan db_name o emprendimiento_id"}), 400
+
+    conn = get_db(db_name)
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT 
+                nombre AS producto,
+                cantidad AS unidades,
+                precio_compra AS costo_unitario,
+                ROUND(cantidad * precio_compra, 2) AS inversion
+            FROM productos.productos
+            WHERE emprendimiento_id = %s
+              AND tipo_producto = 'BIEN_DE_CAMBIO'
+              AND cantidad > 0
+            ORDER BY inversion DESC, nombre ASC
+        """, (int(emprendimiento_id),))
+
+        filas = cur.fetchall()
+        desglose = []
+        inventario_total = 0.0
+
+        for f in filas:
+            unidades_val = float(f['unidades'])
+            unidades_fmt = int(unidades_val) if unidades_val.is_integer() else round(unidades_val, 2)
+            costo_fmt = round(float(f['costo_unitario']), 2)
+            inv_fmt = round(float(f['inversion']), 2)
+            inventario_total += inv_fmt
+
+            desglose.append({
+                "producto": f['producto'],
+                "unidades": unidades_fmt,
+                "costo_unitario": costo_fmt,
+                "inversion": inv_fmt
+            })
+
+        return jsonify({
+            "status": "ok",
+            "inventario_actual": round(inventario_total, 2),
+            "desglose_inversion": desglose
+        }), 200
+    except Exception as e:
         return jsonify({"status": "error", "mensaje": str(e)}), 500
     finally:
         cur.close()
