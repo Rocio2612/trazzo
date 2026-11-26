@@ -494,6 +494,62 @@ def eliminar_proveedor(id):
         cur.close()
         conn.close()
 
+# ENDPOINT INTERNO PARA REPORTES (5005)
+# [Agregado para Reportes - Aldi]: calcula la inversión actual en inventario
+# sobre bienes de cambio sin filtrar fecha ni activo (los ocultos siguen siendo capital invertido).
+@app.route('/internal/productos/resumen', methods=['GET'])
+def resumen_productos_reportes():
+    db_name = request.args.get('db_name')
+    emprendimiento_id = request.args.get('emprendimiento_id')
+
+    if not db_name or not emprendimiento_id:
+        return jsonify({"status": "error", "mensaje": "Faltan db_name o emprendimiento_id"}), 400
+
+    conn = get_db(db_name)
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT 
+                nombre AS producto,
+                cantidad AS unidades,
+                precio_compra AS costo_unitario,
+                ROUND(cantidad * precio_compra, 2) AS inversion
+            FROM productos.productos
+            WHERE emprendimiento_id = %s
+              AND tipo_producto = 'BIEN_DE_CAMBIO'
+              AND cantidad > 0
+            ORDER BY inversion DESC, nombre ASC
+        """, (int(emprendimiento_id),))
+
+        filas = cur.fetchall()
+        desglose = []
+        inventario_total = 0.0
+
+        for f in filas:
+            unidades_val = float(f['unidades'])
+            unidades_fmt = int(unidades_val) if unidades_val.is_integer() else round(unidades_val, 2)
+            costo_fmt = round(float(f['costo_unitario']), 2)
+            inv_fmt = round(float(f['inversion']), 2)
+            inventario_total += inv_fmt
+
+            desglose.append({
+                "producto": f['producto'],
+                "unidades": unidades_fmt,
+                "costo_unitario": costo_fmt,
+                "inversion": inv_fmt
+            })
+
+        return jsonify({
+            "status": "ok",
+            "inventario_actual": round(inventario_total, 2),
+            "desglose_inversion": desglose
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "mensaje": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
 if __name__ == '__main__':
     port = int(os.getenv("SERVICE_PORT", 5002))
     app.run(host='127.0.0.1', port=port, debug=True)
