@@ -78,14 +78,18 @@ npx playwright test       # pruebas end-to-end
 ## Estructura del proyecto
 
 ```
-trazzo/
-├── estructura.sql        # Definición única de la base de datos
-├── auth_service/
-├── productos_service/
-├── transacciones_service/
-├── finanzas_service/
-├── notificaciones_service/
-├── reportes_service/
-├── frontend/
-└── tests/
+TRAZZO/
+├── database/          # 01_trazzo_master.sql y 02_trazzo_plantilla.sql
+├── gateway/           # API Gateway (puerto 5000) -> app.py
+├── services/          # 6 microservicios Flask independientes
+│   ├── auth-service/           (5001 -> app.py)
+│   ├── productos-service/      (5002 -> app.py)
+│   ├── transacciones-service/  (5003 -> app.py, helpers.py, routes/)
+│   ├── finanzas-service/       (5004 -> app.py)
+│   ├── reportes-service/       (5005 -> app.py)
+│   └── notificaciones-service/ (5006 -> app.py)
+├── frontend/          # HTML5 + CSS3 + JS Vanilla (módulos ES)
+├── tests/             # Pruebas automatizadas (pytest / Vitest / Playwright)
+└── api_contract.md    # Contrato de endpoints y códigos HTTP
+
 ```
