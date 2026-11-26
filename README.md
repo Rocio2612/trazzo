@@ -30,7 +30,7 @@ https://trello.com/invite/b/68f62cbeb2c8e0c4f2f36101/ATTI213fa1254d43aac08c28602
 ## Requisitos previos
 
 - Python 3.11+
-- PostgreSQL 15+ y pgAdmin
+- PostgreSQL 15+, con pgAdmin
 - Git
 
 ## Instalación y ejecución local
