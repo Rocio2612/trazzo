@@ -17,6 +17,7 @@ import {
 } from "./componentes/ui-panel.js";
 import {
   armarPayloadProveedor,
+  buscarProveedores,
   CATEGORIAS_PROVEEDOR,
   CORREO_MAXIMO,
   estaOculto,
@@ -29,7 +30,7 @@ import {
   validarProveedor,
 } from "./proveedores.js";
 import { mensajeDeError } from "./servicios/errores.js";
-import { servicioProveedores } from "./mocks/proveedores.js";
+import { servicioProveedores } from "./servicios/proveedores-api.js";
 
 const MODULO = "proveedores";
 
@@ -86,7 +87,7 @@ const iniciarPantalla = async () => {
   // Si el servidor falla se avisa en la tabla (y se conserva la lista que ya estaba) en vez de dejar la pantalla sin respuesta.
   const cargar = async () => {
     try {
-      ctx.proveedores = await servicioProveedores.listar({ q: ctx.q, ocultos: ctx.ocultos });
+      ctx.proveedores = await servicioProveedores.listar({ ocultos: ctx.ocultos });
       ctx.error = "";
     } catch (error) {
       ctx.error = textoDeError(error, "No se pudo cargar la lista de proveedores.");
@@ -208,26 +209,29 @@ const iniciarPantalla = async () => {
   };
 
   const refrescar = () => {
+    // La búsqueda se resuelve acá, sobre la lista ya cargada: sin distinguir tildes y comparando documentos y
+    // teléfonos por sus números.
+    const encontrados = buscarProveedores(ctx.proveedores, ctx.q);
     const hayBusqueda = ctx.q.trim() !== "";
     const textoVacio = hayBusqueda ? "Sin resultados" : ctx.ocultos ? "No hay proveedores ocultos" : "Todavía no hay proveedores";
     zonaTabla.replaceChildren(
       h(
         "div",
         { class: "gastos-tarjeta" },
-        ctx.proveedores.length === 0
-          ? ctx.error
+        encontrados.length === 0
+          ? ctx.error && ctx.proveedores.length === 0
             ? h("div", { class: "gastos-vacio", "data-testid": "proveedores-error-carga", text: ctx.error })
             : h("div", { class: "gastos-vacio", "data-testid": "proveedores-vacio", text: textoVacio })
           : h(
-              "div",
-              { class: "gastos-tabla-contenedor cfg-tabla-contenedor" },
-              h(
-                "table",
-                { class: "gastos-tabla", "data-testid": "proveedores-tabla" },
-                h("thead", {}, h("tr", {}, COLUMNAS.map((c) => h("th", { class: c.clase, text: c.titulo })))),
-                h("tbody", {}, ctx.proveedores.map(filaDeProveedor)),
-              ),
+            "div",
+            { class: "gastos-tabla-contenedor cfg-tabla-contenedor" },
+            h(
+              "table",
+              { class: "gastos-tabla", "data-testid": "proveedores-tabla" },
+              h("thead", {}, h("tr", {}, COLUMNAS.map((c) => h("th", { class: c.clase, text: c.titulo })))),
+              h("tbody", {}, encontrados.map(filaDeProveedor)),
             ),
+          ),
       ),
     );
   };
@@ -252,7 +256,7 @@ const iniciarPantalla = async () => {
   const buscador = h("input", { type: "search", class: "gastos-entrada gastos-buscador-entrada", placeholder: "Buscar por nombre, documento, teléfono o descripción…", "data-testid": "proveedores-buscador", "aria-label": "Buscar" });
   buscador.addEventListener("input", () => {
     ctx.q = buscador.value;
-    cargar();
+    refrescar();
   });
 
   const chipOcultos = h("button", { type: "button", class: "gastos-chip", text: "Ver ocultos", "data-testid": "proveedores-ver-ocultos", "data-modulo": MODULO, "data-accion": "ocultar" });
