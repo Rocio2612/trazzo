@@ -171,7 +171,8 @@ def crear_venta():
             })
 
         total_final = subtotal_neto
-        saldo_usado = min(saldo_favor, total_final) if saldo_favor > 0 else 0
+        # El saldo a favor no se descuenta hasta que Cuenta corriente lo tenga en cuenta al calcular la deuda.
+        saldo_usado = 0
         total_a_pagar = total_final - saldo_usado
 
         modo_iva, monto_iva, _, leyenda = calcular_iva_venta(cat_negocio, cat_cliente, total_final)
@@ -317,14 +318,19 @@ def ocultar_venta(id):
     if payload.get("rol") not in ["ADMIN", "PROPIETARIO"]:
         return jsonify({"status": "error", "mensaje": "Solo Admin"}), 403
 
+    # {"oculto": true} oculta la venta y {"oculto": false} la restaura. Sin dato, la oculta.
+    oculto = (request.get_json(silent=True) or {}).get('oculto', True)
+    if not isinstance(oculto, bool):
+        return jsonify({"status": "error", "mensaje": "El campo oculto debe ser true o false"}), 400
+
     conn = get_db(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        cur.execute("UPDATE ventas.ventas SET oculto = TRUE WHERE id = %s AND emprendimiento_id = %s RETURNING id", (id, payload.get("negocio_id")))
+        cur.execute("UPDATE ventas.ventas SET oculto = %s WHERE id = %s AND emprendimiento_id = %s RETURNING id", (oculto, id, payload.get("negocio_id")))
         if not cur.fetchone():
             return jsonify({"status": "error", "mensaje": "Venta no encontrada"}), 404
         conn.commit()
-        return jsonify({"status": "ok", "mensaje": "Venta oculta"}), 200
+        return jsonify({"status": "ok", "mensaje": "Venta oculta" if oculto else "Venta restaurada"}), 200
     except Exception as e:
         conn.rollback()
         return jsonify({"status": "error", "mensaje": str(e)}), 500

@@ -5,11 +5,13 @@
 // Este archivo traduce entre lo que responde el Backend y lo que esperan las pantallas: ellas no cambian.
 //
 // RUTAS DEL BACKEND QUE SE USAN:
-//   GET   /ventas                  -> { items: [ { id, numero_venta, tipo_venta, total, estado, fecha_hora, cliente } ] }
+//   GET   /ventas                  -> { items: [ { id, numero_venta, tipo_venta, total, estado, fecha_hora, cliente, oculto,
+//                                       medio_pago, productos: [ { producto, precio, cantidad } ] } ] }
 //   POST  /ventas                  -> { venta_id, numero, total } (201). Errores: 400 { mensaje }, 409 { mensaje } (stock)
 //                                     recibe { tipo_venta, cliente_id, medio_pago_id, items: [ { producto_id, cantidad } ] }
 //   PATCH /ventas/{id}/anular      -> { mensaje }
-//   GET   /pagos/cuentas-corrientes -> { items: [ { venta_id, saldo_pendiente, productos: [ { nombre, precio, cantidad } ] } ] }
+//   PATCH /ventas/{id}/ocultar     -> { mensaje }          cuerpo { oculto: true|false } (solo Administrador)
+//   GET   /pagos/cuentas-corrientes -> { items: [ { venta_id, saldo_pendiente } ] }
 //   GET   /pagos?todos=true        -> { items: [ { venta_id, medio_pago } ] }
 //   GET   /clientes                -> { items: [ { id, nombre, categoria_impositiva? } ] }
 //   GET   /productos?tipo_producto=BIEN_DE_CAMBIO -> { items: [ producto ] } (la ruta que ya usa Productos)
@@ -20,8 +22,8 @@
 //             items: [ { producto, precio, cantidad } ] (precio = el del momento de la venta), iva }
 //
 // LO QUE EL BACKEND TODAVÍA NO TIENE:
-//   - PATCH /ventas/{id}/ocultar y GET /ventas/{id}/ticket (las rutas responden 404).
-//   - Los productos de las ventas de contado (items queda vacío) y el desglose del IVA (iva queda en null).
+//   - GET /ventas/{id}/ticket (la ruta responde 404).
+//   - El desglose del IVA de cada venta (iva queda en null).
 //   - Descontar el saldo a favor: por eso los clientes se entregan con saldo 0 y la pantalla no ofrece usarlo.
 
 // El Backend manda el número sin punto de venta y guarda todas las ventas en la sucursal 1.
@@ -29,7 +31,7 @@ const numeroCompleto = (numero) => `00001-${String(numero).padStart(8, "0")}`;
 
 const itemsDe = (respuesta) => respuesta?.items ?? [];
 
-// Datos que completan una venta (productos, saldo y medio de pago). Si fallan, la venta se muestra igual sin ellos.
+// Datos que completan una venta (saldo y medio de pago). Si fallan, la venta se muestra igual sin ellos.
 const pedirComplemento = async (ruta) => {
   try {
     return itemsDe(await fetchAPI(ruta));
@@ -49,8 +51,8 @@ const traducirVenta = (venta, cuenta, pago) => ({
   medio_pago: venta.tipo_venta === "CONTADO" ? (pago?.medio_pago ?? null) : null,
   credito_aplicado: 0,
   anulada: venta.estado === "ANULADA",
-  oculto: false,
-  items: (cuenta?.productos ?? []).map((p) => ({ producto: p.nombre, precio: p.precio, cantidad: p.cantidad })),
+  oculto: Boolean(venta.oculto),
+  items: (venta.productos ?? []).map((p) => ({ producto: p.producto, precio: Number(p.precio), cantidad: p.cantidad })),
   iva: null,
 });
 
@@ -95,7 +97,7 @@ export const servicioVentas = {
   // Devuelve el stock, anula los pagos y excluye la venta de los reportes. Conserva el número.
   anular: (id) => fetchAPI(`/ventas/${id}/anular`, "PATCH"),
 
-  // Ocultar no cambia los reportes: la venta sigue contando. El Backend todavía no tiene esta ruta.
+  // Ocultar no cambia los reportes: la venta sigue contando.
   ocultar: async (id, oculto) => (await fetchAPI(`/ventas/${id}/ocultar`, "PATCH", { oculto })).venta,
 
   // Baja el ticket de una venta confirmada (/api/ventas/{id}/ticket).
