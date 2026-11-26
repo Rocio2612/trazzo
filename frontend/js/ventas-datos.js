@@ -5,7 +5,7 @@
 // y servicios/negocio.js), sin tocar nada más. Los tests con API simulada eligen la API real guardando
 // localStorage["trazzo_ventas_usar_api"] = "1" antes de abrir la pantalla.
 
-const USAR_MOCKS = true;
+const USAR_MOCKS = false;
 
 const usarApi = () => {
   try {

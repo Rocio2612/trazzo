@@ -5,7 +5,7 @@ const { simularBackendVentas } = require("./backend-falso-ventas");
 // Backend falso (backend-falso-ventas.js). Productos: Sifón (id 1, stock 2), Bidón (id 2, stock 0), Detergente (id 3, stock 24,
 // $ 980), Lavandina (id 4, stock 40, $ 590) y Yerba (id 5, stock 15, $ 3.100). Clientes: Almacén Don Pedro (1, RI), María Fernanda
 // López (2, $ 660 a favor), Kiosco El Sol (3, Monotributista) y Fundación Manos Unidas (4, Exento). Las ventas de ejemplo
-// llegan hasta el N° 00001-00000453: la próxima venta es la 00001-00000454.
+// llegan hasta el N° 00001-00000454: la próxima venta es la 00001-00000455.
 let backend;
 const abrirVentas = async (page, rol = "ADMIN", opciones = {}) => {
   backend = await simularBackendVentas(page, { rol, ...opciones });
@@ -200,7 +200,7 @@ test.describe("Nueva venta: modal Cobrar", () => {
     await page.getByTestId("venta-medio-pago").selectOption("1");
     await page.getByTestId("venta-confirmar").click();
     await expect(page.getByTestId("venta-confirmada")).toBeVisible();
-    await expect(page.getByTestId("venta-numero")).toHaveText("00001-00000454");
+    await expect(page.getByTestId("venta-numero")).toHaveText("00001-00000455");
     expect(backend.enviados("POST", "/ventas")).toEqual([{ tipo_venta: "CONTADO", cliente_id: null, medio_pago_id: 1, saldo_a_favor_usado: 0, items: [{ producto_id: 3, cantidad: 2 }] }]);
     await expect(page.getByTestId("venta-confirmada")).toContainText("Consumidor final");
     await expect(page.getByTestId("venta-confirmada")).toContainText("Efectivo");
@@ -250,7 +250,7 @@ test.describe("Nueva venta: modal Cobrar", () => {
     await expect(page.getByTestId("venta-confirmar")).toHaveText("Confirmando…");
     await expect(page.getByTestId("venta-confirmada")).toBeVisible();
     expect(backend.enviados("POST", "/ventas")).toHaveLength(1);
-    expect(backend.estado.ventas.filter((v) => !v.oculto && v.fecha_hora && v.numero === "00001-00000454")).toHaveLength(1);
+    expect(backend.estado.ventas.filter((v) => !v.oculto && v.fecha_hora && v.numero === "00001-00000455")).toHaveLength(1);
   });
 
   test("stock insuficiente: se avisa arriba con el nombre del producto y la venta no se crea", async ({ page }) => {
@@ -262,7 +262,7 @@ test.describe("Nueva venta: modal Cobrar", () => {
     await expect(page.getByTestId("venta-alerta-stock")).toHaveText('Stock insuficiente para el producto "Sifón de soda 1.5 l"');
     await expect(page.getByTestId("venta-confirmar")).toHaveCount(0); // el modal se cerró
     await expect(page.getByTestId("venta-cantidad-1")).toHaveValue("2"); // el carrito queda como estaba
-    expect(backend.estado.ventas).toHaveLength(3);
+    expect(backend.estado.ventas).toHaveLength(4);
     expect(backend.estado.productos.find((p) => p.id === 1).cantidad).toBe(1);
   });
 
@@ -273,7 +273,7 @@ test.describe("Nueva venta: modal Cobrar", () => {
     await page.getByTestId("venta-medio-pago").selectOption("1");
     await page.getByTestId("venta-confirmar").click();
     await expect(page.getByTestId("venta-alerta-stock")).toContainText('Stock insuficiente para el producto "Detergente 750 ml"');
-    expect(backend.estado.ventas).toHaveLength(3);
+    expect(backend.estado.ventas).toHaveLength(4);
   });
 
   test("si el Backend rechaza el medio de pago, el error sale en el modal y sigue abierto", async ({ page }) => {
@@ -464,7 +464,7 @@ test.describe("Nueva venta: lo que el Backend todavía no hace", () => {
     await abrirCobro(page);
     await page.getByTestId("venta-medio-pago").selectOption("1");
     await page.getByTestId("venta-confirmar").click();
-    await expect(page.getByTestId("venta-numero")).toHaveText("00001-00000454");
+    await expect(page.getByTestId("venta-numero")).toHaveText("00001-00000455");
     await expect(page.getByTestId("venta-confirmar")).toHaveCount(0);
     expect(backend.enviados("POST", "/ventas")).toHaveLength(1);
   });

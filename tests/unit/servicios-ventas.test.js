@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe("servicioVentas", () => {
-  const VENTA = { id: 9, numero_venta: "00000459", tipo_venta: "CONTADO", total: "300.00", estado: "CONFIRMADA", fecha_hora: "Wed, 25 Nov 2026 12:00:00 GMT", cliente: null };
+  const VENTA = { id: 9, numero_venta: "00000459", tipo_venta: "CONTADO", total: "300.00", estado: "CONFIRMADA", fecha_hora: "Wed, 25 Nov 2026 12:00:00 GMT", cliente: null, oculto: false, productos: [{ producto: "Sifón", cantidad: 2, precio: 150, iva: 21 }] };
   const falla = Object.assign(new Error("Error interno"), { status: 500 });
   // Responde según la ruta pedida; lo que no se indique viene vacío.
   const backend = (respuestas) => fetchAPI.mockImplementation(async (ruta, metodo = "GET") => {
@@ -28,19 +28,19 @@ describe("servicioVentas", () => {
   it("listar traduce los nombres de los campos del Backend", async () => {
     backend({ "GET /ventas": { items: [VENTA] }, "GET /pagos": { items: [{ venta_id: 9, medio_pago: "Efectivo" }] } });
     expect(await servicioVentas.listar()).toEqual([
-      { id: 9, numero: "00001-00000459", tipo: "CONTADO", cliente_nombre: null, fecha_hora: VENTA.fecha_hora, total: 300, saldo: undefined, medio_pago: "Efectivo", credito_aplicado: 0, anulada: false, oculto: false, items: [], iva: null },
+      { id: 9, numero: "00001-00000459", tipo: "CONTADO", cliente_nombre: null, fecha_hora: VENTA.fecha_hora, total: 300, saldo: undefined, medio_pago: "Efectivo", credito_aplicado: 0, anulada: false, oculto: false, items: [{ producto: "Sifón", precio: 150, cantidad: 2 }], iva: null },
     ]);
     expect(fetchAPI).toHaveBeenCalledWith("/ventas");
     expect(fetchAPI).toHaveBeenCalledWith("/pagos?todos=true&incluir_ocultos=true");
   });
 
-  it("listar completa las ventas a cuenta corriente con sus productos y su saldo, sin medio de pago", async () => {
+  it("listar completa las ventas a cuenta corriente con su saldo, sin medio de pago, y respeta si están ocultas", async () => {
     backend({
-      "GET /ventas": { items: [{ ...VENTA, tipo_venta: "CUENTA_CORRIENTE", estado: "ANULADA", cliente: "Ana" }] },
-      "GET /pagos/cuentas-corrientes": { items: [{ venta_id: 9, saldo_pendiente: 120, productos: [{ nombre: "Sifón", precio: 150, cantidad: 2, subtotal: 300 }] }] },
+      "GET /ventas": { items: [{ ...VENTA, tipo_venta: "CUENTA_CORRIENTE", estado: "ANULADA", cliente: "Ana", oculto: true }] },
+      "GET /pagos/cuentas-corrientes": { items: [{ venta_id: 9, saldo_pendiente: 120 }] },
       "GET /pagos": { items: [{ venta_id: 9, medio_pago: "Efectivo" }] },
     });
-    expect((await servicioVentas.listar())[0]).toMatchObject({ cliente_nombre: "Ana", anulada: true, saldo: 120, medio_pago: null, items: [{ producto: "Sifón", precio: 150, cantidad: 2 }] });
+    expect((await servicioVentas.listar())[0]).toMatchObject({ cliente_nombre: "Ana", anulada: true, saldo: 120, medio_pago: null, oculto: true, items: [{ producto: "Sifón", precio: 150, cantidad: 2 }] });
   });
 
   it("listar devuelve vacío si no hay ventas, sin pedir nada más", async () => {
@@ -51,7 +51,7 @@ describe("servicioVentas", () => {
 
   it("listar muestra las ventas aunque fallen los pagos o la cuenta corriente", async () => {
     backend({ "GET /ventas": { items: [VENTA] }, "GET /pagos": falla, "GET /pagos/cuentas-corrientes": falla });
-    expect((await servicioVentas.listar())[0]).toMatchObject({ id: 9, medio_pago: null, items: [] });
+    expect((await servicioVentas.listar())[0]).toMatchObject({ id: 9, medio_pago: null, saldo: undefined });
   });
 
   const DATOS = { tipo: "CONTADO", cliente_id: null, medio_pago_id: 1, saldo_a_favor_usado: 0, items: [{ producto_id: 1, cantidad: 2 }] };

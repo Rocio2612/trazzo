@@ -2,7 +2,7 @@
 // Simula, dentro del navegador de Playwright, los endpoints que usan las pantallas Nueva venta e Historial de ventas
 // (ver frontend/js/servicios/ventas.js), respondiendo con el mismo formato que el Backend real: el stock se descuenta al
 // confirmar y vuelve al anular, el número de venta lo asigna el servidor y los rechazos llegan como { mensaje }. Igual
-// que el real, no descuenta saldo a favor, no oculta ventas, no manda el IVA ni los productos de las ventas de contado.
+// que el real, no descuenta saldo a favor ni manda el desglose del IVA.
 // `estado` guarda cada venta con todos sus datos y las rutas devuelven solo lo que devuelve el Backend.
 //
 //   const backend = await simularBackendVentas(page, { rol: "ADMIN", categoriaNegocio: "RESPONSABLE_INSCRIPTO" });
@@ -73,6 +73,12 @@ const semillaInicial = (categoriaNegocio) => ({
       items: [{ producto_id: 1, producto: "Sifón de soda 1.5 l", precio: 1200, cantidad: 2 }],
       iva: { modo: "DISCRIMINA", neto: 1983.47, iva: 416.53, leyenda: "El crédito fiscal discriminado en el presente comprobante no puede ser computado", texto: null },
     },
+    {
+      id: 4, numero: "00001-00000454", tipo: "CONTADO", cliente_id: null, cliente_nombre: null, fecha_hora: haceDias(5),
+      total: 590, saldo: 0, medio_pago: "Efectivo", credito_aplicado: 0, anulada: false, oculto: true,
+      items: [{ producto_id: 4, producto: "Lavandina 1 l", precio: 590, cantidad: 1 }],
+      iva: { modo: "INCLUIDO", neto: null, iva: null, leyenda: null, texto: "El precio incluye IVA." },
+    },
   ],
 });
 
@@ -109,13 +115,16 @@ async function simularBackendVentas(page, { rol = "ADMIN", categoriaNegocio = "R
       estado: v.anulada ? "ANULADA" : "CONFIRMADA",
       fecha_hora: new Date(v.fecha_hora).toUTCString(),
       cliente: v.cliente_nombre,
+      oculto: Boolean(v.oculto),
+      medio_pago: v.medio_pago,
+      productos: v.items.map((i) => ({ producto: i.producto, cantidad: i.cantidad, precio: i.precio, iva: 21 })),
     })),
   }];
   const cuentasCorrientes = () => [200, {
     status: "ok",
     items: estado.ventas
       .filter((v) => v.tipo === "CUENTA_CORRIENTE")
-      .map((v) => ({ venta_id: v.id, saldo_pendiente: v.saldo, productos: v.items.map((i) => ({ nombre: i.producto, precio: i.precio, cantidad: i.cantidad, subtotal: redondear(i.precio * i.cantidad) })) })),
+      .map((v) => ({ venta_id: v.id, saldo_pendiente: v.saldo })),
   }];
   const listarPagos = () => [200, { status: "ok", items: estado.ventas.filter((v) => v.medio_pago).map((v) => ({ venta_id: v.id, medio_pago: v.medio_pago, monto: v.total })) }];
   const listarProductos = () => [200, { status: "ok", items: estado.productos }];
@@ -151,6 +160,7 @@ async function simularBackendVentas(page, { rol = "ADMIN", categoriaNegocio = "R
       saldo: body.tipo_venta === "CONTADO" ? 0 : total,
       medio_pago: body.tipo_venta === "CONTADO" ? estado.medios.find((m) => m.id === Number(body.medio_pago_id))?.nombre : null,
       anulada: false,
+      oculto: false,
       items: lineas.map((l) => ({ producto_id: l.producto.id, producto: l.producto.nombre, precio: l.producto.precio_venta, cantidad: l.cantidad })),
     };
     estado.ventas.push(nueva);
@@ -169,8 +179,14 @@ async function simularBackendVentas(page, { rol = "ADMIN", categoriaNegocio = "R
     return [200, { status: "ok", mensaje: "Venta anulada, stock repuesto y pagos anulados" }];
   };
 
-  // El Backend todavía no tiene esta ruta.
-  const ocultarVenta = () => [404, {}];
+  // Solo el Administrador oculta y restaura.
+  const ocultarVenta = ({ id }, body) => {
+    if (!esAdmin) return error(403, "Solo Admin");
+    const v = venta(id);
+    if (!v) return error(404, "Venta no encontrada");
+    v.oculto = body?.oculto ?? true;
+    return [200, { status: "ok", mensaje: v.oculto ? "Venta oculta" : "Venta restaurada" }];
+  };
 
   // [método, patrón, manejador]. Los segmentos ":id" se pasan como parámetros.
   const rutas = [

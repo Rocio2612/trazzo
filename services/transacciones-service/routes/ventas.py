@@ -155,7 +155,8 @@ def crear_venta():
             })
 
         total_final = subtotal_neto
-        saldo_usado = min(saldo_favor, total_final) if saldo_favor > 0 else 0
+        # El saldo a favor no se descuenta hasta que Cuenta corriente lo tenga en cuenta al calcular la deuda.
+        saldo_usado = 0
         total_a_pagar = total_final - saldo_usado
 
         modo_iva, monto_iva, _, leyenda = calcular_iva_venta(cat_negocio, cat_cliente, total_final)
@@ -254,14 +255,19 @@ def ocultar_venta(id):
     if payload.get("rol") not in ["ADMIN", "PROPIETARIO"]:
         return jsonify({"status": "error", "mensaje": "Solo Admin"}), 403
 
+    # {"oculto": true} oculta la venta y {"oculto": false} la restaura. Sin dato, la oculta.
+    oculto = (request.get_json(silent=True) or {}).get('oculto', True)
+    if not isinstance(oculto, bool):
+        return jsonify({"status": "error", "mensaje": "El campo oculto debe ser true o false"}), 400
+
     conn = get_db(payload.get("db_name"))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        cur.execute("UPDATE ventas.ventas SET oculto = TRUE WHERE id = %s AND emprendimiento_id = %s RETURNING id", (id, payload.get("negocio_id")))
+        cur.execute("UPDATE ventas.ventas SET oculto = %s WHERE id = %s AND emprendimiento_id = %s RETURNING id", (oculto, id, payload.get("negocio_id")))
         if not cur.fetchone():
             return jsonify({"status": "error", "mensaje": "Venta no encontrada"}), 404
         conn.commit()
-        return jsonify({"status": "ok", "mensaje": "Venta oculta"}), 200
+        return jsonify({"status": "ok", "mensaje": "Venta oculta" if oculto else "Venta restaurada"}), 200
     except Exception as e:
         conn.rollback()
         return jsonify({"status": "error", "mensaje": str(e)}), 500
@@ -276,9 +282,12 @@ def ocultar_venta(id):
 def resumen_ventas():
     fecha_desde = request.args.get('fecha_desde')
     fecha_hasta = request.args.get('fecha_hasta')
-    db_name = request.args.get('db_name', 'trazzo_trazzorocio')
-    emprendimiento_id = 1
+    db_name = request.args.get('db_name')
+    emprendimiento_id = request.args.get('emprendimiento_id', type=int)
+    sucursal_id = request.args.get('sucursal_id', type=int)
 
+    if not db_name or not emprendimiento_id:
+        return jsonify({"status": "error", "mensaje": "Faltan db_name y emprendimiento_id"}), 400
     if not fecha_desde or not fecha_hasta:
         return jsonify({"status": "error", "mensaje": "Faltan fechas"}), 400
 
@@ -286,20 +295,35 @@ def resumen_ventas():
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
-        # Vendido y Saldado (Ventas CONFIRMADAS)
+        # Una fila por venta CONFIRMADA del período (fecha de Argentina, igual que en Pagos), con lo cobrado y su costo.
+        # Una venta está saldada cuando los pagos activos cubren su total.
         cur.execute("""
-            SELECT 
-                COALESCE(SUM(total), 0) AS vendido_saldado,
-                COUNT(id) AS ventas_por_saldar,
-                COALESCE(SUM(subtotal_neto - monto_iva), 0) AS cmv,
-                COALESCE(SUM(total - (subtotal_neto - monto_iva)), 0) AS ganancia_bruta
-            FROM ventas.ventas 
-            WHERE emprendimiento_id = %s AND estado = 'CONFIRMADA' 
-              AND fecha_hora >= %s::date AND fecha_hora < (%s::date + INTERVAL '1 day')
-        """, (emprendimiento_id, fecha_desde, fecha_hasta))
-        
+            WITH ventas_periodo AS (
+                SELECT v.total,
+                       COALESCE((SELECT SUM(p.monto) FROM ventas.pagos p
+                                  WHERE p.venta_id = v.id AND p.estado = 'ACTIVO'), 0) AS cobrado,
+                       COALESCE((SELECT SUM(d.costo_unitario_historico * d.cantidad) FROM ventas.venta_detalle d
+                                  WHERE d.venta_id = v.id), 0) AS costo
+                  FROM ventas.ventas v
+                 WHERE v.emprendimiento_id = %s AND v.estado = 'CONFIRMADA'
+                   AND (%s IS NULL OR v.sucursal_id = %s)
+                   AND DATE(v.fecha_hora AT TIME ZONE 'America/Argentina/Mendoza') BETWEEN %s AND %s
+            )
+            SELECT COALESCE(SUM(total) FILTER (WHERE cobrado >= total), 0) AS vendido_saldado,
+                   COUNT(*) FILTER (WHERE cobrado < total) AS ventas_por_saldar,
+                   COALESCE(SUM(costo), 0) AS cmv,
+                   COALESCE(SUM(total - costo), 0) AS ganancia_bruta
+              FROM ventas_periodo
+        """, (emprendimiento_id, sucursal_id, sucursal_id, fecha_desde, fecha_hasta))
+
         resumen = cur.fetchone()
-        return jsonify({"status": "ok", "datos": resumen}), 200
+        return jsonify({
+            "status": "ok",
+            "vendido_saldado": float(resumen['vendido_saldado']),
+            "ventas_por_saldar": resumen['ventas_por_saldar'],
+            "cmv": float(resumen['cmv']),
+            "ganancia_bruta": float(resumen['ganancia_bruta'])
+        }), 200
     except Exception as e:
         return jsonify({"status": "error", "mensaje": str(e)}), 500
     finally:

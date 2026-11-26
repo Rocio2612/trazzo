@@ -6,6 +6,7 @@ const { simularBackendVentas } = require("./backend-falso-ventas");
 //   451 cuenta corriente, Almacén Don Pedro, hace 40 días, $ 6.200, confirmada
 //   452 contado, Consumidor final, de hoy, $ 3.730, confirmada
 //   453 cuenta corriente, Kiosco El Sol, hace 20 días, $ 2.400, ANULADA
+//   454 contado, hace 5 días, $ 590, OCULTA (solo se ve con "Ver ocultos")
 let backend;
 const abrirHistorial = async (page, rol = "ADMIN", opciones = {}) => {
   backend = await simularBackendVentas(page, { rol, ...opciones });
@@ -17,10 +18,11 @@ const abrirHistorial = async (page, rol = "ADMIN", opciones = {}) => {
 const filas = (page) => page.getByTestId("ventas-tabla").locator("tbody tr");
 
 test.describe("Historial de ventas: lista y buscador", () => {
-  test("muestra todas las ventas, de contado y a cuenta corriente", async ({ page }) => {
+  test("muestra todas las ventas, de contado y a cuenta corriente, sin las ocultas", async ({ page }) => {
     await abrirHistorial(page);
     await expect(page.getByTestId("ventas-tabla").locator("thead th")).toHaveText(["N° de venta", "Tipo de venta", "Cliente", "Fecha y hora", "Total", "Estado", "Acciones"]);
     await expect(filas(page)).toHaveCount(3);
+    await expect(page.getByTestId("ventas-fila-4")).toHaveCount(0);
     await expect(page.getByTestId("ventas-fila-1")).toContainText("00001-00000451");
     await expect(page.getByTestId("ventas-fila-1")).toContainText("Almacén Don Pedro S.R.L.");
     await expect(page.getByTestId("ventas-fila-1")).toContainText(/6\.200,00/);
@@ -142,8 +144,7 @@ test.describe("Historial de ventas: acciones del Administrador", () => {
     await expect(page.getByTestId("venta-producto-3")).toContainText("Stock: 27");
   });
 
-  // El Backend todavía no oculta ventas. Reactivar cuando lo haga.
-  test.skip("ocultar pide confirmación; la venta sale del listado y se ve en 'Ver ocultos'", async ({ page }) => {
+  test("ocultar pide confirmación; la venta sale del listado y se ve en 'Ver ocultos'", async ({ page }) => {
     await abrirHistorial(page);
     await page.getByTestId("ventas-ocultar-1").click();
     await expect(page.getByTestId("modal")).toContainText("¿Ocultar la venta 00001-00000451?");
@@ -159,8 +160,7 @@ test.describe("Historial de ventas: acciones del Administrador", () => {
     expect(backend.estado.ventas.find((v) => v.id === 1).anulada).toBe(false); // sigue confirmada: ocultar no la anula
   });
 
-  // El Backend todavía no oculta ventas. Reactivar cuando lo haga.
-  test.skip("'Ver ocultos' muestra las ocultas con 'Restaurar', que vuelve a mostrarlas sin pedir confirmación", async ({ page }) => {
+  test("'Ver ocultos' muestra las ocultas con 'Restaurar', que vuelve a mostrarlas sin pedir confirmación", async ({ page }) => {
     await abrirHistorial(page);
     await page.getByTestId("ventas-filtro-ocultos").click();
     await expect(page.getByTestId("ventas-filtro-ocultos")).toHaveClass(/activo/);
@@ -198,11 +198,12 @@ test.describe("Historial de ventas: detalle y ticket", () => {
     await expect(page.getByTestId("venta-detalle-total")).toHaveText(/6\.200,00/);
   });
 
-  test("en una venta de contado el detalle muestra el medio de pago; sin productos ni IVA, que el Backend no manda", async ({ page }) => {
+  test("en una venta de contado el detalle muestra el medio de pago y los productos; sin IVA, que el Backend no manda", async ({ page }) => {
     await abrirHistorial(page);
     await page.getByTestId("ventas-detalle-2").click();
     await expect(page.getByTestId("venta-detalle")).toContainText("Efectivo");
-    await expect(page.getByTestId("venta-detalle-items").locator("tbody tr")).toHaveCount(0);
+    await expect(page.getByTestId("venta-detalle-items").locator("tbody tr")).toHaveCount(2);
+    await expect(page.getByTestId("venta-detalle-items")).toContainText("Detergente 750 ml");
     await expect(page.getByTestId("venta-detalle")).not.toContainText("IVA");
   });
 
@@ -298,11 +299,11 @@ test.describe("Historial de ventas: más casos de la lista", () => {
   });
 
   test("sin ventas ocultas, 'Ver ocultos' muestra 'Sin ventas ocultas'", async ({ page }) => {
-    await abrirHistorial(page);
+    await abrirHistorial(page, "ADMIN", { semilla: (estado) => estado.ventas.forEach((v) => (v.oculto = false)) });
     await page.getByTestId("ventas-filtro-ocultos").click();
     await expect(page.getByTestId("ventas-tabla-vacio")).toHaveText("Sin ventas ocultas");
     await page.getByTestId("ventas-filtro-ocultos").click();
-    await expect(filas(page)).toHaveCount(3);
+    await expect(filas(page)).toHaveCount(4);
   });
 
   test("los filtros se combinan: estado y buscador juntos", async ({ page }) => {
@@ -324,8 +325,7 @@ test.describe("Historial de ventas: más casos de la lista", () => {
     await expect(page.getByTestId("ventas-tabla-vacio")).toHaveText("Sin resultados");
   });
 
-  // El Backend todavía no oculta ventas. Reactivar cuando lo haga.
-  test.skip("los filtros también valen dentro de 'Ver ocultos'", async ({ page }) => {
+  test("los filtros también valen dentro de 'Ver ocultos'", async ({ page }) => {
     await abrirHistorial(page);
     await page.getByTestId("ventas-filtro-ocultos").click();
     await expect(filas(page)).toHaveCount(1);
@@ -333,8 +333,7 @@ test.describe("Historial de ventas: más casos de la lista", () => {
     await expect(page.getByTestId("ventas-tabla-vacio")).toHaveText("Sin ventas ocultas");
   });
 
-  // El Backend todavía no oculta ventas. Reactivar cuando lo haga.
-  test.skip("una venta oculta solo ofrece 'Restaurar' (sin detalle ni anular)", async ({ page }) => {
+  test("una venta oculta solo ofrece 'Restaurar' (sin detalle ni anular)", async ({ page }) => {
     await abrirHistorial(page);
     await page.getByTestId("ventas-filtro-ocultos").click();
     await expect(page.getByTestId("ventas-fila-4").locator("button")).toHaveCount(1);
@@ -402,8 +401,7 @@ test.describe("Historial de ventas: anular y ocultar, casos adicionales", () => 
     await expect(page.locator(".gastos-toast")).toHaveText("No se pudo ocultar la venta.");
   });
 
-  // El Backend todavía no oculta ventas. Reactivar cuando lo haga.
-  test.skip("si restaurar falla sin mensaje usa el texto por defecto y la venta sigue oculta", async ({ page }) => {
+  test("si restaurar falla sin mensaje usa el texto por defecto y la venta sigue oculta", async ({ page }) => {
     await abrirHistorial(page);
     backend.fallar("PATCH /ventas/:id/ocultar", { status: 500, body: {} });
     await page.getByTestId("ventas-filtro-ocultos").click();
