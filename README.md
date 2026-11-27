@@ -10,6 +10,17 @@ https://docs.google.com/presentation/d/1MSjKVxiVHAT8Krpd3YB-Q18oubkv0qUQCzP8k3cj
 
 https://trello.com/invite/b/68f62cbeb2c8e0c4f2f36101/ATTI213fa1254d43aac08c286026b7423d26EE8D56BE/proyecto-trazzo 
 
+## Funcionalidades
+ 
+- **Autenticación y sesión:** registro del negocio, inicio de sesión, recuperación de contraseña por correo, protección contra intentos fallidos y cierre de sesión seguro.
+- **Personalización:** datos y categoría impositiva del negocio, personal y roles, categorías y medios de pago.
+- **Notificaciones:** alertas de stock mínimo dentro de la plataforma.
+- **Productos, bienes de uso e insumos:** reposición de stock, bajas y consumo de insumos.
+- **Proveedores y clientes:** fichas con categoría impositiva, que define el tratamiento del IVA.
+- **Ventas y cuenta corriente:** ventas de contado y a cuenta corriente, pagos, saldos y anulaciones.
+- **Gastos operativos y reportes:** indicadores de ingresos, ganancia y capital invertido.
+**Fuera de alcance:** facturación electrónica y tickets, pagos a proveedores, pagos con varios medios, productos con variantes, venta por peso o volumen, descuentos y devoluciones parciales.
+
 ## Tecnologías
 
 | Área | Tecnología |
@@ -24,72 +35,60 @@ https://trello.com/invite/b/68f62cbeb2c8e0c4f2f36101/ATTI213fa1254d43aac08c28602
 ## Arquitectura
 
 - **Microservicios Flask**: Autenticación, Productos, Transacciones, Finanzas, Notificaciones, Reportes.
-- **Base de datos**: patrón *Database-per-Tenant* — una base maestra (`trazzo_master`) con el directorio de negocios, y una base operativa por negocio (clonada de `trazzo_plantilla`).
 - **Red**: todo corre en una PC central (PostgreSQL + microservicios); el resto de las PCs accede como cliente vía LAN/Wi-Fi.
 
 ## Requisitos previos
-
-- Python 3.11+
-- PostgreSQL 15+, con pgAdmin
+ 
+- Python 3.11 o superior
+- PostgreSQL 15 o superior, con pgAdmin 4
 - Git
+- Node.js 18 o superior (para Vitest y Playwright)
+- VS Code con la extensión Live Server (recomendado)
 
-## Instalación y ejecución local
-
-```bash
-# 1. Clonar el repositorio
-git clone <url-del-repo>
-cd trazzo
-
-# 2. Crear entorno virtual e instalar dependencias
-python -m venv venv
-venv\Scripts\activate        # Windows
-pip install -r requirements.txt
-
-# 3. Crear la base de datos vacía en PostgreSQL (vía pgAdmin o psql)
-CREATE DATABASE trazzo_db;
-
-# 4. Ejecutar la estructura
-# Abrir estructura.sql en VS Code, copiar el contenido, pegarlo en el
-# Query Tool de pgAdmin (conectado a trazzo_db) y ejecutarlo (▶).
-
-# 5. Configurar variables de entorno
-# Crear un archivo .env en la raíz (no se sube a Git) con:
-DATABASE_URL=postgresql://postgres:<tu_contraseña>@localhost:5432/trazzo_db
-JWT_SECRET_KEY=<una_clave_secreta>
-
-# 6. Ejecutar cada microservicio
-python auth_service/app.py
-python productos_service/app.py
-# (repetir para cada servicio, cada uno en su propio puerto)
-
-# 7. Abrir el frontend
-# Abrir los archivos .html (ej. login.html) directamente en el navegador,
-# o servirlos con una extensión tipo Live Server.
-```
+### Base de datos por negocio (Database-per-Tenant)
+ 
+| Base | Contenido |
+|---|---|
+| `trazzo_master` | Esquema `auth`: `emprendimientos` (con el nombre de la base de cada negocio), `usuarios`, `usuario_sucursales`, `tokens_bloqueados` y `recuperacion_claves` |
+| `trazzo_plantilla` | Molde vacío con los esquemas operativos (`comercio`, `productos`, `finanzas`, `notificaciones` y `ventas`) y la sucursal inicial «Casa Central». No guarda datos reales |
+| `trazzo_<identificador>` | Una base independiente por negocio, clonada de `trazzo_plantilla` al registrarlo (por ejemplo, `trazzo_panchoria`) |
+ 
+Al iniciar sesión, `auth-service` consulta `trazzo_master`, obtiene el nombre de la base del negocio y lo firma dentro del JWT. Los demás servicios usan ese nombre en cada petición, por lo que **los datos de cada negocio quedan físicamente separados**.
+ 
+La estructura de sucursales (`comercio.sucursales` y `auth.usuario_sucursales`) ya está preparada para una versión futura. Hoy cada negocio opera con una sola sucursal.
 
 ## Testing
-
+ 
 ```bash
-pytest                   # pruebas de backend
-npx vitest                # pruebas unitarias de frontend
-npx playwright test       # pruebas end-to-end
+pytest                    # backend
+npm install               # una sola vez
+npx playwright install    # una sola vez (descarga los navegadores)
+npx vitest                # unitarias del frontend
+npx playwright test       # E2E: con todos los servicios y el frontend levantados
 ```
 
 ## Estructura del proyecto
 
-```
+```bash
 TRAZZO/
 ├── database/          # 01_trazzo_master.sql y 02_trazzo_plantilla.sql
-├── gateway/           # API Gateway (puerto 5000) -> app.py
-├── services/          # 6 microservicios Flask independientes
-│   ├── auth-service/           (5001 -> app.py)
-│   ├── productos-service/      (5002 -> app.py)
-│   ├── transacciones-service/  (5003 -> app.py, helpers.py, routes/)
-│   ├── finanzas-service/       (5004 -> app.py)
-│   ├── reportes-service/       (5005 -> app.py)
-│   └── notificaciones-service/ (5006 -> app.py)
-├── frontend/          # HTML5 + CSS3 + JS Vanilla (módulos ES)
-├── tests/             # Pruebas automatizadas (pytest / Vitest / Playwright)
-└── api_contract.md    # Contrato de endpoints y códigos HTTP
-
+├── gateway/           # API Gateway (puerto 5000)
+├── services/          # Microservicios Flask independientes
+│   ├── auth-service/
+│   ├── productos-service/
+│   ├── transacciones-service/
+│   ├── finanzas-service/
+│   ├── reportes-service/
+│   └── notificaciones-service/
+├── frontend/          # HTML5 + CSS3 + JavaScript vanilla (módulos ES)
+├── scripts/           # Scripts de apoyo
+├── tests/             # Pruebas automatizadas (pytest, Vitest y Playwright)
+├── api_contract.md    # Contrato de endpoints y códigos HTTP
+├── INSTRUCTIVO.md     # Guía paso a paso para ejecutar el proyecto
+├── package.json
+├── playwright.config.js
+└── vitest.config.js
 ```
+
+
+
